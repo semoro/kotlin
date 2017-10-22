@@ -41,10 +41,33 @@ class JavaToJKTreeBuilder {
         fun result(): JKExpression = resultExpression!!
     }
 
-    private object ClassTreeMapper {
+    private object DeclarationMapper {
+
         fun PsiClass.toJK(): JKClass {
-            val jkModifierList = with(ModifierMapper) { modifierList.toJK() }
-            return JKClassImpl(jkModifierList, JKNameIdentifierImpl(this.name!!))
+            val modifierList = with(ModifierMapper) { modifierList.toJK() }
+            val declarations = this.children.filterIsInstance<PsiMember>().mapNotNull { it.toJK() }
+            return JKClassImpl(modifierList, JKNameIdentifierImpl(this.name!!)).also { it.declarations = declarations }
+        }
+
+
+        fun PsiField.toJK(): JKJavaField {
+            val initializer = this.initializer?.buildTreeForExpression()
+
+            val type = JKJavaTypeIdentifierImpl(this.type.canonicalText)
+            val name = JKNameIdentifierImpl(this.name!!)
+
+            val modifierList = with(ModifierMapper) {
+                modifierList.toJK()
+            }
+
+            return JKJavaFieldImpl(modifierList, type, name, initializer)
+        }
+
+
+        fun PsiMember.toJK(): JKDeclaration? = when(this){
+            is PsiField -> this.toJK()
+            //is PsiMethod -> return this.toJK()
+            else -> null
         }
     }
 
@@ -75,31 +98,14 @@ class JavaToJKTreeBuilder {
             element.acceptChildren(this)
         }
 
-        var currentClass: JKClass? = null
+        var resultElement: JKElement? = null
 
         override fun visitClass(aClass: PsiClass) {
-
-            val name = JKNameIdentifierImpl(aClass.name!!)
-            val modifierList = with(ModifierMapper) {
-                aClass.modifierList.toJK()
-            }
-
-            currentClass = JKClassImpl(modifierList, name)
-            super.visitClass(aClass)
+            resultElement = with(DeclarationMapper) { aClass.toJK() }
         }
 
         override fun visitField(field: PsiField) {
-            val initializer = field.initializer?.buildTreeForExpression()
-
-            val type = JKJavaTypeIdentifierImpl(field.type.canonicalText)
-            val name = JKNameIdentifierImpl(field.name!!)
-
-            val modifierList = with(ModifierMapper) {
-                field.modifierList.toJK()
-            }
-
-            currentClass!!.declarations += JKJavaFieldImpl(modifierList, type, name, initializer)
-            super.visitField(field)
+            resultElement = with(DeclarationMapper) { field.toJK() }
         }
 
     }
@@ -109,7 +115,7 @@ class JavaToJKTreeBuilder {
         assert(psi.language.`is`(JavaLanguage.INSTANCE)) { "Unable to build JK Tree using Java Visitor for language ${psi.language}" }
         val elementVisitor = ElementVisitor()
         psi.accept(elementVisitor)
-        return elementVisitor.currentClass
+        return elementVisitor.resultElement
     }
 
     companion object {
