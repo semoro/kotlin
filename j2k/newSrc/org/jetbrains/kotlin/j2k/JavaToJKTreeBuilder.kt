@@ -63,12 +63,31 @@ class JavaToJKTreeBuilder {
             return JKJavaFieldImpl(modifierList, type, name, initializer)
         }
 
+        fun PsiMethod.toJK(): JKJavaMethod {
+            val modifierList = with(ModifierMapper) { modifierList.toJK() }
+            val name = JKNameIdentifierImpl(name)
+            val valueArgumentList = this.parameterList.parameters.map { it -> it.toJK() }
+            val block = body?.toJK()
+            return JKJavaMethodImpl(modifierList, name, valueArgumentList, block)
+        }
 
-        fun PsiMember.toJK(): JKDeclaration? = when(this){
+        fun PsiMember.toJK(): JKDeclaration? = when (this) {
             is PsiField -> this.toJK()
-            //is PsiMethod -> return this.toJK()
+        //is PsiMethod -> return this.toJK()
             else -> null
         }
+
+        fun PsiParameter.toJK(): JKValueArgumentImpl {
+            //TODO implement PsiType mapping for type name
+            return JKValueArgumentImpl(JKJavaTypeIdentifierImpl("this.type.getCanonicalText()"), this.name!!)
+        }
+
+        fun PsiCodeBlock.toJK(): JKBlock {
+            //TODO block mapping
+            return JKBlockImpl(listOf(JKStringLiteralExpressionImpl("")))
+        }
+
+
     }
 
     private object ModifierMapper {
