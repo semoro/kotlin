@@ -73,7 +73,7 @@ class JavaToJKTreeBuilder {
 
         fun PsiMember.toJK(): JKDeclaration? = when (this) {
             is PsiField -> this.toJK()
-        //is PsiMethod -> return this.toJK()
+            is PsiMethod -> this.toJK()
             else -> null
         }
 
