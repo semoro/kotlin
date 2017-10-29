@@ -50,3 +50,11 @@ interface JKJavaAccessModifier : JKAccessModifier {
         PUBLIC, PROTECTED, PRIVATE
     }
 }
+
+interface JKJavaModifier : JKModifier {
+    val type: JavaModifierType
+
+    enum class JavaModifierType {
+        ABSTRACT, FINAL, NATIVE, STATIC, STRICTFP, SYNCHRONIZED, TRANSIENT, VOLATILE
+    }
+}
