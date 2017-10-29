@@ -52,7 +52,7 @@ class JKJavaAccessModifierImpl(override val type: JKJavaAccessModifier.AccessMod
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaAccessModifier(this, data)
 }
 
-class JKJavaModifierImpl(override val type: JKJavaModifier.JavaModifierType): JKJavaModifier, JKElementBase(){
+class JKJavaModifierImpl(override val type: JKJavaModifier.JavaModifierType) : JKJavaModifier, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaModifier(this, data)
 }
 
