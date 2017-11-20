@@ -17,7 +17,10 @@
 package org.jetbrains.kotlin.idea.search.declarationsSearch
 
 import com.intellij.psi.*
+import com.intellij.psi.search.SearchScope
+import com.intellij.psi.search.searches.AllOverridingMethodsSearch
 import com.intellij.psi.search.searches.DirectClassInheritorsSearch
+import com.intellij.psi.search.searches.OverridingMethodsSearch
 import com.intellij.psi.util.MethodSignatureUtil
 import com.intellij.psi.util.PsiUtil
 import com.intellij.psi.util.TypeConversionUtil
@@ -25,11 +28,25 @@ import com.intellij.util.EmptyQuery
 import com.intellij.util.MergeQuery
 import com.intellij.util.Processor
 import com.intellij.util.Query
+import org.jetbrains.kotlin.asJava.classes.KtLightClass
+import org.jetbrains.kotlin.asJava.elements.KtLightMethod
 import org.jetbrains.kotlin.asJava.toLightMethods
+import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
+import org.jetbrains.kotlin.descriptors.isOverridable
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
+import org.jetbrains.kotlin.idea.core.isOverridable
 import org.jetbrains.kotlin.idea.search.allScope
+import org.jetbrains.kotlin.idea.search.excludeKotlinSources
+import org.jetbrains.kotlin.idea.search.restrictToKotlinSources
 import org.jetbrains.kotlin.idea.util.application.runReadAction
+import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtDeclaration
-import org.jetbrains.kotlin.psi.psiUtil.isOverridable
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
+import org.jetbrains.kotlin.resolve.source.getPsi
+import org.jetbrains.kotlin.types.substitutions.getTypeSubstitutor
+import org.jetbrains.kotlin.util.findCallableMemberBySignature
 import java.util.*
 
 fun PsiElement.isOverridableElement(): Boolean = when (this) {
@@ -60,7 +77,7 @@ object KotlinPsiMethodOverridersSearch : HierarchySearch<PsiMethod>(PsiMethodOve
         val psiClass = psiMethod.containingClass
         if (psiClass == null) return Collections.emptyList()
 
-        val classToMethod = HashMap<PsiClass, PsiMethod>()
+        val classToMethod = LinkedHashMap<PsiClass, PsiMethod>()
         val classTraverser = object : HierarchyTraverser<PsiClass> {
             override fun nextElements(current: PsiClass): Iterable<PsiClass> =
                     DirectClassInheritorsSearch.search(
@@ -97,4 +114,53 @@ object KotlinPsiMethodOverridersSearch : HierarchySearch<PsiMethod>(PsiMethodOve
 object PsiMethodOverridingHierarchyTraverser: HierarchyTraverser<PsiMethod> {
     override fun nextElements(current: PsiMethod): Iterable<PsiMethod> = KotlinPsiMethodOverridersSearch.searchDirectOverriders(current)
     override fun shouldDescend(element: PsiMethod): Boolean = PsiUtil.canBeOverriden(element)
+}
+
+private fun forEachKotlinOverride(
+        ktClass: KtClass,
+        members: List<KtNamedDeclaration>,
+        scope: SearchScope,
+        processor: (superMember: PsiElement, overridingMember: PsiElement) -> Boolean
+) {
+    val baseClassDescriptor = runReadAction { ktClass.unsafeResolveToDescriptor() as ClassDescriptor }
+    val baseDescriptors = runReadAction { members.mapNotNull { it.unsafeResolveToDescriptor() as? CallableMemberDescriptor }.filter { it.isOverridable } }
+    if (baseDescriptors.isEmpty()) return
+
+    HierarchySearchRequest(ktClass, scope.restrictToKotlinSources(), true).searchInheritors().forEach {
+        val inheritor = (it as? KtLightClass)?.kotlinOrigin ?: return@forEach
+        val inheritorDescriptor = runReadAction { inheritor.unsafeResolveToDescriptor() as ClassDescriptor }
+        val substitutor = getTypeSubstitutor(baseClassDescriptor.defaultType, inheritorDescriptor.defaultType) ?: return@forEach
+        baseDescriptors.forEach {
+            val superMember = it.source.getPsi()!!
+            val overridingDescriptor = inheritorDescriptor.findCallableMemberBySignature(it.substitute(substitutor) as CallableMemberDescriptor)
+            val overridingMember = overridingDescriptor?.source?.getPsi()
+            if (overridingMember != null) {
+                if (!processor(superMember, overridingMember)) return
+            }
+        }
+    }
+}
+
+fun PsiMethod.forEachOverridingMethod(processor: (PsiMethod) -> Boolean) {
+    val scope = runReadAction { useScope }
+
+    OverridingMethodsSearch.search(this, scope.excludeKotlinSources(), true).forEach(processor)
+
+    val ktMember = (this as? KtLightMethod)?.kotlinOrigin as? KtNamedDeclaration ?: return
+    val ktClass = runReadAction { ktMember.containingClassOrObject as? KtClass } ?: return
+    forEachKotlinOverride(ktClass, listOf(ktMember), scope) { _, overrider ->
+        val lightMethods = runReadAction { overrider.toLightMethods() }
+        lightMethods.all { processor(it) }
+    }
+}
+
+fun PsiClass.forEachDeclaredMemberOverride(processor: (superMember: PsiElement, overridingMember: PsiElement) -> Boolean) {
+    val scope = runReadAction { useScope }
+
+    AllOverridingMethodsSearch.search(this, scope.excludeKotlinSources()).all { processor(it.first, it.second) }
+
+    val ktClass = (this as? KtLightClass)?.kotlinOrigin as? KtClass ?: return
+    val members = ktClass.declarations.filterIsInstance<KtNamedDeclaration>() +
+                  ktClass.primaryConstructorParameters.filter { it.hasValOrVar() }
+    forEachKotlinOverride(ktClass, members, scope, processor)
 }

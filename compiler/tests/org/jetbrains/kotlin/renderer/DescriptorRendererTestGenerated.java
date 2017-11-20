@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.renderer;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.TargetBackend;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -32,7 +33,7 @@ import java.util.regex.Pattern;
 @RunWith(JUnit3RunnerWithInners.class)
 public class DescriptorRendererTestGenerated extends AbstractDescriptorRendererTest {
     public void testAllFilesPresentInRenderer() throws Exception {
-        KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/renderer"), Pattern.compile("^(.+)\\.kt$"), true);
+        KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/renderer"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
     }
 
     @TestMetadata("Classes.kt")
@@ -104,6 +105,12 @@ public class DescriptorRendererTestGenerated extends AbstractDescriptorRendererT
     @TestMetadata("TraitWithConstructor.kt")
     public void testTraitWithConstructor() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/renderer/TraitWithConstructor.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("TypeAnnotations.kt")
+    public void testTypeAnnotations() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/renderer/TypeAnnotations.kt");
         doTest(fileName);
     }
 

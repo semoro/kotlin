@@ -77,7 +77,7 @@ public class RecursiveDescriptorProcessorTest extends KotlinTestWithEnvironment 
     }
 
     private static List<String> recursivelyCollectDescriptors(PackageViewDescriptor testPackage) {
-        final List<String> lines = Lists.newArrayList();
+        List<String> lines = Lists.newArrayList();
         RecursiveDescriptorProcessor.process(testPackage, null, new DeclarationDescriptorVisitor<Boolean, Void>() {
 
             private void add(DeclarationDescriptor descriptor) {
@@ -131,8 +131,8 @@ public class RecursiveDescriptorProcessorTest extends KotlinTestWithEnvironment 
 
             @Override
             public Boolean visitTypeAliasDescriptor(TypeAliasDescriptor descriptor, Void data) {
-                add(descriptor); // TODO typealias
-                return null;
+                add(descriptor);
+                return true;
             }
 
             @Override

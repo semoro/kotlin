@@ -16,12 +16,11 @@
 
 package org.jetbrains.kotlin.js.translate.reference;
 
-import com.google.dart.compiler.backend.js.ast.JsExpression;
+import org.jetbrains.kotlin.js.backend.ast.JsExpression;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.general.Translation;
-import org.jetbrains.kotlin.js.translate.utils.TranslationUtils;
+import org.jetbrains.kotlin.psi.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,24 +30,25 @@ public final class AccessTranslationUtils {
     }
 
     @NotNull
-    public static AccessTranslator getAccessTranslator(@NotNull KtExpression referenceExpression,
-                                                       @NotNull TranslationContext context) {
+    public static AccessTranslator getAccessTranslator(@NotNull KtExpression referenceExpression, @NotNull TranslationContext context) {
         return getAccessTranslator(referenceExpression, context, false);
     }
 
     @NotNull
     public static AccessTranslator getAccessTranslator(@NotNull KtExpression referenceExpression,
             @NotNull TranslationContext context, boolean forceOrderOfEvaluation) {
-        assert ((referenceExpression instanceof KtReferenceExpression) ||
-                (referenceExpression instanceof KtQualifiedExpression));
+        referenceExpression = KtPsiUtil.deparenthesize(referenceExpression);
+        assert referenceExpression != null;
         if (referenceExpression instanceof KtQualifiedExpression) {
             return QualifiedExpressionTranslator.getAccessTranslator((KtQualifiedExpression) referenceExpression, context, forceOrderOfEvaluation);
         }
         if (referenceExpression instanceof KtSimpleNameExpression) {
             return ReferenceTranslator.getAccessTranslator((KtSimpleNameExpression) referenceExpression, context);
         }
-        assert referenceExpression instanceof KtArrayAccessExpression;
-        return getArrayAccessTranslator((KtArrayAccessExpression) referenceExpression, context, forceOrderOfEvaluation);
+        if (referenceExpression instanceof KtArrayAccessExpression) {
+            return getArrayAccessTranslator((KtArrayAccessExpression) referenceExpression, context, forceOrderOfEvaluation);
+        }
+        return new DefaultAccessTranslator(referenceExpression, context);
     }
 
     @NotNull
@@ -59,7 +59,7 @@ public final class AccessTranslationUtils {
     ) {
         TranslationContext accessArrayContext;
         if (forceOrderOfEvaluation) {
-            Map<KtExpression, JsExpression> indexesMap = new LinkedHashMap<KtExpression, JsExpression>();
+            Map<KtExpression, JsExpression> indexesMap = new LinkedHashMap<>();
             for(KtExpression indexExpression : expression.getIndexExpressions()) {
                 JsExpression jsIndexExpression = context.cacheExpressionIfNeeded(
                         Translation.translateAsExpression(indexExpression, context));
@@ -74,8 +74,7 @@ public final class AccessTranslationUtils {
     }
 
     @NotNull
-    public static JsExpression translateAsGet(@NotNull KtExpression expression,
-                                              @NotNull TranslationContext context) {
+    public static JsExpression translateAsGet(@NotNull KtExpression expression, @NotNull TranslationContext context) {
         return (getAccessTranslator(expression, context)).translateAsGet();
     }
 }

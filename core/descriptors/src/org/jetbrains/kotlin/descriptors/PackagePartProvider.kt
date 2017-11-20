@@ -17,17 +17,23 @@
 package org.jetbrains.kotlin.descriptors
 
 interface PackagePartProvider {
-
     /**
-     * return package part simple names
+     * @return JVM internal names of package parts existing in the package with the given FQ name.
+     *
+     * For example, if a file named foo.kt in package org.test is compiled to a library, PackagePartProvider for such library
+     * must return the list `["org/test/FooKt"]` for the query `"org.test"`
+     * (in case the file is not annotated with @JvmName, @JvmPackageName or @JvmMultifileClass).
      */
     fun findPackageParts(packageFqName: String): List<String>
 
-    companion object {
-        val EMPTY: PackagePartProvider = object : PackagePartProvider {
-            override fun findPackageParts(packageFqName: String): List<String> {
-                return emptyList()
-            }
-        }
+    /**
+     * @return simple names of .kotlin_metadata files that store data for top level declarations in the package with the given FQ name
+     */
+    fun findMetadataPackageParts(packageFqName: String): List<String>
+
+    object Empty : PackagePartProvider {
+        override fun findPackageParts(packageFqName: String): List<String> = emptyList()
+
+        override fun findMetadataPackageParts(packageFqName: String): List<String> = emptyList()
     }
 }

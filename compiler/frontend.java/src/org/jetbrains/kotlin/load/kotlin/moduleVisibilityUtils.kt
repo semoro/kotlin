@@ -22,17 +22,20 @@ import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VfsUtilCore
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.load.java.lazy.descriptors.LazyJavaPackageFragment
-import org.jetbrains.kotlin.load.kotlin.incremental.IncrementalPackageFragmentProvider
 import org.jetbrains.kotlin.modules.Module
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedMemberDescriptor
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedTypeAliasDescriptor
 import java.io.File
+import java.nio.file.Paths
 
 interface ModuleVisibilityManager {
     val chunk: Collection<Module>
     val friendPaths: Collection<String>
     fun addModule(module: Module)
     fun addFriendPath(path: String)
+    val enabled
+        get() = true
 
     object SERVICE {
         @JvmStatic fun getInstance(project: Project): ModuleVisibilityManager =
@@ -40,16 +43,11 @@ interface ModuleVisibilityManager {
     }
 }
 
-val DeclarationDescriptor.isFromIncrementalPackageFragment: Boolean
-    get() =
-        DescriptorUtils.getParentOfType(this, PackageFragmentDescriptor::class.java, false) is IncrementalPackageFragmentProvider.IncrementalPackageFragment
-
 fun isContainedByCompiledPartOfOurModule(descriptor: DeclarationDescriptor, outDirectory: File?): Boolean {
+    if (outDirectory == null) return false
+
     val packageFragment = DescriptorUtils.getParentOfType(descriptor, PackageFragmentDescriptor::class.java, false)
-
-    if (packageFragment is IncrementalPackageFragmentProvider.IncrementalPackageFragment) return true
-
-    if (outDirectory == null || packageFragment !is LazyJavaPackageFragment) return false
+    if (packageFragment !is LazyJavaPackageFragment) return false
 
     val source = getSourceElement(descriptor)
 
@@ -57,7 +55,7 @@ fun isContainedByCompiledPartOfOurModule(descriptor: DeclarationDescriptor, outD
         is KotlinJvmBinarySourceElement ->
             source.binaryClass
         is KotlinJvmBinaryPackageSourceElement ->
-            if (descriptor is DeserializedCallableMemberDescriptor) {
+            if (descriptor is DeserializedMemberDescriptor) {
                 source.getContainingBinaryClass(descriptor) ?: source.getRepresentativeBinaryClass()
             }
             else {
@@ -69,21 +67,25 @@ fun isContainedByCompiledPartOfOurModule(descriptor: DeclarationDescriptor, outD
 
     if (binaryClass is VirtualFileKotlinClass) {
         val file = binaryClass.file
-        if (file.fileSystem.protocol == StandardFileSystems.FILE_PROTOCOL) {
-            val ioFile = VfsUtilCore.virtualToIoFile(file)
-            return ioFile.absolutePath.startsWith(outDirectory.absolutePath + File.separator)
+        val ioFile = when (file.fileSystem.protocol) {
+            StandardFileSystems.FILE_PROTOCOL -> VfsUtilCore.virtualToIoFile(file)
+            StandardFileSystems.JAR_PROTOCOL -> VfsUtilCore.getVirtualFileForJar(file)?.let(VfsUtilCore::virtualToIoFile)
+            else -> null
         }
+        return ioFile != null && Paths.get(ioFile.toURI()).startsWith(Paths.get(outDirectory.toURI()))
     }
 
     return false
 }
 
 fun getSourceElement(descriptor: DeclarationDescriptor): SourceElement =
-        if (descriptor is CallableMemberDescriptor && descriptor.source === SourceElement.NO_SOURCE) {
-            descriptor.containingDeclaration.toSourceElement
-        }
-        else {
-            descriptor.toSourceElement
+        when {
+            descriptor is CallableMemberDescriptor && descriptor.source === SourceElement.NO_SOURCE ->
+                getSourceElement(descriptor.containingDeclaration)
+            descriptor is DeserializedTypeAliasDescriptor ->
+                getSourceElement(descriptor.containingDeclaration)
+            else ->
+                descriptor.toSourceElement
         }
 
 private val DeclarationDescriptor.toSourceElement: SourceElement

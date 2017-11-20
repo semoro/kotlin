@@ -17,21 +17,27 @@
 package org.jetbrains.kotlin.idea.refactoring.pullUp
 
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
+import com.intellij.psi.search.LocalSearchScope
+import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.RefactoringBundle
 import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.refactoring.checkConflictsInteractively
 import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinMemberInfo
+import org.jetbrains.kotlin.idea.refactoring.memberInfo.getChildrenToAnalyze
+import org.jetbrains.kotlin.idea.refactoring.memberInfo.resolveToDescriptorWrapperAware
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.search.declarationsSearch.HierarchySearchRequest
 import org.jetbrains.kotlin.idea.search.declarationsSearch.searchInheritors
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.allChildren
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
+import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.renderer.ParameterNameRenderingPolicy
 import org.jetbrains.kotlin.resolve.source.getPsi
@@ -55,16 +61,29 @@ fun checkConflicts(project: Project,
     with(pullUpData) {
         for (memberInfo in memberInfos) {
             val member = memberInfo.member
-            val memberDescriptor = resolutionFacade.resolveToDescriptor(member)
+            val memberDescriptor = member.resolveToDescriptorWrapperAware(resolutionFacade)
 
             checkClashWithSuperDeclaration(member, memberDescriptor, conflicts)
             checkAccidentalOverrides(member, memberDescriptor, conflicts)
             checkInnerClassToInterface(member, memberDescriptor, conflicts)
             checkVisibility(memberInfo, memberDescriptor, conflicts)
+            if (isInterfaceTarget) {
+                checkPrivateMembersWithUsages(member, memberDescriptor, sourceClass, pullUpData.membersToMove, conflicts)
+            }
         }
     }
 
     project.checkConflictsInteractively(conflicts, onShowConflicts, onAccept)
+}
+
+internal fun willBeUsedInSourceClass(
+        member: PsiElement,
+        sourceClass: KtClassOrObject,
+        membersToMove: Collection<KtNamedDeclaration>
+): Boolean {
+    return !ReferencesSearch
+            .search(member, LocalSearchScope(sourceClass), false)
+            .all { it.element.parentsWithSelf.any { it in membersToMove } }
 }
 
 private val CALLABLE_RENDERER = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.withOptions {
@@ -75,7 +94,7 @@ private val CALLABLE_RENDERER = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_I
 
 fun DeclarationDescriptor.renderForConflicts(): String {
     return when (this) {
-        is ClassDescriptor -> "${DescriptorRenderer.getClassKindPrefix(this)} ${IdeDescriptorRenderers.SOURCE_CODE.renderClassifierName(this)}"
+        is ClassDescriptor -> "${DescriptorRenderer.getClassifierKindPrefix(this)} ${IdeDescriptorRenderers.SOURCE_CODE.renderClassifierName(this)}"
         is FunctionDescriptor -> "function '${CALLABLE_RENDERER.render(this)}'"
         is PropertyDescriptor -> "property '${CALLABLE_RENDERER.render(this)}'"
         else -> ""
@@ -90,14 +109,30 @@ internal fun KotlinPullUpData.getClashingMemberInTargetClass(memberDescriptor: C
 private fun KotlinPullUpData.checkClashWithSuperDeclaration(
         member: KtNamedDeclaration,
         memberDescriptor: DeclarationDescriptor,
-        conflicts: MultiMap<PsiElement, String>) {
+        conflicts: MultiMap<PsiElement, String>
+) {
+    val message = "${targetClassDescriptor.renderForConflicts()} already contains ${memberDescriptor.renderForConflicts()}"
+
+    if (member is KtParameter) {
+        if (((targetClass as? KtClass)?.primaryConstructorParameters ?: emptyList()).any { it.name == member.name }) {
+            conflicts.putValue(member, message.capitalize())
+        }
+        return
+    }
+
     if (memberDescriptor !is CallableMemberDescriptor) return
 
     val clashingSuper = getClashingMemberInTargetClass(memberDescriptor) ?: return
     if (clashingSuper.modality == Modality.ABSTRACT) return
     if (clashingSuper.kind != CallableMemberDescriptor.Kind.DECLARATION) return
-    val message = "${targetClassDescriptor.renderForConflicts()} already contains ${memberDescriptor.renderForConflicts()}"
     conflicts.putValue(member, message.capitalize())
+}
+
+private fun PsiClass.isSourceOrTarget(data: KotlinPullUpData): Boolean {
+    var element = unwrapped
+    if (element is KtObjectDeclaration && element.isCompanion()) element = element.containingClassOrObject
+
+    return element == data.sourceClass || element == data.targetClass
 }
 
 private fun KotlinPullUpData.checkAccidentalOverrides(
@@ -110,10 +145,10 @@ private fun KotlinPullUpData.checkAccidentalOverrides(
             HierarchySearchRequest<PsiElement>(targetClass, targetClass.useScope)
                     .searchInheritors()
                     .asSequence()
-                    .filterNot { it.unwrapped == sourceClass || it.unwrapped == targetClass }
+                    .filterNot { it.isSourceOrTarget(this) }
                     .mapNotNull { it.unwrapped as? KtClassOrObject }
                     .forEach {
-                        val subClassDescriptor = resolutionFacade.resolveToDescriptor(it) as ClassDescriptor
+                        val subClassDescriptor = it.resolveToDescriptorWrapperAware(resolutionFacade) as ClassDescriptor
                         val substitutor = getTypeSubstitutor(targetClassDescriptor.defaultType,
                                                              subClassDescriptor.defaultType) ?: TypeSubstitutor.EMPTY
                         val memberDescriptorInSubClass =
@@ -124,7 +159,7 @@ private fun KotlinPullUpData.checkAccidentalOverrides(
 
                         val message = memberDescriptor.renderForConflicts() +
                                       " in super class would clash with existing member of " +
-                                      resolutionFacade.resolveToDescriptor(it).renderForConflicts()
+                                      it.resolveToDescriptorWrapperAware(resolutionFacade).renderForConflicts()
                         conflicts.putValue(clashingMember, message.capitalize())
                     }
         }
@@ -161,17 +196,8 @@ private fun KotlinPullUpData.checkVisibility(
     }
 
     val member = memberInfo.member
-    val childrenToCheck = member.allChildren.toMutableList()
+    val childrenToCheck = memberInfo.getChildrenToAnalyze()
     if (memberInfo.isToAbstract && member is KtCallableDeclaration) {
-        when (member) {
-            is KtNamedFunction -> childrenToCheck.remove(member.bodyExpression as PsiElement?)
-            is KtProperty -> {
-                childrenToCheck.remove(member.initializer as PsiElement?)
-                childrenToCheck.remove(member.delegateExpression as PsiElement?)
-                childrenToCheck.removeAll(member.accessors)
-            }
-        }
-
         if (member.typeReference == null) {
             (memberDescriptor as CallableDescriptor).returnType?.let { returnType ->
                 val typeInTargetClass = sourceToTargetClassSubstitutor.substitute(returnType, Variance.INVARIANT)
@@ -197,5 +223,19 @@ private fun KotlinPullUpData.checkVisibility(
                     }
                 }
         )
+    }
+}
+
+internal fun checkPrivateMembersWithUsages(
+        member: KtNamedDeclaration,
+        memberDescriptor: DeclarationDescriptor,
+        sourceClass: KtClassOrObject,
+        membersToMove: Collection<KtNamedDeclaration>,
+        conflicts: MultiMap<PsiElement, String>
+) {
+    if (member.hasModifier(KtTokens.PRIVATE_KEYWORD) &&
+        willBeUsedInSourceClass(member, sourceClass, membersToMove)) {
+        val message = "${memberDescriptor.renderForConflicts()} can't be moved to the interface because it's private and has usages in the original class"
+        conflicts.putValue(member, message.capitalize())
     }
 }

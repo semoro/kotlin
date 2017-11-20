@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,20 @@
 
 package org.jetbrains.kotlin.resolve.calls;
 
-import com.google.common.collect.Lists;
 import kotlin.Pair;
+import kotlin.collections.CollectionsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.builtins.FunctionTypesKt;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.builtins.ReflectionTypes;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.diagnostics.Errors;
+import org.jetbrains.kotlin.name.Name;
+import org.jetbrains.kotlin.name.SpecialNames;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingTrace;
+import org.jetbrains.kotlin.resolve.StatementFilter;
 import org.jetbrains.kotlin.resolve.TemporaryBindingTrace;
 import org.jetbrains.kotlin.resolve.TypeResolver;
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.ResolveArgumentsMode;
@@ -37,7 +41,6 @@ import org.jetbrains.kotlin.resolve.calls.model.MutableDataFlowInfoForArguments;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.results.OverloadResolutionResults;
 import org.jetbrains.kotlin.resolve.calls.results.OverloadResolutionResultsUtil;
-import org.jetbrains.kotlin.resolve.calls.util.FunctionTypeResolveUtilsKt;
 import org.jetbrains.kotlin.resolve.constants.IntegerValueTypeConstructor;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
@@ -50,6 +53,7 @@ import org.jetbrains.kotlin.types.expressions.*;
 import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryKt;
 
 import javax.inject.Inject;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -159,6 +163,18 @@ public class ArgumentTypeResolver {
         return getFunctionLiteralArgumentIfAny(expression, context) != null;
     }
 
+    public static boolean isCallableReferenceArgument(
+            @NotNull KtExpression expression, @NotNull ResolutionContext context
+    ) {
+        return getCallableReferenceExpressionIfAny(expression, context) != null;
+    }
+
+    public static boolean isFunctionLiteralOrCallableReference(
+            @NotNull KtExpression expression, @NotNull ResolutionContext context
+    ) {
+        return isFunctionLiteralArgument(expression, context) || isCallableReferenceArgument(expression, context);
+    }
+
     @NotNull
     public static KtFunction getFunctionLiteralArgument(
             @NotNull KtExpression expression, @NotNull ResolutionContext context
@@ -185,7 +201,7 @@ public class ArgumentTypeResolver {
     @Nullable
     public static KtCallableReferenceExpression getCallableReferenceExpressionIfAny(
             @NotNull KtExpression expression,
-            @NotNull CallResolutionContext<?> context
+            @NotNull ResolutionContext context
     ) {
         KtExpression deparenthesizedExpression = getLastElementDeparenthesized(expression, context.statementFilter);
         if (deparenthesizedExpression instanceof KtCallableReferenceExpression) {
@@ -212,6 +228,14 @@ public class ArgumentTypeResolver {
         KtCallableReferenceExpression callableReferenceExpression = getCallableReferenceExpressionIfAny(expression, context);
         if (callableReferenceExpression != null) {
             return getCallableReferenceTypeInfo(expression, callableReferenceExpression, context, resolveArgumentsMode);
+        }
+
+        if (isCollectionLiteralInsideAnnotation(expression, context)) {
+            // We assume that there is only one candidate resolver for annotation call
+            // And to resolve collection literal correctly, we need mapping of argument to parameter to get expected type and
+            // to choose corresponding call (i.e arrayOf/intArrayOf...)
+            ResolutionContext newContext = context.replaceContextDependency(INDEPENDENT);
+            return expressionTypingServices.getTypeInfo(expression, newContext);
         }
 
         KotlinTypeInfo recordedTypeInfo = getRecordedTypeInfo(expression, context.trace.getBindingContext());
@@ -255,7 +279,7 @@ public class ArgumentTypeResolver {
 
         if (overloadResolutionResults == null) return null;
 
-        if (overloadResolutionResults.isSingleResult()) {
+        if (isSingleAndPossibleTransformToSuccess(overloadResolutionResults)) {
             ResolvedCall<?> resolvedCall =
                     OverloadResolutionResultsUtil.getResultingCall(overloadResolutionResults, context.contextDependency);
             if (resolvedCall == null) return null;
@@ -266,12 +290,18 @@ public class ArgumentTypeResolver {
         }
 
         if (expectedTypeIsUnknown) {
-            return functionPlaceholders.createFunctionPlaceholderType(Collections.<KotlinType>emptyList(), false);
+            return functionPlaceholders.createFunctionPlaceholderType(Collections.emptyList(), false);
         }
 
-        return FunctionTypeResolveUtilsKt.createFunctionType(
-                builtIns, Annotations.Companion.getEMPTY(), null, Collections.<KotlinType>emptyList(), TypeUtils.DONT_CARE
+        return FunctionTypesKt.createFunctionType(
+                builtIns, Annotations.Companion.getEMPTY(), null, Collections.emptyList(), null, TypeUtils.DONT_CARE
         );
+    }
+
+    private static boolean isSingleAndPossibleTransformToSuccess(@NotNull OverloadResolutionResults<?> overloadResolutionResults) {
+        if (!overloadResolutionResults.isSingleResult()) return false;
+        ResolvedCall<?> call = CollectionsKt.singleOrNull(overloadResolutionResults.getResultingCalls());
+        return call != null && call.getStatus().possibleTransformToSuccess();
     }
 
     @NotNull
@@ -298,18 +328,23 @@ public class ArgumentTypeResolver {
         boolean isFunctionLiteral = function instanceof KtFunctionLiteral;
         if (function.getValueParameterList() == null && isFunctionLiteral) {
             return expectedTypeIsUnknown
-                   ? functionPlaceholders
-                           .createFunctionPlaceholderType(Collections.<KotlinType>emptyList(), /* hasDeclaredArguments = */ false)
-                   : FunctionTypeResolveUtilsKt.createFunctionType(
-                           builtIns, Annotations.Companion.getEMPTY(), null, Collections.<KotlinType>emptyList(), DONT_CARE
+                   ? functionPlaceholders.createFunctionPlaceholderType(Collections.emptyList(), /* hasDeclaredArguments = */ false)
+                   : FunctionTypesKt.createFunctionType(
+                           builtIns, Annotations.Companion.getEMPTY(), null, Collections.emptyList(), null, DONT_CARE
                    );
         }
         List<KtParameter> valueParameters = function.getValueParameters();
         TemporaryBindingTrace temporaryTrace = TemporaryBindingTrace.create(
                 trace, "trace to resolve function literal parameter types");
-        List<KotlinType> parameterTypes = Lists.newArrayList();
+        List<KotlinType> parameterTypes = new ArrayList<>(valueParameters.size());
+        List<Name> parameterNames = new ArrayList<>(valueParameters.size());
         for (KtParameter parameter : valueParameters) {
             parameterTypes.add(resolveTypeRefWithDefault(parameter.getTypeReference(), scope, temporaryTrace, DONT_CARE));
+            Name name = parameter.getNameAsName();
+            if (name == null) {
+                name = SpecialNames.NO_NAME_PROVIDED;
+            }
+            parameterNames.add(name);
         }
         KotlinType returnType = resolveTypeRefWithDefault(function.getTypeReference(), scope, temporaryTrace, DONT_CARE);
         assert returnType != null;
@@ -317,8 +352,8 @@ public class ArgumentTypeResolver {
 
         return expectedTypeIsUnknown && isFunctionLiteral
                ? functionPlaceholders.createFunctionPlaceholderType(parameterTypes, /* hasDeclaredArguments = */ true)
-               : FunctionTypeResolveUtilsKt.createFunctionType(
-                       builtIns, Annotations.Companion.getEMPTY(), receiverType, parameterTypes, returnType
+               : FunctionTypesKt.createFunctionType(
+                       builtIns, Annotations.Companion.getEMPTY(), receiverType, parameterTypes, parameterNames, returnType
                );
     }
 
@@ -348,6 +383,10 @@ public class ArgumentTypeResolver {
             KtExpression expression = argument.getArgumentExpression();
             if (expression == null) continue;
 
+            if (isCollectionLiteralInsideAnnotation(expression, context)) {
+                continue;
+            }
+
             CallResolutionContext<?> newContext = context.replaceDataFlowInfo(infoForArguments.getInfo(argument));
             // Here we go inside arguments and determine additional data flow information for them
             KotlinTypeInfo typeInfoForCall = getArgumentTypeInfo(expression, newContext, resolveArgumentsMode);
@@ -360,15 +399,29 @@ public class ArgumentTypeResolver {
             @NotNull ResolutionContext context,
             @NotNull KtExpression expression
     ) {
-        KotlinType type = context.trace.getType(expression);
+        return updateResultArgumentTypeIfNotDenotable(context.trace, context.statementFilter, context.expectedType, expression);
+    }
+
+    @Nullable
+    public KotlinType updateResultArgumentTypeIfNotDenotable(
+            @NotNull BindingTrace trace,
+            @NotNull StatementFilter statementFilter,
+            @NotNull KotlinType expectedType,
+            @NotNull KtExpression expression
+    ) {
+        KotlinType type = trace.getType(expression);
         if (type != null && !type.getConstructor().isDenotable()) {
             if (type.getConstructor() instanceof IntegerValueTypeConstructor) {
                 IntegerValueTypeConstructor constructor = (IntegerValueTypeConstructor) type.getConstructor();
-                KotlinType primitiveType = TypeUtils.getPrimitiveNumberType(constructor, context.expectedType);
-                constantExpressionEvaluator.updateNumberType(primitiveType, expression, context.statementFilter, context.trace);
+                KotlinType primitiveType = TypeUtils.getPrimitiveNumberType(constructor, expectedType);
+                constantExpressionEvaluator.updateNumberType(primitiveType, expression, statementFilter, trace);
                 return primitiveType;
             }
         }
         return null;
+    }
+
+    private static boolean isCollectionLiteralInsideAnnotation(KtExpression expression, CallResolutionContext<?> context) {
+        return expression instanceof KtCollectionLiteralExpression && context.call.getCallElement() instanceof KtAnnotationEntry;
     }
 }

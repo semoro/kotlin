@@ -26,25 +26,35 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.BindingTrace
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
-import org.jetbrains.kotlin.resolve.jvm.extensions.AnalysisCompletedHandlerExtension
+import org.jetbrains.kotlin.resolve.jvm.extensions.AnalysisHandlerExtension
 import org.jetbrains.org.objectweb.asm.ClassWriter
 import java.io.File
 
-class StubProducerExtension(val stubsOutputDir: File, val messageCollector: MessageCollector) : AnalysisCompletedHandlerExtension {
+class StubProducerExtension(
+        private val stubsOutputDir: File,
+        private val messageCollector: MessageCollector,
+        private val reportOutputFiles: Boolean
+) : AnalysisHandlerExtension {
     override fun analysisCompleted(
             project: Project,
             module: ModuleDescriptor,
-            bindingContext: BindingContext,
+            bindingTrace: BindingTrace,
             files: Collection<KtFile>
     ): AnalysisResult? {
-        val generationState =
-                GenerationState(project, StubClassBuilderFactory(), module, bindingContext, files.toList(), CompilerConfiguration.EMPTY)
+        val generationState = GenerationState(
+                project, 
+                StubClassBuilderFactory(),
+                module, 
+                bindingTrace.bindingContext, 
+                files.toList(),
+                CompilerConfiguration.EMPTY)
 
         KotlinCodegenFacade.compileCorrectFiles(generationState, CompilationErrorHandler.THROW_EXCEPTION)
 
         if (!stubsOutputDir.exists()) stubsOutputDir.mkdirs()
-        generationState.factory.writeAll(stubsOutputDir, messageCollector)
+        generationState.factory.writeAll(stubsOutputDir, messageCollector, reportOutputFiles)
 
         generationState.destroy()
         return AnalysisResult.success(BindingContext.EMPTY, module, shouldGenerateCode = false)

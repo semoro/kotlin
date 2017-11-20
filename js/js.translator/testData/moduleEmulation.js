@@ -1,30 +1,43 @@
-(function(global) {
-    var modules = { kotlin: kotlin };
-    var module = { exports: {} };
 
-    function require(moduleId) {
-        return modules[moduleId];
-    }
+var emulatedModules = { kotlin: kotlin };
+var module = { exports: {} };
+var currentModuleId;
 
-    function beginModule() {
+
+// TODO don't expose by default when run test with AMD module kind
+function require(moduleId) {
+    return emulatedModules[moduleId];
+}
+
+var $kotlin_test_internal$ = {
+    require: require,
+    beginModule : function () {
         module.exports = {};
+    },
+    endModule : function(moduleId) {
+        emulatedModules[moduleId] = module.exports;
+    },
+    setModuleId: function(moduleId) {
+        currentModuleId = moduleId;
     }
+};
 
-    function endModule(moduleId) {
-        modules[moduleId] = module.exports;
+// TODO expose only when run test with AMD or UMD module kind
+function define(moduleId, dependencies, body) {
+    if (Array.isArray(moduleId)) {
+        body = dependencies;
+        dependencies = moduleId;
+        moduleId = currentModuleId;
     }
-
-    function define(moduleId, dependencies, body) {
-        var resolvedDependencies = [];
-        for (var i = 0; i < dependencies.length; ++i) {
-            resolvedDependencies.push(modules[dependencies[i]]);
-        }
-        modules[moduleId] = body.apply(null, resolvedDependencies);
+    var resolvedDependencies = [];
+    emulatedModules[moduleId] = {};
+    for (var i = 0; i < dependencies.length; ++i) {
+        var dependencyName = dependencies[i];
+        resolvedDependencies.push(emulatedModules[dependencyName === 'exports' ? moduleId : dependencyName]);
     }
-
-    global.require = require;
-    global.define = define;
-    global.__beginModule__ = beginModule;
-    global.__endModule__ = endModule;
-    global.module = module;
-})(this);
+    var result = body.apply(null, resolvedDependencies);
+    if (result != null) {
+        emulatedModules[moduleId] = result;
+    }
+}
+define.amd = {};

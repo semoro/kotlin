@@ -203,9 +203,13 @@ class KotlinFunctionCallUsage(
                                                         KtSuperTypeListEntry::class.java,
                                                         KtParameter::class.java) == null) {
 
-                KotlinIntroduceVariableHandler.doRefactoring(project, null, argumentExpression, listOf(argumentExpression)) {
+                KotlinIntroduceVariableHandler.doRefactoring(
+                        project, null, argumentExpression,
+                        isVar = false,
+                        occurrencesToReplace = listOf(argumentExpression),
+                        onNonInteractiveFinish = {
                     argumentExpression = psiFactory.createExpression(it.name!!)
-                }
+                })
             }
 
             var expressionToReplace: KtExpression = nameCounterpartMap[ref.element] ?: continue
@@ -248,7 +252,7 @@ class KotlinFunctionCallUsage(
             val resolvedArgument: ResolvedValueArgument?,
             val receiverValue: ReceiverValue?
     ) {
-        val mainValueArgument: ValueArgument?
+        private val mainValueArgument: ValueArgument?
             get() = resolvedArgument?.arguments?.firstOrNull()
 
         val wasNamed: Boolean
@@ -330,7 +334,7 @@ class KotlinFunctionCallUsage(
             if (receiverValue is ExpressionReceiver && !receiverValue.expression.isValid) {
                 receiverValue = receiverValue.wrapInvalidated(element)
             }
-            ArgumentInfo(param, index, resolvedArgument, receiverValue as? ReceiverValue)
+            ArgumentInfo(param, index, resolvedArgument, receiverValue)
         }
 
         val lastParameterIndex = newParameters.lastIndex
@@ -431,8 +435,7 @@ class KotlinFunctionCallUsage(
 
         var newElement: KtElement = element
         if (newReceiverInfo != originalReceiverInfo) {
-            val replacingElement: PsiElement
-            if (newReceiverInfo != null) {
+            val replacingElement: PsiElement = if (newReceiverInfo != null) {
                 val receiverArgument = getResolvedValueArgument(newReceiverInfo.oldIndex)?.arguments?.singleOrNull()
                 val extensionReceiverExpression = receiverArgument?.getArgumentExpression()
                 val defaultValueForCall = newReceiverInfo.defaultValueForCall
@@ -440,10 +443,10 @@ class KotlinFunctionCallUsage(
                                ?: defaultValueForCall
                                ?: psiFactory.createExpression("_")
 
-                replacingElement = psiFactory.createExpressionByPattern("$0.$1", receiver, element)
+                psiFactory.createExpressionByPattern("$0.$1", receiver, element)
             }
             else {
-                replacingElement = psiFactory.createExpression(element.text)
+                psiFactory.createExpression(element.text)
             }
 
             newElement = fullCallElement.replace(replacingElement) as KtElement

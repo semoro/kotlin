@@ -22,7 +22,7 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeSubstitutor
 
-class ValueParameterDescriptorImpl(
+open class ValueParameterDescriptorImpl(
         containingDeclaration: CallableDescriptor,
         original: ValueParameterDescriptor?,
         override val index: Int,
@@ -32,10 +32,57 @@ class ValueParameterDescriptorImpl(
         private val declaresDefaultValue: Boolean,
         override val isCrossinline: Boolean,
         override val isNoinline: Boolean,
-        override val isCoroutine: Boolean,
         override val varargElementType: KotlinType?,
         source: SourceElement
 ) : VariableDescriptorImpl(containingDeclaration, annotations, name, outType, source), ValueParameterDescriptor {
+
+    companion object {
+        @JvmStatic
+        fun getDestructuringVariablesOrNull(valueParameterDescriptor: ValueParameterDescriptor) =
+                (valueParameterDescriptor as? ValueParameterDescriptorImpl.WithDestructuringDeclaration)?.destructuringVariables
+
+        @JvmStatic
+        fun createWithDestructuringDeclarations(containingDeclaration: CallableDescriptor,
+                                                original: ValueParameterDescriptor?,
+                                                index: Int,
+                                                annotations: Annotations,
+                                                name: Name,
+                                                outType: KotlinType,
+                                                declaresDefaultValue: Boolean,
+                                                isCrossinline: Boolean,
+                                                isNoinline: Boolean, varargElementType: KotlinType?, source: SourceElement,
+                                                destructuringVariables: (() -> List<VariableDescriptor>)?
+        ): ValueParameterDescriptorImpl =
+                if (destructuringVariables == null)
+                    ValueParameterDescriptorImpl(containingDeclaration, original, index, annotations, name, outType,
+                                                 declaresDefaultValue, isCrossinline, isNoinline, varargElementType, source)
+                else
+                    WithDestructuringDeclaration(containingDeclaration, original, index, annotations, name, outType,
+                                                 declaresDefaultValue, isCrossinline, isNoinline, varargElementType, source,
+                                                 destructuringVariables)
+    }
+
+    class WithDestructuringDeclaration internal constructor(
+            containingDeclaration: CallableDescriptor,
+            original: ValueParameterDescriptor?,
+            index: Int,
+            annotations: Annotations, name: Name,
+            outType: KotlinType,
+            declaresDefaultValue: Boolean,
+            isCrossinline: Boolean,
+            isNoinline: Boolean, varargElementType: KotlinType?,
+            source: SourceElement,
+            destructuringVariables: () -> List<VariableDescriptor>
+    ) : ValueParameterDescriptorImpl(
+            containingDeclaration, original, index, annotations, name, outType, declaresDefaultValue,
+            isCrossinline, isNoinline,
+            varargElementType, source) {
+        // It's forced to be lazy because its resolution depends on receiver of relevant lambda, that is being created at the same moment
+        // as value parameters.
+        // Must be forced via ForceResolveUtil.forceResolveAllContents()
+        val destructuringVariables by lazy(destructuringVariables)
+    }
+
     private val original: ValueParameterDescriptor = original ?: this
 
     override fun getContainingDeclaration() = super.getContainingDeclaration() as CallableDescriptor
@@ -61,7 +108,7 @@ class ValueParameterDescriptorImpl(
     override fun copy(newOwner: CallableDescriptor, newName: Name, newIndex: Int): ValueParameterDescriptor {
         return ValueParameterDescriptorImpl(
                 newOwner, null, newIndex, annotations, newName, type, declaresDefaultValue(),
-                isCrossinline, isNoinline, isCoroutine, varargElementType, SourceElement.NO_SOURCE
+                isCrossinline, isNoinline, varargElementType, SourceElement.NO_SOURCE
         )
     }
 

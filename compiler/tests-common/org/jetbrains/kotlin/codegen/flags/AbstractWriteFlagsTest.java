@@ -21,14 +21,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.codegen.CodegenTestCase;
-import org.jetbrains.kotlin.test.ConfigurationKind;
-import org.jetbrains.kotlin.test.TestJdkKind;
 import org.jetbrains.org.objectweb.asm.*;
 
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static org.jetbrains.kotlin.test.InTextDirectivesUtils.findListWithPrefixes;
@@ -57,7 +54,7 @@ public abstract class AbstractWriteFlagsTest extends CodegenTestCase {
     protected void doMultiFileTest(
             @NotNull File wholeFile, @NotNull List<TestFile> files, @Nullable File javaFilesDir
     ) throws Exception {
-        compile(files, null, ConfigurationKind.JDK_ONLY, TestJdkKind.MOCK_JDK, Collections.<String>emptyList());
+        compile(files, null);
 
         String fileText = FileUtil.loadFile(wholeFile, true);
 
@@ -98,7 +95,7 @@ public abstract class AbstractWriteFlagsTest extends CodegenTestCase {
 
     private static List<TestedObject> parseExpectedTestedObject(String testDescription) {
         String[] testObjectData = testDescription.substring(testDescription.indexOf("// TESTED_OBJECT_KIND")).split("\n\n");
-        List<TestedObject> objects = new ArrayList<TestedObject>();
+        List<TestedObject> objects = new ArrayList<>();
 
         for (String testData : testObjectData) {
             if (testData.isEmpty()) continue;
@@ -144,17 +141,16 @@ public abstract class AbstractWriteFlagsTest extends CodegenTestCase {
     }
 
     private static TestClassVisitor getClassVisitor(String visitorKind, String testedObjectName, boolean allowSynthetic) {
-        if (visitorKind.equals("class")) {
-            return new ClassFlagsVisitor();
-        }
-        else if (visitorKind.equals("function")) {
-            return new FunctionFlagsVisitor(testedObjectName, allowSynthetic);
-        }
-        else if (visitorKind.equals("property")) {
-            return new PropertyFlagsVisitor(testedObjectName);
-        }
-        else if (visitorKind.equals("innerClass")) {
-            return new InnerClassFlagsVisitor(testedObjectName);
+        switch (visitorKind) {
+            case "class":
+                return new ClassFlagsVisitor();
+            case "function":
+                return new FunctionFlagsVisitor(testedObjectName, allowSynthetic);
+            case "property":
+                return new PropertyFlagsVisitor(testedObjectName);
+            case "innerClass":
+                return new InnerClassFlagsVisitor(testedObjectName);
+                default:
         }
 
         throw new IllegalArgumentException("Value of TESTED_OBJECT_KIND is incorrect: " + visitorKind);
@@ -184,10 +180,7 @@ public abstract class AbstractWriteFlagsTest extends CodegenTestCase {
                 Field field = klass.getDeclaredField(flag);
                 expectedAccess |= field.getInt(klass);
             }
-            catch (NoSuchFieldException e) {
-                throw new IllegalArgumentException("Cannot find " + flag + " field in Opcodes class", e);
-            }
-            catch (IllegalAccessException e) {
+            catch (NoSuchFieldException | IllegalAccessException e) {
                 throw new IllegalArgumentException("Cannot find " + flag + " field in Opcodes class", e);
             }
         }
@@ -268,7 +261,7 @@ public abstract class AbstractWriteFlagsTest extends CodegenTestCase {
 
         @Override
         public void visitInnerClass(@NotNull String innerClassInternalName, String outerClassInternalName, String name, int access) {
-            if (name.equals(innerClassName)) {
+            if (innerClassName.equals(name)) {
                 this.access = access;
                 isExists = true;
             }

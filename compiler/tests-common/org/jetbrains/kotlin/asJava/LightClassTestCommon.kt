@@ -30,9 +30,10 @@ object LightClassTestCommon {
 
     @JvmOverloads
     fun testLightClass(
+            expectedFile: File,
             testDataFile: File,
             findLightClass: (String) -> PsiClass?,
-            normalizeText: (String) -> String = { it }
+            normalizeText: (String) -> String
     ) {
         val text = FileUtil.loadFile(testDataFile, true)
         val matcher = SUBJECT_FQ_NAME_PATTERN.matcher(text)
@@ -42,7 +43,7 @@ object LightClassTestCommon {
         val lightClass = findLightClass(fqName)
 
         val actual = actualText(fqName, lightClass, normalizeText)
-        KotlinTestUtils.assertEqualsToFile(KotlinTestUtils.replaceExtension(testDataFile, "java"), actual)
+        KotlinTestUtils.assertEqualsToFile(expectedFile, actual)
     }
 
     private fun actualText(fqName: String?, lightClass: PsiClass?, normalizeText: (String) -> String): String {
@@ -56,12 +57,12 @@ object LightClassTestCommon {
 
         val buffer = StringBuilder()
         (delegate as ClsElementImpl).appendMirrorText(0, buffer)
-        val actual = normalizeText(buffer.toString())
-        return actual
+
+        return normalizeText(buffer.toString())
     }
 
     // Actual text for light class is generated with ClsElementImpl.appendMirrorText() that can find empty DefaultImpl inner class in stubs
     // for all interfaces. This inner class can't be used in Java as it generally is not seen from light classes built from Kotlin sources.
     // It is also omitted during classes generation in backend so it also absent in light classes built from compiled code.
-    fun removeEmptyDefaultImpls(text: String) : String = text.replace("\n    final class DefaultImpls {\n    }\n", "")
+    fun removeEmptyDefaultImpls(text: String) : String = text.replace("\n    static final class DefaultImpls {\n    }\n", "")
 }

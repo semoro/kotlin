@@ -16,8 +16,17 @@
 
 package org.jetbrains.kotlin.resolve.lazy
 
-enum class BodyResolveMode {
-    FULL,
-    PARTIAL,
-    PARTIAL_FOR_COMPLETION
+import org.jetbrains.kotlin.resolve.BindingTraceFilter
+
+enum class BodyResolveMode(val bindingTraceFilter: BindingTraceFilter) {
+    FULL(BindingTraceFilter.ACCEPT_ALL),
+    PARTIAL_FOR_COMPLETION(BindingTraceFilter.NO_DIAGNOSTICS),
+    PARTIAL_WITH_DIAGNOSTICS(BindingTraceFilter.ACCEPT_ALL),
+    PARTIAL(BindingTraceFilter.NO_DIAGNOSTICS)
+
+    ;
+
+    fun doesNotLessThan(other: BodyResolveMode): Boolean {
+        return this <= other && this.bindingTraceFilter.includesEverythingIn(other.bindingTraceFilter)
+    }
 }

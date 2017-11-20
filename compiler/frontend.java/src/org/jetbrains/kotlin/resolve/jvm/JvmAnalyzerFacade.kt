@@ -17,20 +17,19 @@
 package org.jetbrains.kotlin.resolve.jvm
 
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analyzer.*
-import org.jetbrains.kotlin.config.LanguageVersion
+import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.context.ModuleContext
 import org.jetbrains.kotlin.descriptors.PackagePartProvider
 import org.jetbrains.kotlin.descriptors.impl.CompositePackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
-import org.jetbrains.kotlin.extensions.ExternalDeclarationsProvider
+import org.jetbrains.kotlin.extensions.StorageComponentContainerContributor
 import org.jetbrains.kotlin.frontend.java.di.createContainerForLazyResolveWithJava
+import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.load.java.lazy.ModuleClassResolverImpl
 import org.jetbrains.kotlin.load.java.structure.JavaClass
-import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.CodeAnalyzerInitializer
 import org.jetbrains.kotlin.resolve.TargetEnvironment
 import org.jetbrains.kotlin.resolve.TargetPlatform
@@ -38,34 +37,34 @@ import org.jetbrains.kotlin.resolve.jvm.extensions.PackageFragmentProviderExtens
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform
 import org.jetbrains.kotlin.resolve.lazy.ResolveSession
 import org.jetbrains.kotlin.resolve.lazy.declarations.DeclarationProviderFactoryService
-import java.util.*
 
 class JvmPlatformParameters(
         val moduleByJavaClass: (JavaClass) -> ModuleInfo?
 ) : PlatformAnalysisParameters
 
 
-object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
+object JvmAnalyzerFacade : AnalyzerFacade() {
     override fun <M : ModuleInfo> createResolverForModule(
             moduleInfo: M,
             moduleDescriptor: ModuleDescriptorImpl,
             moduleContext: ModuleContext,
             moduleContent: ModuleContent,
-            platformParameters: JvmPlatformParameters,
+            platformParameters: PlatformAnalysisParameters,
             targetEnvironment: TargetEnvironment,
             resolverForProject: ResolverForProject<M>,
+            languageSettingsProvider: LanguageSettingsProvider,
             packagePartProvider: PackagePartProvider
     ): ResolverForModule {
         val (syntheticFiles, moduleContentScope) = moduleContent
         val project = moduleContext.project
-        val filesToAnalyze = getAllFilesToAnalyze(project, moduleInfo, syntheticFiles)
         val declarationProviderFactory = DeclarationProviderFactoryService.createDeclarationProviderFactory(
-                project, moduleContext.storageManager, filesToAnalyze,
-                if (moduleInfo.isLibrary) GlobalSearchScope.EMPTY_SCOPE else moduleContentScope
+                project, moduleContext.storageManager, syntheticFiles,
+                if (moduleInfo.isLibrary) GlobalSearchScope.EMPTY_SCOPE else moduleContentScope,
+                moduleInfo
         )
 
         val moduleClassResolver = ModuleClassResolverImpl { javaClass ->
-            val referencedClassModule = platformParameters.moduleByJavaClass(javaClass)
+            val referencedClassModule = (platformParameters as JvmPlatformParameters).moduleByJavaClass(javaClass)
             // We don't have full control over idea resolve api so we allow for a situation which should not happen in Kotlin.
             // For example, type in a java library can reference a class declared in a source root (is valid but rare case)
             // Providing a fallback strategy in this case can hide future problems, so we should at least log to be able to diagnose those
@@ -82,7 +81,11 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
             resolverForModule.componentProvider.get<JavaDescriptorResolver>()
         }
 
+        val jvmTarget = languageSettingsProvider.getTargetPlatform(moduleInfo) as? JvmTarget ?: JvmTarget.JVM_1_6
+        val languageVersionSettings = languageSettingsProvider.getLanguageVersionSettings(moduleInfo, project)
+
         val trace = CodeAnalyzerInitializer.getInstance(project).createTrace()
+
         val container = createContainerForLazyResolveWithJava(
                 moduleContext,
                 trace,
@@ -90,9 +93,13 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
                 moduleContentScope,
                 moduleClassResolver,
                 targetEnvironment,
+                LookupTracker.DO_NOTHING,
                 packagePartProvider,
-                LanguageVersion.LATEST // TODO: see KT-12410
+                jvmTarget,
+                languageVersionSettings,
+                useBuiltInsProvider = false // TODO: load built-ins from module dependencies in IDE
         )
+
         val resolveSession = container.get<ResolveSession>()
         val javaDescriptorResolver = container.get<JavaDescriptorResolver>()
 
@@ -104,14 +111,6 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
                 .mapNotNull { it.getPackageFragmentProvider(project, moduleDescriptor, moduleContext.storageManager, trace, moduleInfo) }
 
         return ResolverForModule(CompositePackageFragmentProvider(providersForModule), container)
-    }
-
-    @JvmStatic fun getAllFilesToAnalyze(project: Project, moduleInfo: ModuleInfo?, baseFiles: Collection<KtFile>): List<KtFile> {
-        val allFiles = ArrayList(baseFiles)
-        for (externalDeclarationsProvider in ExternalDeclarationsProvider.getInstances(project)) {
-            allFiles.addAll(externalDeclarationsProvider.getExternalDeclarations(moduleInfo))
-        }
-        return allFiles
     }
 
     override val targetPlatform: TargetPlatform

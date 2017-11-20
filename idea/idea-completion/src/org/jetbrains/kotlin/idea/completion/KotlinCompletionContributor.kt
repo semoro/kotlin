@@ -20,7 +20,6 @@ import com.intellij.codeInsight.completion.*
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.openapi.editor.Document
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.util.Key
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.patterns.PsiJavaPatterns.elementType
@@ -51,8 +50,6 @@ class KotlinCompletionContributor : CompletionContributor() {
 
     companion object {
         val DEFAULT_DUMMY_IDENTIFIER: String = CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED + "$" // add '$' to ignore context after the caret
-
-        private val STRING_TEMPLATE_AFTER_DOT_REAL_START_OFFSET = OffsetKey.create("STRING_TEMPLATE_AFTER_DOT_REAL_START_OFFSET")
     }
 
     init {
@@ -83,7 +80,6 @@ class KotlinCompletionContributor : CompletionContributor() {
                     val prefix = tokenBefore.text.substring(0, offset - tokenBefore.startOffset)
                     context.dummyIdentifier = "{" + expression.text + prefix + CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED + "}"
                     context.offsetMap.addOffset(CompletionInitializationContext.START_OFFSET, expression.startOffset)
-                    context.offsetMap.addOffset(STRING_TEMPLATE_AFTER_DOT_REAL_START_OFFSET, offset + 1)
                     return
                 }
             }
@@ -242,8 +238,13 @@ class KotlinCompletionContributor : CompletionContributor() {
             val expression = (position.parent as KtBlockStringTemplateEntry).expression
             if (expression is KtDotQualifiedExpression) {
                 val correctedPosition = (expression.selectorExpression as KtNameReferenceExpression).firstChild
-                val context = position.getUserData(CompletionContext.COMPLETION_CONTEXT_KEY)!!
-                val correctedOffset = context.offsetMap.getOffset(STRING_TEMPLATE_AFTER_DOT_REAL_START_OFFSET)
+                // Workaround for KT-16848
+                // ex:
+                // expression: some.IntellijIdeaRulezzz
+                // correctedOffset: ^
+                // expression: some.funcIntellijIdeaRulezzz
+                // correctedOffset      ^
+                val correctedOffset = correctedPosition.endOffset - CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED.length
                 val correctedParameters = parameters.withPosition(correctedPosition, correctedOffset)
                 doComplete(correctedParameters, toFromOriginalFileMapper, result,
                            lookupElementPostProcessor = { wrapLookupElementForStringTemplateAfterDotCompletion(it) })
@@ -302,10 +303,11 @@ class KotlinCompletionContributor : CompletionContributor() {
                 // Rerun completion if nothing was found
                 val newConfiguration = CompletionSessionConfiguration(
                         useBetterPrefixMatcherForNonImportedClasses = false,
-                        completeNonAccessibleDeclarations = false,
-                        filterOutJavaGettersAndSetters = false,
-                        completeJavaClassesNotToBeUsed = false,
-                        completeStaticMembers = parameters.invocationCount > 0
+                        nonAccessibleDeclarations = false,
+                        javaGettersAndSetters = true,
+                        javaClassesNotToBeUsed = false,
+                        staticMembers = parameters.invocationCount > 0,
+                        dataClassComponentFunctions = true
                 )
 
                 val newSession = BasicCompletionSession(newConfiguration, parameters, toFromOriginalFileMapper, result)
@@ -384,22 +386,22 @@ class KotlinCompletionContributor : CompletionContributor() {
         val nameRef = nameToken.parent as? KtNameReferenceExpression ?: return null
         val bindingContext = nameRef.getResolutionFacade().analyze(nameRef, BodyResolveMode.PARTIAL)
         val targets = nameRef.getReferenceTargets(bindingContext)
-        if (targets.isNotEmpty() && targets.all { it is FunctionDescriptor || it is ClassDescriptor && it.kind == ClassKind.CLASS }) {
-            return CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED + ">".repeat(balance) + "$"
+        return if (targets.isNotEmpty() && targets.all { it is FunctionDescriptor || it is ClassDescriptor && it.kind == ClassKind.CLASS }) {
+            CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED + ">".repeat(balance) + "$"
         }
         else {
-            return null
+            null
         }
     }
 
     private fun unclosedTypeArgListNameAndBalance(tokenBefore: PsiElement): Pair<PsiElement, Int>? {
         val nameToken = findCallNameTokenIfInTypeArgs(tokenBefore) ?: return null
         val pair = unclosedTypeArgListNameAndBalance(nameToken)
-        if (pair == null) {
-            return Pair(nameToken, 1)
+        return if (pair == null) {
+            Pair(nameToken, 1)
         }
         else {
-            return Pair(pair.first, pair.second + 1)
+            Pair(pair.first, pair.second + 1)
         }
     }
 

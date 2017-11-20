@@ -2,9 +2,7 @@ package test.collections
 
 import kotlin.test.*
 
-import java.util.*
-
-import org.junit.Test as test
+import org.junit.Test
 
 class MutableCollectionTest {
     fun <T, C: MutableCollection<T>> testOperation(before: List<T>, after: List<T>, expectedModified: Boolean, toMutableCollection: (List<T>) -> C)
@@ -18,7 +16,7 @@ class MutableCollectionTest {
             = testOperation(before, after, expectedModified, { it.toMutableList() })
 
 
-    @test fun addAll() {
+    @Test fun addAll() {
         val data = listOf("foo", "bar")
 
         testOperation(emptyList(), data, true).let { assertAdd ->
@@ -36,7 +34,7 @@ class MutableCollectionTest {
         }
     }
 
-    @test fun removeAll() {
+    @Test fun removeAll() {
         val content = listOf("foo", "bar", "bar")
         val data = listOf("bar")
         val expected = listOf("foo")
@@ -61,7 +59,7 @@ class MutableCollectionTest {
         }
     }
 
-    @test fun retainAll() {
+    @Test fun retainAll() {
         val content = listOf("foo", "bar", "bar")
         val expected = listOf("bar", "bar")
 

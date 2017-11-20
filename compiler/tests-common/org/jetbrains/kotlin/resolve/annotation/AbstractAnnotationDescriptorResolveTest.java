@@ -17,9 +17,7 @@
 package org.jetbrains.kotlin.resolve.annotation;
 
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.Function;
 import kotlin.Unit;
-import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.analyzer.AnalysisResult;
@@ -27,25 +25,23 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget;
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
+import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.KtAnnotationEntry;
 import org.jetbrains.kotlin.psi.KtAnnotationUseSiteTarget;
 import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.renderer.AnnotationArgumentsRenderingPolicy;
 import org.jetbrains.kotlin.renderer.ClassifierNamePolicy;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
 import org.jetbrains.kotlin.renderer.DescriptorRendererModifier;
-import org.jetbrains.kotlin.renderer.DescriptorRendererOptions;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.scopes.MemberScope;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.KotlinTestWithEnvironment;
-import org.jetbrains.kotlin.types.TypeProjection;
 
 import java.io.File;
 import java.io.IOException;
@@ -57,14 +53,12 @@ import static org.jetbrains.kotlin.resolve.DescriptorUtils.isNonCompanionObject;
 
 public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTestWithEnvironment {
     private static final DescriptorRenderer WITH_ANNOTATION_ARGUMENT_TYPES = DescriptorRenderer.Companion.withOptions(
-            new Function1<DescriptorRendererOptions, Unit>() {
-                @Override
-                public Unit invoke(DescriptorRendererOptions options) {
-                    options.setVerbose(true);
-                    options.setClassifierNamePolicy(ClassifierNamePolicy.SHORT.INSTANCE);
-                    options.setModifiers(DescriptorRendererModifier.ALL);
-                    return Unit.INSTANCE;
-                }
+            options -> {
+                options.setVerbose(true);
+                options.setAnnotationArgumentsRenderingPolicy(AnnotationArgumentsRenderingPolicy.UNLESS_EMPTY);
+                options.setClassifierNamePolicy(ClassifierNamePolicy.SHORT.INSTANCE);
+                options.setModifiers(DescriptorRendererModifier.ALL);
+                return Unit.INSTANCE;
             }
     );
 
@@ -103,7 +97,11 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
         SimpleFunctionDescriptor anonymousFun = getAnonymousFunDescriptor();
         if (anonymousFun instanceof AnonymousFunctionDescriptor) {
             for (ValueParameterDescriptor descriptor : anonymousFun.getValueParameters()) {
-                checkDescriptor(expectedAnnotation, descriptor);
+                List<VariableDescriptor> destructuringVariables = ValueParameterDescriptorImpl.getDestructuringVariablesOrNull(descriptor);
+                if (destructuringVariables == null) continue;
+                for (VariableDescriptor entry : destructuringVariables) {
+                    checkDescriptor(expectedAnnotation, entry);
+                }
             }
         }
 
@@ -123,21 +121,18 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
     }
 
     private void checkAnnotationsOnFile(String expectedAnnotation, KtFile file) {
-        String actualAnnotation = StringUtil.join(file.getAnnotationEntries(), new Function<KtAnnotationEntry, String>() {
-            @Override
-            public String fun(KtAnnotationEntry annotationEntry) {
-                AnnotationDescriptor annotationDescriptor = context.get(BindingContext.ANNOTATION, annotationEntry);
-                assertNotNull(annotationDescriptor);
+        String actualAnnotation = StringUtil.join(file.getAnnotationEntries(), annotationEntry -> {
+            AnnotationDescriptor annotationDescriptor = context.get(BindingContext.ANNOTATION, annotationEntry);
+            assertNotNull(annotationDescriptor);
 
-                KtAnnotationUseSiteTarget target = annotationEntry.getUseSiteTarget();
+            KtAnnotationUseSiteTarget target = annotationEntry.getUseSiteTarget();
 
-                if (target != null) {
-                    return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(
-                            annotationDescriptor, target.getAnnotationUseSiteTarget());
-                }
-
-                return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(annotationDescriptor, null);
+            if (target != null) {
+                return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(
+                        annotationDescriptor, target.getAnnotationUseSiteTarget());
             }
+
+            return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(annotationDescriptor, null);
         }, " ");
 
         String expectedAnnotationWithTarget = "@" + AnnotationUseSiteTarget.FILE.getRenderName() + ":" + expectedAnnotation.substring(1);
@@ -177,7 +172,7 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
     @NotNull
     private static FunctionDescriptor getFunctionDescriptor(@NotNull ClassDescriptor classDescriptor, @NotNull String name) {
         Name functionName = Name.identifier(name);
-        MemberScope memberScope = classDescriptor.getMemberScope(Collections.<TypeProjection>emptyList());
+        MemberScope memberScope = classDescriptor.getMemberScope(Collections.emptyList());
         Collection<SimpleFunctionDescriptor> functions = memberScope.getContributedFunctions(functionName, NoLookupLocation.FROM_TEST);
         assert functions.size() == 1 : "Failed to find function " + functionName + " in class" + "." + classDescriptor.getName();
         return functions.iterator().next();
@@ -191,9 +186,8 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
         if (properties.isEmpty()) {
             for (DeclarationDescriptor descriptor : DescriptorUtils.getAllDescriptors(memberScope)) {
                 if (descriptor instanceof ClassDescriptor) {
-                    Collection<PropertyDescriptor> classProperties =
-                            ((ClassDescriptor) descriptor).getMemberScope(Collections.<TypeProjection>emptyList())
-                                    .getContributedVariables(propertyName, NoLookupLocation.FROM_TEST);
+                    Collection<PropertyDescriptor> classProperties = ((ClassDescriptor) descriptor).getMemberScope(Collections.emptyList())
+                            .getContributedVariables(propertyName, NoLookupLocation.FROM_TEST);
                     if (!classProperties.isEmpty()) {
                         properties = classProperties;
                         break;
@@ -213,7 +207,7 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
     @NotNull
     private static PropertyDescriptor getPropertyDescriptor(@NotNull ClassDescriptor classDescriptor, @NotNull String name) {
         Name propertyName = Name.identifier(name);
-        MemberScope memberScope = classDescriptor.getMemberScope(Collections.<TypeProjection>emptyList());
+        MemberScope memberScope = classDescriptor.getMemberScope(Collections.emptyList());
         Collection<PropertyDescriptor> properties = memberScope.getContributedVariables(propertyName, NoLookupLocation.FROM_TEST);
         assert properties.size() == 1 : "Failed to find property " + propertyName + " in class " + classDescriptor.getName();
         return properties.iterator().next();
@@ -231,7 +225,7 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
     @NotNull
     private static ClassDescriptor getInnerClassDescriptor(@NotNull ClassDescriptor classDescriptor, @NotNull String name) {
         Name propertyName = Name.identifier(name);
-        MemberScope memberScope = classDescriptor.getMemberScope(Collections.<TypeProjection>emptyList());
+        MemberScope memberScope = classDescriptor.getMemberScope(Collections.emptyList());
         ClassifierDescriptor innerClass = memberScope.getContributedClassifier(propertyName, NoLookupLocation.FROM_TEST);
         assert innerClass instanceof ClassDescriptor : "Failed to find inner class " +
                                                        propertyName +
@@ -312,7 +306,7 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
 
     @NotNull
     private static ConstructorDescriptor getConstructorDescriptor(@NotNull ClassDescriptor classDescriptor) {
-        Collection<ConstructorDescriptor> constructors = classDescriptor.getConstructors();
+        Collection<ClassConstructorDescriptor> constructors = classDescriptor.getConstructors();
         assert constructors.size() == 1;
         return constructors.iterator().next();
     }
@@ -362,17 +356,14 @@ public abstract class AbstractAnnotationDescriptorResolveTest extends KotlinTest
         return KotlinTestUtils.doLoadFile(file).replaceAll("ANNOTATION", annotationText);
     }
 
-    private static String renderAnnotations(Annotations annotations, @Nullable final AnnotationUseSiteTarget defaultTarget) {
-        return StringUtil.join(annotations.getAllAnnotations(), new Function<AnnotationWithTarget, String>() {
-            @Override
-            public String fun(AnnotationWithTarget annotationWithTarget) {
-                AnnotationUseSiteTarget targetToRender = annotationWithTarget.getTarget();
-                if (targetToRender == defaultTarget) {
-                    targetToRender = null;
-                }
-
-                return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(annotationWithTarget.getAnnotation(), targetToRender);
+    private static String renderAnnotations(Annotations annotations, @Nullable AnnotationUseSiteTarget defaultTarget) {
+        return StringUtil.join(annotations.getAllAnnotations(), annotationWithTarget -> {
+            AnnotationUseSiteTarget targetToRender = annotationWithTarget.getTarget();
+            if (targetToRender == defaultTarget) {
+                targetToRender = null;
             }
+
+            return WITH_ANNOTATION_ARGUMENT_TYPES.renderAnnotation(annotationWithTarget.getAnnotation(), targetToRender);
         }, " ");
     }
 

@@ -40,4 +40,10 @@ class TemporaryVariableEliminationTest : BasicOptimizerTest("temporary-variable"
     @Test fun innerExpressionProcessed() = box()
 
     @Test fun transitiveNotConsideredTrivial() = box()
+
+    @Test fun assignmentToNonLocal() = box()
+
+    @Test fun removeUnusedAndSubstitute() = box()
+
+    @Test fun assignmentToOuterVar() = box()
 }

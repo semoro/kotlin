@@ -19,9 +19,7 @@ package org.jetbrains.kotlin.psi
 import com.intellij.psi.NavigatablePsiElement
 import com.intellij.psi.PsiReference
 
-interface KtElement : NavigatablePsiElement {
-    fun getContainingKtFile(): KtFile
-
+interface KtElement : NavigatablePsiElement, KtPureElement {
     fun <D> acceptChildren(visitor: KtVisitor<Void, D>, data: D)
 
     fun <R, D> accept(visitor: KtVisitor<R, D>, data: D): R
@@ -34,6 +32,7 @@ fun KtElement.getModificationStamp(): Long {
     return when (this) {
         is KtFile -> this.modificationStamp
         is KtDeclarationStub<*> -> this.modificationStamp
+        is KtSuperTypeList -> this.modificationStamp
         else -> (parent as KtElement).getModificationStamp()
     }
 }

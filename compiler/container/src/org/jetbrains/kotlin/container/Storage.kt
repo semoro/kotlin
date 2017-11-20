@@ -35,9 +35,13 @@ enum class ComponentStorageState {
 
 internal class InvalidCardinalityException(message: String, val descriptors: Collection<ComponentDescriptor>) : Exception(message)
 
-class ComponentStorage(val myId: String) : ValueResolver {
+class ComponentStorage(private val myId: String, parent: ComponentStorage?) : ValueResolver {
     var state = ComponentStorageState.Initial
     private val registry = ComponentRegistry()
+    init {
+        parent?.let { registry.addAll(it.registry) }
+    }
+
     private val descriptors = LinkedHashSet<ComponentDescriptor>()
     private val dependencies = MultiMap.createLinkedSet<ComponentDescriptor, Type>()
 
@@ -157,23 +161,37 @@ class ComponentStorage(val myId: String) : ValueResolver {
                     is ParameterizedType -> type.rawType as? Class<*>
                     else -> null
                 }
-                if (rawType == null)
-                    continue
 
-                if (!Modifier.isAbstract(rawType.modifiers) && !rawType.isPrimitive) {
-                    val implicitDescriptor = ImplicitSingletonTypeComponentDescriptor(context.container, rawType)
-                    adhocDescriptors.add(implicitDescriptor)
-                    collectAdhocComponents(context, implicitDescriptor, visitedTypes, adhocDescriptors)
-                }
+                val implicitDependency = rawType?.let { getImplicitlyDefinedDependency(context, it) } ?: continue
+
+                adhocDescriptors.add(implicitDependency)
+                collectAdhocComponents(context, implicitDependency, visitedTypes, adhocDescriptors)
             }
         }
     }
 
-    private fun injectProperties(instance: Any, context: ValueResolveContext) {
-        val classInfo = instance.javaClass.getInfo()
+    private fun getImplicitlyDefinedDependency(context: ComponentResolveContext, rawType: Class<*>): ComponentDescriptor? {
+        if (!Modifier.isAbstract(rawType.modifiers) && !rawType.isPrimitive) {
+            return ImplicitSingletonTypeComponentDescriptor(context.container, rawType)
+        }
 
-        classInfo.setterInfos.forEach { setterInfo ->
-            val methodBinding = setterInfo.method.bindToMethod(context)
+        val defaultImplementation = rawType.getInfo().defaultImplementation
+        if (defaultImplementation != null && defaultImplementation.getInfo().constructorInfo != null) {
+            return DefaultSingletonTypeComponentDescriptor(context.container, defaultImplementation)
+        }
+
+        if (defaultImplementation != null) {
+            return defaultImplementation.getField("INSTANCE")?.get(null)?.let(::DefaultInstanceComponentDescriptor)
+        }
+
+        return null
+    }
+
+    private fun injectProperties(instance: Any, context: ValueResolveContext) {
+        val classInfo = instance::class.java.getInfo()
+
+        classInfo.setterInfos.forEach { (method) ->
+            val methodBinding = method.bindToMethod(context)
             methodBinding.invoke(instance)
         }
     }

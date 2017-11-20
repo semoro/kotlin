@@ -38,7 +38,7 @@ abstract class CoveringTryCatchNodeProcessor(parameterSize: Int) {
 
     open fun processInstruction(curInstr: AbstractInsnNode, directOrder: Boolean) {
         if (curInstr is VarInsnNode || curInstr is IincInsnNode) {
-            val argSize = InlineCodegenUtil.getLoadStoreArgSize(curInstr.opcode)
+            val argSize = getLoadStoreArgSize(curInstr.opcode)
             val varIndex = if (curInstr is VarInsnNode) curInstr.`var` else (curInstr as IincInsnNode).`var`
             nextFreeLocalIndex = Math.max(nextFreeLocalIndex, varIndex + argSize)
         }
@@ -141,11 +141,13 @@ class IntervalMetaInfo<T : SplittableInterval<T>> {
         return splitPair
     }
 
-    fun getInterval(curIns: LabelNode, isOpen: Boolean) =
+    private fun getInterval(curIns: LabelNode, isOpen: Boolean) =
             if (isOpen) intervalStarts.get(curIns) else intervalEnds.get(curIns)
 }
 
-private fun Interval.isMeaningless(): Boolean {
+fun TryCatchBlockNode.isMeaningless() = SimpleInterval(start, end).isMeaningless()
+
+fun Interval.isMeaningless(): Boolean {
     val start = this.startLabel
     var end: AbstractInsnNode = this.endLabel
     while (end != start && !end.isMeaningful) {

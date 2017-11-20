@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,40 +16,65 @@
 
 package org.jetbrains.kotlin.resolve
 
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.container.StorageComponentContainer
+import org.jetbrains.kotlin.container.composeContainer
 import org.jetbrains.kotlin.container.useInstance
-import org.jetbrains.kotlin.descriptors.ModuleDescriptor
-import org.jetbrains.kotlin.descriptors.ModuleParameters
-import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
-import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap
 import org.jetbrains.kotlin.resolve.calls.checkers.*
 import org.jetbrains.kotlin.resolve.calls.results.TypeSpecificityComparator
+import org.jetbrains.kotlin.resolve.checkers.*
+import org.jetbrains.kotlin.resolve.lazy.DelegationFilter
 import org.jetbrains.kotlin.resolve.scopes.SyntheticScopes
-import org.jetbrains.kotlin.storage.StorageManager
+import org.jetbrains.kotlin.storage.LockBasedStorageManager
 import org.jetbrains.kotlin.types.DynamicTypesSettings
+import java.util.*
 
-abstract class TargetPlatform(
-        val platformName: String
-) {
-    override fun toString(): String {
-        return platformName
-    }
+abstract class TargetPlatform(val platformName: String) {
+    override fun toString() = platformName
 
     abstract val platformConfigurator: PlatformConfigurator
-    abstract val defaultModuleParameters: ModuleParameters
+    abstract fun getDefaultImports(includeKotlinComparisons: Boolean): List<ImportPath>
+    open val excludedImports: List<FqName> get() = emptyList()
 
-    object Default : TargetPlatform("Default") {
-        override val defaultModuleParameters = ModuleParameters.Empty
+    abstract val multiTargetPlatform: MultiTargetPlatform
+
+    object Common : TargetPlatform("Default") {
+        private val defaultImports = LockBasedStorageManager().createMemoizedFunction<Boolean, List<ImportPath>> {
+            includeKotlinComparisons ->
+            ArrayList<ImportPath>().apply {
+                listOf(
+                        "kotlin.*",
+                        "kotlin.annotation.*",
+                        "kotlin.collections.*",
+                        "kotlin.ranges.*",
+                        "kotlin.sequences.*",
+                        "kotlin.text.*",
+                        "kotlin.io.*"
+                ).forEach { add(ImportPath.fromString(it)) }
+
+                if (includeKotlinComparisons) {
+                    add(ImportPath.fromString("kotlin.comparisons.*"))
+                }
+            }
+        }
+
+        override fun getDefaultImports(includeKotlinComparisons: Boolean): List<ImportPath> = defaultImports(includeKotlinComparisons)
+
         override val platformConfigurator =
-                object : PlatformConfigurator(DynamicTypesSettings(), listOf(), listOf(), listOf(), listOf(), listOf(),
-                                              IdentifierChecker.DEFAULT, OverloadFilter.DEFAULT) {
-                    override fun configure(container: StorageComponentContainer) {
-                        super.configure(container)
+                object : PlatformConfigurator(
+                        DynamicTypesSettings(), listOf(), listOf(), listOf(), listOf(), listOf(),
+                        IdentifierChecker.DEFAULT, OverloadFilter.DEFAULT, PlatformToKotlinClassMap.EMPTY, DelegationFilter.DEFAULT,
+                        OverridesBackwardCompatibilityHelper.DEFAULT
+                ) {
+                    override fun configureModuleComponents(container: StorageComponentContainer) {
                         container.useInstance(SyntheticScopes.Empty)
                         container.useInstance(TypeSpecificityComparator.NONE)
                     }
                 }
+
+        override val multiTargetPlatform: MultiTargetPlatform
+            get() = MultiTargetPlatform.Common
     }
 }
 
@@ -59,17 +84,26 @@ private val DEFAULT_DECLARATION_CHECKERS = listOf(
         UnderscoreChecker,
         InlineParameterChecker,
         InfixModifierChecker(),
-        SuspendModifierChecker,
-        CoroutineModifierChecker)
+        SinceKotlinAnnotationValueChecker,
+        ReifiedTypeParameterAnnotationChecker(),
+        DynamicReceiverChecker,
+        DelegationChecker(),
+        KClassWithIncorrectTypeArgumentChecker,
+        SuspendOperatorsCheckers
+)
 
 private val DEFAULT_CALL_CHECKERS = listOf(
-        CapturingInClosureChecker(), InlineCheckerWrapper(), ReifiedTypeParameterSubstitutionChecker(), SafeCallChecker(),
+        CapturingInClosureChecker(), InlineCheckerWrapper(), SafeCallChecker(),
         DeprecatedCallChecker, CallReturnsArrayOfNothingChecker(), InfixCallChecker(), OperatorCallChecker(),
-        ConstructorHeaderCallChecker, ProtectedConstructorCallChecker,
-        CoroutineSuspendCallChecker, BuilderFunctionsCallChecker
+        ConstructorHeaderCallChecker, ProtectedConstructorCallChecker, ApiVersionCallChecker,
+        CoroutineSuspendCallChecker, BuilderFunctionsCallChecker, DslScopeViolationCallChecker, MissingDependencyClassChecker,
+        CallableReferenceCompatibilityChecker(), LateinitIntrinsicApplicabilityChecker,
+        UnderscoreUsageChecker, AssigningNamedArgumentToVarargChecker()
 )
 private val DEFAULT_TYPE_CHECKERS = emptyList<AdditionalTypeChecker>()
-private val DEFAULT_CLASSIFIER_USAGE_CHECKERS = listOf(DeprecatedClassifierUsageChecker())
+private val DEFAULT_CLASSIFIER_USAGE_CHECKERS = listOf(
+        DeprecatedClassifierUsageChecker(), ApiVersionClassifierUsageChecker, MissingDependencyClassChecker.ClassifierUsage
+)
 
 
 abstract class PlatformConfigurator(
@@ -80,31 +114,32 @@ abstract class PlatformConfigurator(
         additionalClassifierUsageCheckers: List<ClassifierUsageChecker>,
         private val additionalAnnotationCheckers: List<AdditionalAnnotationChecker>,
         private val identifierChecker: IdentifierChecker,
-        private val overloadFilter: OverloadFilter
+        private val overloadFilter: OverloadFilter,
+        private val platformToKotlinClassMap: PlatformToKotlinClassMap,
+        private val delegationFilter: DelegationFilter,
+        private val overridesBackwardCompatibilityHelper: OverridesBackwardCompatibilityHelper
 ) {
     private val declarationCheckers: List<DeclarationChecker> = DEFAULT_DECLARATION_CHECKERS + additionalDeclarationCheckers
     private val callCheckers: List<CallChecker> = DEFAULT_CALL_CHECKERS + additionalCallCheckers
     private val typeCheckers: List<AdditionalTypeChecker> = DEFAULT_TYPE_CHECKERS + additionalTypeCheckers
     private val classifierUsageCheckers: List<ClassifierUsageChecker> = DEFAULT_CLASSIFIER_USAGE_CHECKERS + additionalClassifierUsageCheckers
 
-    open fun configure(container: StorageComponentContainer) {
-        with (container) {
-            useInstance(dynamicTypesSettings)
-            declarationCheckers.forEach { useInstance(it) }
-            callCheckers.forEach { useInstance(it) }
-            typeCheckers.forEach { useInstance(it) }
-            classifierUsageCheckers.forEach { useInstance(it) }
-            additionalAnnotationCheckers.forEach { useInstance(it) }
-            useInstance(identifierChecker)
-            useInstance(overloadFilter)
-        }
+    abstract fun configureModuleComponents(container: StorageComponentContainer)
+
+    val platformSpecificContainer = composeContainer(this::class.java.simpleName) {
+        useInstance(dynamicTypesSettings)
+        declarationCheckers.forEach { useInstance(it) }
+        callCheckers.forEach { useInstance(it) }
+        typeCheckers.forEach { useInstance(it) }
+        classifierUsageCheckers.forEach { useInstance(it) }
+        additionalAnnotationCheckers.forEach { useInstance(it) }
+        useInstance(identifierChecker)
+        useInstance(overloadFilter)
+        useInstance(platformToKotlinClassMap)
+        useInstance(delegationFilter)
+        useInstance(overridesBackwardCompatibilityHelper)
     }
 }
 
-@JvmOverloads
-fun TargetPlatform.createModule(
-        name: Name,
-        storageManager: StorageManager,
-        builtIns: KotlinBuiltIns,
-        capabilities: Map<ModuleDescriptor.Capability<*>, Any?> = emptyMap()
-) = ModuleDescriptorImpl(name, storageManager, defaultModuleParameters, builtIns, capabilities)
+fun createContainer(id: String, platform: TargetPlatform, init: StorageComponentContainer.() -> Unit)
+        = composeContainer(id, platform.platformConfigurator.platformSpecificContainer, init)

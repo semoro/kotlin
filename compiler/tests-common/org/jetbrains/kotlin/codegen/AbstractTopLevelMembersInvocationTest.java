@@ -18,7 +18,6 @@ package org.jetbrains.kotlin.codegen;
 
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.Processor;
 import kotlin.collections.CollectionsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
@@ -40,28 +39,21 @@ public abstract class AbstractTopLevelMembersInvocationTest extends AbstractByte
     @Override
     public void doTest(@NotNull String filename) throws Exception {
         File root = new File(filename);
-        final List<String> sourceFiles = new ArrayList<String>(2);
+        List<String> sourceFiles = new ArrayList<>(2);
 
-        FileUtil.processFilesRecursively(root, new Processor<File>() {
-            @Override
-            public boolean process(File file) {
-                if (file.getName().endsWith(".kt")) {
-                    sourceFiles.add(relativePath(file));
-                    return true;
-                }
+        FileUtil.processFilesRecursively(root, file -> {
+            if (file.getName().endsWith(".kt")) {
+                sourceFiles.add(relativePath(file));
                 return true;
             }
-        }, new Processor<File>() {
-            @Override
-            public boolean process(File file) {
-                return !LIBRARY.equals(file.getName());
-            }
-        });
+            return true;
+        }, file -> !LIBRARY.equals(file.getName()));
 
         File library = new File(root, LIBRARY);
-        List<File> classPath = library.exists() ?
-                               Collections.singletonList(MockLibraryUtil.compileLibraryToJar(library.getPath(), LIBRARY, false, false)) :
-                               Collections.<File>emptyList();
+        List<File> classPath =
+                library.exists()
+                ? Collections.singletonList(MockLibraryUtil.compileJvmLibraryToJar(library.getPath(), LIBRARY))
+                : Collections.emptyList();
 
         assert !sourceFiles.isEmpty() : getTestName(true) + " should contain at least one .kt file";
         Collections.sort(sourceFiles);
@@ -70,7 +62,7 @@ public abstract class AbstractTopLevelMembersInvocationTest extends AbstractByte
                 getTestRootDisposable(),
                 KotlinTestUtils.newConfiguration(
                         ConfigurationKind.JDK_ONLY, TestJdkKind.MOCK_JDK,
-                        CollectionsKt.plus(classPath, KotlinTestUtils.getAnnotationsJar()), classPath
+                        CollectionsKt.plus(classPath, KotlinTestUtils.getAnnotationsJar()), Collections.emptyList()
                 ),
                 EnvironmentConfigFiles.JVM_CONFIG_FILES);
 
@@ -78,6 +70,6 @@ public abstract class AbstractTopLevelMembersInvocationTest extends AbstractByte
 
         List<OccurrenceInfo> expected = readExpectedOccurrences(KotlinTestUtils.getTestDataPathBase() + "/codegen/" + sourceFiles.get(0));
         String actual = generateToText();
-        checkGeneratedTextAgainstExpectedOccurrences(actual, expected);
+        Companion.checkGeneratedTextAgainstExpectedOccurrences(actual, expected);
     }
 }

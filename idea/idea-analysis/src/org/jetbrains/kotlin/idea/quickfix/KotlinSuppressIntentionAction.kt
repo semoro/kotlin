@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.quickfix
 
+import com.intellij.codeInsight.FileModificationService
 import com.intellij.codeInspection.SuppressIntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
@@ -23,7 +24,6 @@ import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.util.PsiPrecedences
 import org.jetbrains.kotlin.idea.util.addAnnotation
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.replaceFileAnnotationList
@@ -48,11 +48,13 @@ class KotlinSuppressIntentionAction private constructor(
     override fun isAvailable(project: Project, editor: Editor?, element: PsiElement) = element.isValid
 
     override fun invoke(project: Project, editor: Editor?, element: PsiElement) {
+        if (!FileModificationService.getInstance().preparePsiElementForWrite(element)) return
+
         val id = "\"$suppressKey\""
         when (suppressAt) {
             is KtModifierListOwner ->
-                suppressAt.addAnnotation(KotlinBuiltIns.FQ_NAMES.suppress.toSafe(),
-                                         "$id",
+                suppressAt.addAnnotation(KotlinBuiltIns.FQ_NAMES.suppress,
+                                         id,
                                          whiteSpaceText = if (kind.newLineNeeded) "\n" else " ",
                                          addToExistingAnnotation = { entry ->
                                              addArgumentToSuppressAnnotation(entry, id)
@@ -90,7 +92,7 @@ class KotlinSuppressIntentionAction private constructor(
 
             return
         }
-        
+
         addArgumentToSuppressAnnotation(suppressAnnotation, id)
     }
 
@@ -109,10 +111,8 @@ class KotlinSuppressIntentionAction private constructor(
         val suppressAt = caretBox.expression
         assert(suppressAt !is KtDeclaration) { "Declarations should have been checked for above" }
 
-        val parentheses = PsiPrecedences.getPrecedence(suppressAt) > PsiPrecedences.PRECEDENCE_OF_PREFIX_EXPRESSION
         val placeholderText = "PLACEHOLDER_ID"
-        val inner = if (parentheses) "($placeholderText)" else placeholderText
-        val annotatedExpression = KtPsiFactory(suppressAt).createExpression(suppressAnnotationText(id) + "\n" + inner)
+        val annotatedExpression = KtPsiFactory(suppressAt).createExpression(suppressAnnotationText(id) + "\n" + placeholderText)
 
         val copy = suppressAt.copy()!!
 
@@ -129,16 +129,12 @@ class KotlinSuppressIntentionAction private constructor(
         val args = entry.valueArgumentList
         val psiFactory = KtPsiFactory(entry)
         val newArgList = psiFactory.createCallArguments("($id)")
-        if (args == null) {
-            // new argument list
-            entry.addAfter(newArgList, entry.lastChild)
-        }
-        else if (args.arguments.isEmpty()) {
-            // replace '()' with a new argument list
-            args.replace(newArgList)
-        }
-        else {
-            args.addArgument(newArgList.arguments[0])
+        when {
+            args == null -> // new argument list
+                entry.addAfter(newArgList, entry.lastChild)
+            args.arguments.isEmpty() -> // replace '()' with a new argument list
+                args.replace(newArgList)
+            else -> args.addArgument(newArgList.arguments[0])
         }
     }
 
@@ -155,13 +151,9 @@ class KotlinSuppressIntentionAction private constructor(
     }
 
     private fun findSuppressAnnotation(context: BindingContext, annotationEntries: List<KtAnnotationEntry>): KtAnnotationEntry? {
-        for (entry in annotationEntries) {
-            val annotationDescriptor = context.get(BindingContext.ANNOTATION, entry)
-            if (annotationDescriptor != null && KotlinBuiltIns.isSuppressAnnotation(annotationDescriptor)) {
-                return entry
-            }
+        return annotationEntries.firstOrNull { entry ->
+            context.get(BindingContext.ANNOTATION, entry)?.fqName == KotlinBuiltIns.FQ_NAMES.suppress
         }
-        return null
     }
 }
 

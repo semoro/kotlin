@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.resolve.lazy
 
 import com.intellij.psi.PsiElement
-import com.intellij.util.SmartList
 import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
@@ -26,14 +25,12 @@ import org.jetbrains.kotlin.resolve.StatementFilter
 import org.jetbrains.kotlin.util.isProbablyNothing
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 import org.jetbrains.kotlin.utils.addToStdlib.swap
-import java.util.ArrayList
-import java.util.HashMap
-import java.util.HashSet
+import java.util.*
 
 //TODO: do resolve anonymous object's body
 
 class PartialBodyResolveFilter(
-        elementToResolve: KtElement,
+        elementsToResolve: Collection<KtElement>,
         private val declaration: KtDeclaration,
         probablyNothingCallableNames: ProbablyNothingCallableNames,
         forCompletion: Boolean
@@ -50,7 +47,7 @@ class PartialBodyResolveFilter(
         get() = statementMarks.allMarkedStatements()
 
     init {
-        assert(declaration.isAncestor(elementToResolve))
+        elementsToResolve.forEach { assert(declaration.isAncestor(it)) }
         assert(!KtPsiUtil.isLocal(declaration)) { "Should never be invoked on local declaration otherwise we may miss some local declarations with type Nothing" }
 
         declaration.forEachDescendantOfType<KtCallableDeclaration> { declaration ->
@@ -67,7 +64,9 @@ class PartialBodyResolveFilter(
             }
         }
 
-        statementMarks.mark(elementToResolve, if (forCompletion) MarkLevel.NEED_COMPLETION else MarkLevel.NEED_REFERENCE_RESOLVE)
+        elementsToResolve.forEach {
+            statementMarks.mark(it, if (forCompletion) MarkLevel.NEED_COMPLETION else MarkLevel.NEED_REFERENCE_RESOLVE)
+        }
         declaration.forTopLevelBlocksInside { processBlock(it) }
     }
 
@@ -272,18 +271,18 @@ class PartialBodyResolveFilter(
                 val left = condition.left ?: return emptyResult
                 val right = condition.right ?: return emptyResult
 
-                fun smartCastInEq(): Pair<Set<SmartCastName>, Set<SmartCastName>> {
-                    if (left.isNullLiteral()) {
-                        return Pair(setOf(), right.smartCastExpressionName().singletonOrEmptySet())
+                fun smartCastInEq(): Pair<Set<SmartCastName>, Set<SmartCastName>> = when {
+                    left.isNullLiteral() -> {
+                        Pair(setOf(), right.smartCastExpressionName().singletonOrEmptySet())
                     }
-                    else if (right.isNullLiteral()) {
-                        return Pair(setOf(), left.smartCastExpressionName().singletonOrEmptySet())
+                    right.isNullLiteral() -> {
+                        Pair(setOf(), left.smartCastExpressionName().singletonOrEmptySet())
                     }
-                    else {
+                    else -> {
                         val leftName = left.smartCastExpressionName()
                         val rightName = right.smartCastExpressionName()
                         val names = listOfNotNull(leftName, rightName).toSet()
-                        return Pair(names, setOf())
+                        Pair(names, setOf())
                     }
                 }
 
@@ -540,7 +539,7 @@ class PartialBodyResolveFilter(
                 is KtBlockExpression -> expression == parent.lastStatement() && isValueNeeded(parent)
 
                 is KtContainerNode -> { //TODO - not quite correct
-                    val pparent = parent.getParent() as? KtExpression
+                    val pparent = parent.parent as? KtExpression
                     pparent != null && isValueNeeded(pparent)
                 }
 
@@ -560,7 +559,7 @@ class PartialBodyResolveFilter(
         private fun KtBlockExpression.lastStatement(): KtExpression?
                 = lastChild?.siblings(forward = false)?.firstIsInstanceOrNull<KtExpression>()
 
-        private fun PsiElement.isStatement() = this is KtExpression && getParent() is KtBlockExpression
+        private fun PsiElement.isStatement() = this is KtExpression && parent is KtBlockExpression
 
         private fun KtTypeReference?.containsProbablyNothing()
                 = this?.typeElement?.anyDescendantOfType<KtUserType> { it.isProbablyNothing() } ?: false

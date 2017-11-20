@@ -1,5 +1,5 @@
 // FILE: first.before.kt
-// "Import" "false"
+// "class org.jetbrains.kotlin.idea.quickfix.ImportFix" "false"
 // ERROR: Unresolved reference: foo()["str"]
 // ERROR: No get method providing array access
 // ACTION: Create extension function 'Some.get'
@@ -25,7 +25,3 @@ package some
 public class Some
 
 operator fun Some.set(s: String) {}
-
-
-// FILE: first.after.kt
-// Empty File

@@ -16,15 +16,21 @@
 
 package org.jetbrains.kotlin.descriptors
 
+import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
 import org.jetbrains.kotlin.types.SimpleType
-import org.jetbrains.kotlin.types.TypeSubstitutor
 
-interface TypeAliasDescriptor : ClassifierDescriptorWithTypeParameters, MemberDescriptor {
+interface TypeAliasDescriptor : ClassifierDescriptorWithTypeParameters {
+    /// Right-hand side of the type alias definition.
+    /// May contain type aliases.
     val underlyingType: SimpleType
 
+    /// Fully expanded type with non-substituted type parameters.
+    /// May not contain type aliases.
     val expandedType: SimpleType
 
     val classDescriptor: ClassDescriptor?
 
-    override fun substitute(substitutor: TypeSubstitutor): TypeAliasDescriptor
+    override fun getOriginal(): TypeAliasDescriptor
+
+    val constructors: Collection<TypeAliasConstructorDescriptor>
 }

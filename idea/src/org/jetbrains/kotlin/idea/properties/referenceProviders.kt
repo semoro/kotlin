@@ -25,14 +25,14 @@ import com.intellij.psi.PsiReference
 import com.intellij.psi.PsiReferenceProvider
 import com.intellij.psi.search.LocalSearchScope
 import com.intellij.util.ProcessingContext
+import org.jetbrains.kotlin.descriptors.ClassConstructorDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.ConstructorDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.name.FqName
@@ -53,7 +53,7 @@ private val PROPERTY_KEY = FqName(AnnotationUtil.PROPERTY_KEY)
 private val PROPERTY_KEY_RESOURCE_BUNDLE = Name.identifier(AnnotationUtil.PROPERTY_KEY_RESOURCE_BUNDLE_PARAMETER)
 
 private fun AnnotationDescriptor.getBundleName(): String? {
-    return allValueArguments.entries.singleOrNull { it.key.name == PROPERTY_KEY_RESOURCE_BUNDLE }?.value?.value as? String
+    return allValueArguments[PROPERTY_KEY_RESOURCE_BUNDLE]?.value as? String
 }
 
 private fun DeclarationDescriptor.getBundleNameByAnnotation(): String? {
@@ -64,7 +64,7 @@ private fun KtExpression.getBundleNameByContext(): String? {
     val expression = KtPsiUtil.safeDeparenthesize(this)
     val parent = expression.parent
 
-    (parent as? KtProperty)?.let { return it.resolveToDescriptor().getBundleNameByAnnotation() }
+    (parent as? KtProperty)?.let { return it.resolveToDescriptorIfAny()?.getBundleNameByAnnotation() }
 
     val bindingContext = expression.analyze(BodyResolveMode.PARTIAL)
     val resolvedCall =
@@ -91,7 +91,7 @@ private fun KtExpression.getBundleNameByContext(): String? {
 
 private fun KtAnnotationEntry.getPropertyKeyResolvedCall(): ResolvedCall<*>? {
     val resolvedCall = getResolvedCall(analyze(BodyResolveMode.PARTIAL)) ?: return null
-    val klass = (resolvedCall.resultingDescriptor as? ConstructorDescriptor)?.containingDeclaration ?: return null
+    val klass = (resolvedCall.resultingDescriptor as? ClassConstructorDescriptor)?.containingDeclaration ?: return null
     if (klass.kind != ClassKind.ANNOTATION_CLASS || klass.importableFqName != PROPERTY_KEY) return null
     return resolvedCall
 }

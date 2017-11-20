@@ -1,3 +1,4 @@
+// JAVAC_EXPECTED_FILE
 // See also KT-10735
 fun test() {
     var a: Int?
@@ -59,8 +60,7 @@ fun test5() {
         return
     }
     finally {
-        // Error: KT-9825
-        <!UNUSED_VALUE!>a =<!> 5
+        a = 5
     }
     <!DEBUG_INFO_SMARTCAST!>a<!>.hashCode() // a is never null here
 }
@@ -73,8 +73,7 @@ fun test6() {
         return
     }
     finally {
-        // Error: KT-9825
-        <!UNUSED_VALUE!>a =<!> null
+        a = null
     }
     <!DEBUG_INFO_CONSTANT!>a<!><!UNSAFE_CALL!>.<!>hashCode() // a is null here
 }

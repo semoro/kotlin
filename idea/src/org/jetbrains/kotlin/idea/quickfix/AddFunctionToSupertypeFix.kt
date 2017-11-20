@@ -29,15 +29,19 @@ import com.intellij.util.PlatformIcons
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.diagnostics.Diagnostic
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.core.ShortenReferences
 import org.jetbrains.kotlin.idea.core.TemplateKind
 import org.jetbrains.kotlin.idea.core.getFunctionBodyTextFromTemplate
+import org.jetbrains.kotlin.idea.core.implicitModality
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
+import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.modalityModifier
+import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.typeUtil.supertypes
@@ -87,6 +91,11 @@ class AddFunctionToSupertypeFix private constructor(
             val insertedFunctionElement = classBody.addBefore(functionElement, classBody.rBrace) as KtNamedFunction
 
             ShortenReferences.DEFAULT.process(insertedFunctionElement)
+            val modifierToken = insertedFunctionElement.modalityModifier()?.node?.elementType as? KtModifierKeywordToken
+                                ?: return@executeWriteCommand
+            if (insertedFunctionElement.implicitModality() == modifierToken) {
+                RemoveModifierFix(insertedFunctionElement, modifierToken, true).invoke()
+            }
         }
     }
 
@@ -129,7 +138,7 @@ class AddFunctionToSupertypeFix private constructor(
             var sourceCode = IdeDescriptorRenderers.SOURCE_CODE.render(functionDescriptor)
             if (classDescriptor.kind != ClassKind.INTERFACE && functionDescriptor.modality != Modality.ABSTRACT) {
                 val returnType = functionDescriptor.returnType
-                if (returnType == null || !KotlinBuiltIns.isUnit(returnType)) {
+                sourceCode += if (returnType == null || !KotlinBuiltIns.isUnit(returnType)) {
                     val bodyText = getFunctionBodyTextFromTemplate(
                             project,
                             TemplateKind.FUNCTION,
@@ -137,10 +146,10 @@ class AddFunctionToSupertypeFix private constructor(
                             functionDescriptor.returnType?.let { IdeDescriptorRenderers.SOURCE_CODE.renderType(it) } ?: "Unit",
                             classDescriptor.importableFqName
                     )
-                    sourceCode += "{ $bodyText }"
+                    "{ $bodyText }"
                 }
                 else {
-                    sourceCode += "{}"
+                    "{}"
                 }
             }
 
@@ -152,7 +161,8 @@ class AddFunctionToSupertypeFix private constructor(
         }
 
         private fun generateFunctionsToAdd(functionElement: KtNamedFunction): List<FunctionDescriptor> {
-            val functionDescriptor = functionElement.resolveToDescriptor() as FunctionDescriptor
+            val functionDescriptor = functionElement.resolveToDescriptorIfAny(BodyResolveMode.FULL) as? FunctionDescriptor
+                                     ?: return emptyList()
 
             val containingClass = functionDescriptor.containingDeclaration as? ClassDescriptor ?: return emptyList()
 
@@ -180,7 +190,7 @@ class AddFunctionToSupertypeFix private constructor(
         private fun generateFunctionSignatureForType(functionDescriptor: FunctionDescriptor, typeDescriptor: ClassDescriptor): FunctionDescriptor {
             // TODO: support for generics.
 
-            val modality = if (typeDescriptor.kind == ClassKind.INTERFACE) Modality.OPEN else typeDescriptor.modality
+            val modality = if (typeDescriptor.kind == ClassKind.INTERFACE) Modality.ABSTRACT else typeDescriptor.modality
 
             return functionDescriptor.copy(
                     typeDescriptor,

@@ -26,8 +26,8 @@ import org.jetbrains.kotlin.idea.core.ExpectedInfo
 import org.jetbrains.kotlin.idea.core.fuzzyType
 import org.jetbrains.kotlin.idea.util.CallType
 import org.jetbrains.kotlin.idea.util.fuzzyReturnType
-import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
 import org.jetbrains.kotlin.resolve.calls.util.getValueParametersCountFromFunctionType
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
 import org.jetbrains.kotlin.types.KotlinType
 import java.util.*
 
@@ -94,13 +94,16 @@ class InsertHandlerProvider(
 
         fun addPotentiallyInferred(type: KotlinType) {
             val descriptor = type.constructor.declarationDescriptor as? TypeParameterDescriptor
-            if (descriptor != null && descriptor in typeParameters) {
+            if (descriptor != null && descriptor in typeParameters && descriptor !in potentiallyInferred) {
                 potentiallyInferred.add(descriptor)
+                // Add possible inferred by type-arguments of upper-bound of parameter
+                // e.g. <T, C: Iterable<T>>, so T inferred from C
+                descriptor.upperBounds.filter { it.arguments.isNotEmpty() }.forEach(::addPotentiallyInferred)
             }
 
             if (type.isFunctionType && getValueParametersCountFromFunctionType(type) <= 1) {
                 // do not rely on inference from input of function type with one or no arguments - use only return type of functional type
-                addPotentiallyInferred(getReturnTypeFromFunctionType(type))
+                addPotentiallyInferred(type.getReturnTypeFromFunctionType())
                 return
             }
 
@@ -111,7 +114,7 @@ class InsertHandlerProvider(
             }
         }
 
-        originalFunction.extensionReceiverParameter?.type?.let { addPotentiallyInferred(it) }
+        originalFunction.extensionReceiverParameter?.type?.let(::addPotentiallyInferred)
         originalFunction.valueParameters.forEach { addPotentiallyInferred(it.type) }
 
         fun allTypeParametersPotentiallyInferred() = originalFunction.typeParameters.all { it in potentiallyInferred }

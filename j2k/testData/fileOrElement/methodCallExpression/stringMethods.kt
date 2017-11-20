@@ -1,9 +1,5 @@
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
-// ERROR: Too many arguments for public constructor String() defined in kotlin.String
+// ERROR: Type mismatch: inferred type is String but Charset was expected
+// ERROR: Type mismatch: inferred type is String but Charset was expected
 import java.nio.charset.Charset
 import java.util.*
 
@@ -72,13 +68,20 @@ internal class A {
     fun specialMethods() {
         val s = "test string"
         s == "test"
-        s.equals("tesT", ignoreCase = true)
+        s.equals(
+                "tesT", ignoreCase = true
+        )
         s.compareTo("Test", ignoreCase = true)
-        s.regionMatches(0, "TE", 0, 2, ignoreCase = true)
+        s.regionMatches(
+                0,
+                "TE",
+                0,
+                2, ignoreCase = true
+        )
         s.regionMatches(0, "st", 1, 2)
         s.matches("\\w+".toRegex())
         s.replace("\\w+".toRegex(), "---")
-        s.replaceFirst("([s-t])".toRegex(), "A$1")
+                .replaceFirst("([s-t])".toRegex(), "A$1")
         useSplit(s.split("\\s+".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray())
         useSplit(s.split("\\s+".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray())
         useSplit(s.split("\\s+".toRegex()).toTypedArray())
@@ -105,7 +108,11 @@ internal class A {
         3.14.toString()
         Any().toString()
 
-        String.format(Locale.FRENCH, "Je ne mange pas %d jours", 6)
+        String.format(
+                Locale.FRENCH,
+                "Je ne mange pas %d jours",
+                6
+        )
         String.format("Operation completed with %s", "success")
 
         val chars = charArrayOf('a', 'b', 'c')
@@ -127,6 +134,5 @@ internal class A {
         */
     }
 
-    fun useSplit(result: Array<String>) {
-    }
+    fun useSplit(result: Array<String>) {}
 }

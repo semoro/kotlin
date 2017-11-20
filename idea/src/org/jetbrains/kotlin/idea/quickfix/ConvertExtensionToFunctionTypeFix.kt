@@ -44,15 +44,16 @@ class ConvertExtensionToFunctionTypeFix(element: KtTypeReference, type: KotlinTy
     override fun getFamilyName() = "Convert extension function type to regular function type"
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
+        val element = element ?: return
         val replaced = element.replaced(KtPsiFactory(project).createType(targetTypeStringLong))
         ShortenReferences.DEFAULT.process(replaced)
     }
 
     private fun KotlinType.renderType(renderer: DescriptorRenderer) = buildString {
         append('(')
-        arguments.dropLast(1).map { renderer.renderType(it.type) }.joinTo(this@buildString, ", ")
+        arguments.dropLast(1).joinTo(this@buildString, ", ") { renderer.renderType(it.type) }
         append(") -> ")
-        append(renderer.renderType(getReturnTypeFromFunctionType(this@renderType)))
+        append(renderer.renderType(this@renderType.getReturnTypeFromFunctionType()))
     }
 
     companion object Factory : KotlinIntentionActionsFactory() {

@@ -21,6 +21,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileFilter;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.psi.impl.PsiModificationTrackerImpl;
@@ -35,7 +36,7 @@ import java.util.Map;
 
 public class MockPsiManager extends PsiManagerEx {
   private final Project myProject;
-  private final Map<VirtualFile,PsiDirectory> myDirectories = new THashMap<VirtualFile, PsiDirectory>();
+  private final Map<VirtualFile,PsiDirectory> myDirectories = new THashMap<>();
   private MockFileManager myMockFileManager;
   private PsiModificationTrackerImpl myPsiModificationTracker;
 
@@ -139,6 +140,9 @@ public class MockPsiManager extends PsiManagerEx {
   }
 
   @Override
+  public void setAssertOnFileLoadingFilter(@NotNull VirtualFileFilter filter, @NotNull Disposable parentDisposable) {}
+
+  @Override
   public boolean isAssertOnFileLoading(@NotNull VirtualFile file) {
     return false;
   }
@@ -185,5 +189,9 @@ public class MockPsiManager extends PsiManagerEx {
 
   @Override
   public void beforeChildAddition(@NotNull PsiTreeChangeEventImpl event) {
+  }
+
+  @Override
+  public void dropPsiCaches() {
   }
 }

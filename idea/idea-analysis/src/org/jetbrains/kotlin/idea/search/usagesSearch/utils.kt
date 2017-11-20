@@ -16,11 +16,14 @@
 
 package org.jetbrains.kotlin.idea.search.usagesSearch
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.psi.PsiConstructorCall
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.SearchScope
+import com.intellij.psi.search.searches.MethodReferencesSearch
+import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.MethodSignatureUtil
 import org.jetbrains.kotlin.asJava.elements.KtLightElement
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
@@ -32,6 +35,7 @@ import org.jetbrains.kotlin.idea.caches.resolve.getJavaMethodDescriptor
 import org.jetbrains.kotlin.idea.references.unwrappedTargets
 import org.jetbrains.kotlin.idea.search.declarationsSearch.HierarchySearchRequest
 import org.jetbrains.kotlin.idea.search.declarationsSearch.searchInheritors
+import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.contains
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
@@ -110,35 +114,45 @@ private fun KtElement.getConstructorCallDescriptor(): DeclarationDescriptor? {
 }
 
 fun PsiElement.processDelegationCallConstructorUsages(scope: SearchScope, process: (KtCallElement) -> Boolean): Boolean {
-    if (!processDelegationCallKotlinConstructorUsages(scope, process)) return false
-    return processDelegationCallJavaConstructorUsages(scope, process)
+    val task = buildProcessDelegationCallConstructorUsagesTask(scope, process)
+    return task()
 }
 
-private fun PsiElement.processDelegationCallKotlinConstructorUsages(scope: SearchScope, process: (KtCallElement) -> Boolean): Boolean {
+// should be executed under read-action, returns long-running part to be executed outside read-action
+fun PsiElement.buildProcessDelegationCallConstructorUsagesTask(scope: SearchScope, process: (KtCallElement) -> Boolean): () -> Boolean {
+    ApplicationManager.getApplication().assertReadAccessAllowed()
+    val task1 = buildProcessDelegationCallKotlinConstructorUsagesTask(scope, process)
+    val task2 = buildProcessDelegationCallJavaConstructorUsagesTask(scope, process)
+    return { task1() && task2() }
+}
+
+private fun PsiElement.buildProcessDelegationCallKotlinConstructorUsagesTask(scope: SearchScope, process: (KtCallElement) -> Boolean): () -> Boolean {
     val element = unwrapped
-    if (element != null && element !in scope) return true
+    if (element != null && element !in scope) return { true }
 
     val klass = when (element) {
         is KtConstructor<*> -> element.getContainingClassOrObject()
         is KtClass -> element
-        else -> return true
+        else -> return { true }
     }
 
-    if (klass !is KtClass || element !is KtDeclaration) return true
-    val descriptor = element.constructor ?: return true
+    if (klass !is KtClass || element !is KtDeclaration) return { true }
+    val descriptor = element.constructor ?: return { true }
 
-    if (!processClassDelegationCallsToSpecifiedConstructor(klass, descriptor, process)) return false
-    return processInheritorsDelegatingCallToSpecifiedConstructor(klass, scope, descriptor, process)
+    if (!processClassDelegationCallsToSpecifiedConstructor(klass, descriptor, process)) return { false }
+
+    // long-running task, return it to execute outside read-action
+    return { processInheritorsDelegatingCallToSpecifiedConstructor(klass, scope, descriptor, process) }
 }
 
-private fun PsiElement.processDelegationCallJavaConstructorUsages(scope: SearchScope, process: (KtCallElement) -> Boolean): Boolean {
-    if (this is KtLightElement<*, *>) return true
+private fun PsiElement.buildProcessDelegationCallJavaConstructorUsagesTask(scope: SearchScope, process: (KtCallElement) -> Boolean): () -> Boolean {
+    if (this is KtLightElement<*, *>) return { true }
     // TODO: Temporary hack to avoid NPE while KotlinNoOriginLightMethod is around
-    if (this is KtLightMethod && this.kotlinOrigin == null) return true
-    if (!(this is PsiMethod && isConstructor)) return true
-    val klass = containingClass ?: return true
-    val descriptor = getJavaMethodDescriptor() as? ConstructorDescriptor ?: return true
-    return processInheritorsDelegatingCallToSpecifiedConstructor(klass, scope, descriptor, process)
+    if (this is KtLightMethod && this.kotlinOrigin == null) return { true }
+    if (!(this is PsiMethod && isConstructor)) return { true }
+    val klass = containingClass ?: return { true }
+    val descriptor = getJavaMethodDescriptor() as? ConstructorDescriptor ?: return { true }
+    return { processInheritorsDelegatingCallToSpecifiedConstructor(klass, scope, descriptor, process) }
 }
 
 
@@ -149,18 +163,20 @@ private fun processInheritorsDelegatingCallToSpecifiedConstructor(
         process: (KtCallElement) -> Boolean
 ): Boolean {
     return HierarchySearchRequest(klass, scope, false).searchInheritors().all {
-        val unwrapped = it.unwrapped
-        if (unwrapped is KtClass) {
-            processClassDelegationCallsToSpecifiedConstructor(unwrapped, descriptor, process)
-        } else
-            true
+        runReadAction {
+            val unwrapped = it.takeIf { it.isValid }?.unwrapped
+            if (unwrapped is KtClass)
+                processClassDelegationCallsToSpecifiedConstructor(unwrapped, descriptor, process)
+            else
+                true
+        }
     }
 }
 
 private fun processClassDelegationCallsToSpecifiedConstructor(
         klass: KtClass, constructor: DeclarationDescriptor, process: (KtCallElement) -> Boolean
 ): Boolean {
-    for (secondaryConstructor in klass.getSecondaryConstructors()) {
+    for (secondaryConstructor in klass.secondaryConstructors) {
         val delegationCallDescriptor = secondaryConstructor.getDelegationCall().getConstructorCallDescriptor()
         if (constructor == delegationCallDescriptor) {
             if (!process(secondaryConstructor.getDelegationCall())) return false
@@ -169,7 +185,7 @@ private fun processClassDelegationCallsToSpecifiedConstructor(
     if (!klass.isEnum()) return true
     for (declaration in klass.declarations) {
         if (declaration is KtEnumEntry) {
-            val delegationCall = declaration.getSuperTypeListEntries().firstOrNull()
+            val delegationCall = declaration.superTypeListEntries.firstOrNull()
             if (delegationCall is KtSuperTypeCallEntry && constructor == delegationCall.calleeExpression.getConstructorCallDescriptor()) {
                 if (!process(delegationCall)) return false
             }
@@ -234,5 +250,15 @@ fun PsiReference.isCallableOverrideUsage(declaration: KtNamedDeclaration): Boole
             }
             else -> false
         }
+    }
+}
+
+fun PsiElement.searchReferencesOrMethodReferences(): Collection<PsiReference> {
+    val lightMethods = toLightMethods()
+    return if (lightMethods.isNotEmpty()) {
+        lightMethods.flatMapTo(LinkedHashSet()) { MethodReferencesSearch.search(it) }
+    }
+    else {
+        ReferencesSearch.search(this).findAll()
     }
 }

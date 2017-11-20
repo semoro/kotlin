@@ -20,6 +20,7 @@ import com.intellij.navigation.NavigationItem
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Pass
 import com.intellij.psi.*
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.searches.DirectClassInheritorsSearch
@@ -33,16 +34,17 @@ import com.intellij.usageView.UsageInfo
 import com.intellij.usageView.UsageViewUtil
 import org.jetbrains.kotlin.asJava.*
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
-import org.jetbrains.kotlin.asJava.elements.KtLightElement
+import org.jetbrains.kotlin.asJava.elements.KtLightDeclaration
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.descriptors.VariableDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.core.getDeepestSuperDeclarations
 import org.jetbrains.kotlin.idea.core.isEnumCompanionPropertyWithEntryConflict
+import org.jetbrains.kotlin.idea.refactoring.checkSuperMethodsWithPopup
 import org.jetbrains.kotlin.idea.refactoring.dropOverrideKeywordIfNecessary
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
@@ -55,9 +57,9 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.findPropertyByName
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DataClassDescriptorResolver
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.dataClassUtils.isComponentLike
 import org.jetbrains.kotlin.resolve.source.getPsi
 import org.jetbrains.kotlin.util.findCallableMemberBySignature
 import org.jetbrains.kotlin.utils.DFS
@@ -81,11 +83,8 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
         JavaRefactoringSettings.getInstance().RENAME_SEARCH_FOR_TEXT_FOR_FIELD = enabled
     }
 
-    /* Can't properly update getters and setters in Java */
-    override fun isInplaceRenameSupported() = false
-
     private fun getJvmNames(element: PsiElement): Pair<String?, String?> {
-        val descriptor = (element.unwrapped as? KtDeclaration)?.resolveToDescriptor() as? PropertyDescriptor ?: return null to null
+        val descriptor = (element.unwrapped as? KtDeclaration)?.unsafeResolveToDescriptor() as? PropertyDescriptor ?: return null to null
         val getterName = descriptor.getter?.let { DescriptorUtils.getJvmName(it) }
         val setterName = descriptor.setter?.let { DescriptorUtils.getJvmName(it) }
         return getterName to setterName
@@ -101,7 +100,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
                 || (getterJvmName == null && (it.resolve() as? PsiNamedElement)?.name != setterJvmName)
                 || (setterJvmName == null && (it.resolve() as? PsiNamedElement)?.name != getterJvmName)
             }
-            element is KtLightElement<*, *> -> {
+            element is KtLightDeclaration<*, *> -> {
                 val name = element.name
                 if (name == getterJvmName || name == setterJvmName) allReferences.filterNot { it is KtReference } else allReferences
             }
@@ -200,7 +199,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
     ) {
         if (newName == null) return
         val declaration = element.namedUnwrappedElement as? KtNamedDeclaration ?: return
-        val descriptor = declaration.resolveToDescriptor() as VariableDescriptor
+        val descriptor = declaration.unsafeResolveToDescriptor() as VariableDescriptor
 
         val collisions = SmartList<UsageInfo>()
         checkRedeclarations(descriptor, newName, collisions)
@@ -253,7 +252,39 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
         return declarationToRename
     }
 
-    class PropertyMethodWrapper(val propertyMethod: PsiMethod) : PsiNamedElement by propertyMethod, NavigationItem by propertyMethod {
+    override fun substituteElementToRename(element: PsiElement, editor: Editor, renameCallback: Pass<PsiElement>) {
+        val namedUnwrappedElement = element.namedUnwrappedElement ?: return
+
+        val callableDeclaration = namedUnwrappedElement as? KtCallableDeclaration
+                                  ?: throw IllegalStateException("Can't be for element $element there because of canProcessElement()")
+
+        fun preprocessAndPass(substitutedJavaElement: PsiElement) {
+            val (getterJvmName, setterJvmName) = getJvmNames(namedUnwrappedElement)
+            val elementToProcess = if (element is KtLightMethod) {
+                val name = element.name
+                if (element.name != getterJvmName && element.name != setterJvmName) {
+                    substitutedJavaElement
+                }
+                else {
+                    substitutedJavaElement.toLightMethods().firstOrNull { it.name == name }
+                }
+            }
+            else substitutedJavaElement
+            renameCallback.pass(elementToProcess)
+        }
+
+        val deepestSuperDeclaration = findDeepestOverriddenDeclaration(callableDeclaration)
+        if (deepestSuperDeclaration == null || deepestSuperDeclaration == callableDeclaration) {
+            return preprocessAndPass(callableDeclaration)
+        }
+
+        val superPsiMethods = listOfNotNull(deepestSuperDeclaration.getRepresentativeLightMethod())
+        checkSuperMethodsWithPopup(callableDeclaration, superPsiMethods, "Rename", editor) {
+            preprocessAndPass(if (it.size > 1) deepestSuperDeclaration else callableDeclaration)
+        }
+    }
+
+    class PropertyMethodWrapper(private val propertyMethod: PsiMethod) : PsiNamedElement by propertyMethod, NavigationItem by propertyMethod {
         override fun getName() = propertyMethod.name
         override fun setName(name: String) = this
         override fun copy() = this
@@ -349,7 +380,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
 
         val adjustedUsages = if (element is KtParameter) usages.filterNot {
             val refTarget = it.reference?.resolve()
-            refTarget is KtLightMethod && isComponentLike(Name.guessByFirstCharacter(refTarget.name))
+            refTarget is KtLightMethod && DataClassDescriptorResolver.isComponentLike(Name.guessByFirstCharacter(refTarget.name))
         } else usages.toList()
 
         val refKindUsages = adjustedUsages.groupBy { usage: UsageInfo ->
@@ -413,7 +444,6 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
                     }
                 }
             }
-            true
         }
     }
 

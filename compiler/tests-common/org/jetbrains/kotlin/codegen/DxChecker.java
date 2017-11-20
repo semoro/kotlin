@@ -23,10 +23,10 @@ import com.android.dx.dex.cf.CfTranslator;
 import com.android.dx.dex.file.DexFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
+import org.jetbrains.org.objectweb.asm.Opcodes;
 import org.junit.Assert;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,11 +47,25 @@ public class DxChecker {
         for (OutputFile file : ClassFileUtilsKt.getClassFiles(outputFiles)) {
             try {
                 byte[] bytes = file.asByteArray();
-                checkFileWithDx(bytes, file.getRelativePath(), arguments);
+                if (isJava6Class(bytes)) {
+                    checkFileWithDx(bytes, file.getRelativePath(), arguments);
+                }
             }
             catch (Throwable e) {
                 Assert.fail(generateExceptionMessage(e));
             }
+        }
+    }
+
+    private static boolean isJava6Class(byte[] bytes) throws IOException {
+        try (DataInputStream stream = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            int header = stream.readInt();
+            if (0xCAFEBABE != header) {
+                throw new IOException("Invalid header class header: " + header);
+            }
+            int minor = stream.readUnsignedShort();
+            int major = stream.readUnsignedShort();
+            return major == Opcodes.V1_6;
         }
     }
 
@@ -77,15 +91,11 @@ public class DxChecker {
 
     private static String generateExceptionMessage(Throwable e) {
         StringWriter writer = new StringWriter();
-        PrintWriter printWriter = new PrintWriter(writer);
-        try {
+        try (PrintWriter printWriter = new PrintWriter(writer)) {
             e.printStackTrace(printWriter);
             String stackTrace = writer.toString();
             Matcher matcher = STACK_TRACE_PATTERN.matcher(stackTrace);
             return matcher.replaceAll("");
-        }
-        finally {
-            printWriter.close();
         }
     }
 }

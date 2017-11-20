@@ -1,6 +1,7 @@
 package templates
 
 import templates.Family.*
+import templates.SequenceClass.*
 
 fun generators(): List<GenericFunction> {
     val templates = arrayListOf<GenericFunction>()
@@ -18,6 +19,7 @@ fun generators(): List<GenericFunction> {
             """
         }
         doc(Sequences) { "Returns a sequence containing all elements of the original sequence and then the given [element]." }
+        sequenceClassification(intermediate, stateless)
 
         returns("List<T>")
         returns("SELF", Sets, Sequences)
@@ -29,6 +31,7 @@ fun generators(): List<GenericFunction> {
 
         only(Iterables, Collections, Sets, Sequences)
         doc { "Returns a list containing all elements of the original collection and then the given [element]." }
+        sequenceClassification(intermediate, stateless)
         returns("List<T>")
         body {
             """
@@ -48,7 +51,6 @@ fun generators(): List<GenericFunction> {
             """
         }
 
-        // TODO: use build scope function when available
         // TODO: use immutable sets when available
         returns("SELF", Sets, Sequences)
         doc(Sets) {
@@ -131,6 +133,7 @@ fun generators(): List<GenericFunction> {
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
             """
         }
+        sequenceClassification(intermediate, stateless)
         body(Sequences) {
             """
             return sequenceOf(this, elements.asSequence()).flatten()
@@ -186,6 +189,7 @@ fun generators(): List<GenericFunction> {
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
             """
         }
+        sequenceClassification(intermediate, stateless)
         body(Sequences) {
             """
             return this.plus(elements.asList())
@@ -244,6 +248,7 @@ fun generators(): List<GenericFunction> {
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
             """
         }
+        sequenceClassification(intermediate, stateless)
         body(Sequences) {
             """
             return sequenceOf(this, elements).flatten()
@@ -264,6 +269,7 @@ fun generators(): List<GenericFunction> {
             """
         }
         doc(Sequences) { "Returns a sequence containing all elements of the original sequence without the first occurrence of the given [element]." }
+        sequenceClassification(intermediate, stateless)
 
         returns("List<T>")
         returns("SELF", Sets, Sequences)
@@ -302,6 +308,7 @@ fun generators(): List<GenericFunction> {
 
 
         doc(Sequences) { "Returns a sequence containing all elements of the original sequence without the first occurrence of the given [element]." }
+        sequenceClassification(intermediate, stateless)
         body(Sequences) {
             """
             return object: Sequence<T> {
@@ -361,6 +368,7 @@ fun generators(): List<GenericFunction> {
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
             """
         }
+        sequenceClassification(intermediate, stateful)
         body(Sequences) {
             """
             return object: Sequence<T> {
@@ -413,6 +421,7 @@ fun generators(): List<GenericFunction> {
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
             """
         }
+        sequenceClassification(intermediate, stateful)
         body(Sequences) {
             """
             if (elements.isEmpty()) return this
@@ -463,6 +472,8 @@ fun generators(): List<GenericFunction> {
 
             Note that the source sequence and the sequence being subtracted are iterated only when an `iterator` is requested from
             the resulting sequence. Changing any of them between successive calls to `iterator` may affect the result.
+
+            The operation is _intermediate_ for this sequence and _terminal_ and _stateful_ for the [elements] sequence.
             """
         }
         body(Sequences) {
@@ -490,7 +501,7 @@ fun generators(): List<GenericFunction> {
             while *second* list contains elements for which [predicate] yielded `false`.
             """
         }
-        // TODO: Sequence variant
+        sequenceClassification(terminal)
         returns("Pair<List<T>, List<T>>")
         body {
             """
@@ -532,7 +543,7 @@ fun generators(): List<GenericFunction> {
         }
     }
 
-    templates add f("zip(other: Iterable<R>, transform: (T, R) -> V)") {
+    templates add f("zip(other: Iterable<R>, transform: (a: T, b: R) -> V)") {
         exclude(Sequences)
         doc {
             """
@@ -547,8 +558,7 @@ fun generators(): List<GenericFunction> {
             """
             val first = iterator()
             val second = other.iterator()
-            @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE")
-            val list = ArrayList<V>(Math.min(collectionSizeOrDefault(10), other.collectionSizeOrDefault(10)))
+            val list = ArrayList<V>(minOf(collectionSizeOrDefault(10), other.collectionSizeOrDefault(10)))
             while (first.hasNext() && second.hasNext()) {
                 list.add(transform(first.next(), second.next()))
             }
@@ -558,8 +568,7 @@ fun generators(): List<GenericFunction> {
         body(ArraysOfObjects, ArraysOfPrimitives) {
             """
             val arraySize = size
-            @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE")
-            val list = ArrayList<V>(Math.min(other.collectionSizeOrDefault(10), arraySize))
+            val list = ArrayList<V>(minOf(other.collectionSizeOrDefault(10), arraySize))
             var i = 0
             for (element in other) {
                 if (i >= arraySize) break
@@ -570,7 +579,7 @@ fun generators(): List<GenericFunction> {
         }
     }
 
-    templates add f("zip(other: Array<out R>, transform: (T, R) -> V)") {
+    templates add f("zip(other: Array<out R>, transform: (a: T, b: R) -> V)") {
         exclude(Sequences)
         doc {
             """
@@ -584,8 +593,7 @@ fun generators(): List<GenericFunction> {
         body {
             """
             val arraySize = other.size
-            @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE")
-            val list = ArrayList<V>(Math.min(collectionSizeOrDefault(10), arraySize))
+            val list = ArrayList<V>(minOf(collectionSizeOrDefault(10), arraySize))
             var i = 0
             for (element in this) {
                 if (i >= arraySize) break
@@ -596,7 +604,7 @@ fun generators(): List<GenericFunction> {
         }
         body(ArraysOfObjects, ArraysOfPrimitives) {
             """
-            val size = Math.min(size, other.size)
+            val size = minOf(size, other.size)
             val list = ArrayList<V>(size)
             for (i in 0..size-1) {
                 list.add(transform(this[i], other[i]))
@@ -607,7 +615,7 @@ fun generators(): List<GenericFunction> {
 
     }
 
-    templates add f("zip(other: SELF, transform: (T, T) -> V)") {
+    templates add f("zip(other: SELF, transform: (a: T, b: T) -> V)") {
         only(ArraysOfPrimitives)
         doc {
             """
@@ -619,7 +627,7 @@ fun generators(): List<GenericFunction> {
         inline(true)
         body() {
             """
-            val size = Math.min(size, other.size)
+            val size = minOf(size, other.size)
             val list = ArrayList<V>(size)
             for (i in 0..size-1) {
                 list.add(transform(this[i], other[i]))
@@ -629,13 +637,14 @@ fun generators(): List<GenericFunction> {
         }
     }
 
-    templates add f("zip(other: Sequence<R>, transform: (T, R) -> V)") {
+    templates add f("zip(other: Sequence<R>, transform: (a: T, b: R) -> V)") {
         only(Sequences)
         doc {
             """
             Returns a sequence of values built from elements of both collections with same indexes using provided [transform]. Resulting sequence has length of shortest input sequences.
             """
         }
+        sequenceClassification(intermediate, stateless)
         typeParam("R")
         typeParam("V")
         returns("Sequence<V>")
@@ -646,7 +655,7 @@ fun generators(): List<GenericFunction> {
         }
     }
 
-    templates add f("zip(other: CharSequence, transform: (Char, Char) -> V)") {
+    templates add f("zip(other: CharSequence, transform: (a: Char, b: Char) -> V)") {
         only(CharSequences)
         doc {
             """
@@ -658,7 +667,7 @@ fun generators(): List<GenericFunction> {
         inline(true)
         body {
             """
-            val length = Math.min(this.length, other.length)
+            val length = minOf(this.length, other.length)
 
             val list = ArrayList<V>(length)
             for (i in 0..length-1) {
@@ -745,6 +754,7 @@ fun generators(): List<GenericFunction> {
             Resulting sequence has length of shortest input sequence.
             """
         }
+        sequenceClassification(intermediate, stateless)
         typeParam("R")
         returns("Sequence<Pair<T, R>>")
         body {

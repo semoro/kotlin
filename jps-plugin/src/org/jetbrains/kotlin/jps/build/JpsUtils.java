@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.jps.build;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.jps.incremental.ModuleBuildTarget;
 import org.jetbrains.jps.model.java.JpsJavaClasspathKind;
 import org.jetbrains.jps.model.java.JpsJavaDependenciesEnumerator;
@@ -25,19 +26,18 @@ import org.jetbrains.jps.model.library.JpsLibrary;
 import org.jetbrains.jps.model.library.JpsLibraryRoot;
 import org.jetbrains.jps.model.library.JpsOrderRootType;
 import org.jetbrains.jps.util.JpsPathUtil;
+import org.jetbrains.kotlin.config.TargetPlatformKind;
+import org.jetbrains.kotlin.jps.JpsKotlinCompilerSettingsKt;
 import org.jetbrains.kotlin.utils.LibraryUtils;
 
-import java.util.AbstractMap;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 class JpsUtils {
+    private static final Map<ModuleBuildTarget, Boolean> IS_KOTLIN_JS_MODULE_CACHE = new ConcurrentHashMap<ModuleBuildTarget, Boolean>();
+    private static final Map<String, Boolean> IS_KOTLIN_JS_STDLIB_JAR_CACHE = new ConcurrentHashMap<String, Boolean>();
     private JpsUtils() {}
-
-    private static final Map<ModuleBuildTarget, Boolean> IS_KOTLIN_JS_MODULE_CACHE = createMapForCaching();
-    private static final Map<String, Boolean> IS_KOTLIN_JS_STDLIB_JAR_CACHE = createMapForCaching();
 
     @NotNull
     static JpsJavaDependenciesEnumerator getAllDependencies(@NotNull ModuleBuildTarget target) {
@@ -56,13 +56,19 @@ class JpsUtils {
     }
 
     private static boolean isJsKotlinModuleImpl(@NotNull ModuleBuildTarget target) {
+        TargetPlatformKind<?> targetPlatform = JpsKotlinCompilerSettingsKt.getTargetPlatform(target.getModule());
+        if (targetPlatform != null) return targetPlatform == TargetPlatformKind.JavaScript.INSTANCE;
+
         Set<JpsLibrary> libraries = getAllDependencies(target).getLibraries();
         for (JpsLibrary library : libraries) {
             for (JpsLibraryRoot root : library.getRoots(JpsOrderRootType.COMPILED)) {
                 String url = root.getUrl();
 
                 Boolean cachedValue = IS_KOTLIN_JS_STDLIB_JAR_CACHE.get(url);
-                if (cachedValue != null) return cachedValue;
+                if (cachedValue != null) {
+                    if (cachedValue.booleanValue()) return true;
+                    else continue;
+                }
 
                 boolean isKotlinJavascriptStdLibrary = LibraryUtils.isKotlinJavascriptStdLibrary(JpsPathUtil.urlToFile(url));
                 IS_KOTLIN_JS_STDLIB_JAR_CACHE.put(url, isKotlinJavascriptStdLibrary);
@@ -72,27 +78,9 @@ class JpsUtils {
         return false;
     }
 
-    private static <K, V> Map<K,V> createMapForCaching() {
-        if ("true".equalsIgnoreCase(System.getProperty("kotlin.jps.tests"))) {
-            return new AbstractMap<K, V>() {
-                @Override
-                public V put(K key, V value) {
-                    return null;
-                }
-
-                @Override
-                public V get(Object key) {
-                    return null;
-                }
-
-                @NotNull
-                @Override
-                public Set<Entry<K, V>> entrySet() {
-                    return Collections.emptySet();
-                }
-            };
-        }
-
-        return new ConcurrentHashMap<K, V>();
+    @TestOnly
+    static void resetCaches() {
+        IS_KOTLIN_JS_MODULE_CACHE.clear();
+        IS_KOTLIN_JS_STDLIB_JAR_CACHE.clear();
     }
 }

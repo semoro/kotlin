@@ -30,10 +30,11 @@ interface ResolutionFacade {
     val project: Project
 
     fun analyze(element: KtElement, bodyResolveMode: BodyResolveMode = BodyResolveMode.FULL): BindingContext
+    fun analyze(elements: Collection<KtElement>, bodyResolveMode: BodyResolveMode): BindingContext
 
     fun analyzeFullyAndGetResult(elements: Collection<KtElement>): AnalysisResult
 
-    fun resolveToDescriptor(declaration: KtDeclaration): DeclarationDescriptor
+    fun resolveToDescriptor(declaration: KtDeclaration, bodyResolveMode: BodyResolveMode = BodyResolveMode.FULL): DeclarationDescriptor
 
     val moduleDescriptor: ModuleDescriptor
 
@@ -44,6 +45,7 @@ interface ResolutionFacade {
 
     // get service for the module defined by PsiElement/ModuleDescriptor passed as parameter
     fun <T : Any> getFrontendService(element: PsiElement, serviceClass: Class<T>): T
+    fun <T : Any> tryGetFrontendService(element: PsiElement, serviceClass: Class<T>): T?
 
     fun <T : Any> getFrontendService(moduleDescriptor: ModuleDescriptor, serviceClass: Class<T>): T
 

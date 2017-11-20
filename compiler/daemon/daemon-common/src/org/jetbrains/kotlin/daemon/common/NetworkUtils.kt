@@ -31,6 +31,7 @@ import java.util.*
 
 
 val SOCKET_ANY_FREE_PORT  = 0
+val JAVA_RMI_SERVER_HOSTNAME = "java.rmi.server.hostname"
 
 object LoopbackNetworkInterface {
 
@@ -46,7 +47,7 @@ object LoopbackNetworkInterface {
     // TODO switch to InetAddress.getLoopbackAddress on java 7+
     val loopbackInetAddressName by lazy {
         try {
-            if (InetAddress.getLocalHost() is Inet6Address) IPV6_LOOPBACK_INET_ADDRESS else IPV4_LOOPBACK_INET_ADDRESS
+            if (InetAddress.getByName(null) is Inet6Address) IPV6_LOOPBACK_INET_ADDRESS else IPV4_LOOPBACK_INET_ADDRESS
         }
         catch (e: IOException) {
             // getLocalHost may fail for unknown reasons in some situations, the fallback is to assume IPv4 for now
@@ -63,7 +64,7 @@ object LoopbackNetworkInterface {
         override fun hashCode(): Int = super.hashCode()
 
         @Throws(IOException::class)
-        override fun createServerSocket(port: Int): ServerSocket = ServerSocket(port, SERVER_SOCKET_BACKLOG_SIZE, InetAddress.getByName(loopbackInetAddressName))
+        override fun createServerSocket(port: Int): ServerSocket = ServerSocket(port, SERVER_SOCKET_BACKLOG_SIZE, InetAddress.getByName(null))
     }
 
 
@@ -72,7 +73,7 @@ object LoopbackNetworkInterface {
         override fun hashCode(): Int = super.hashCode()
 
         @Throws(IOException::class)
-        override fun createSocket(host: String, port: Int): Socket = Socket(InetAddress.getByName(loopbackInetAddressName), port)
+        override fun createSocket(host: String, port: Int): Socket = Socket(InetAddress.getByName(null), port)
     }
 }
 
@@ -96,3 +97,12 @@ fun findPortAndCreateRegistry(attempts: Int, portRangeStart: Int, portRangeEnd: 
     throw IllegalStateException("Cannot find free port in $attempts attempts", lastException)
 }
 
+/**
+ * Needs to be set up on both client and server to prevent localhost resolution,
+ * which may be slow and can cause a timeout when there is a network problem/misconfiguration.
+ */
+fun ensureServerHostnameIsSetUp() {
+    if (System.getProperty(JAVA_RMI_SERVER_HOSTNAME) == null) {
+        System.setProperty(JAVA_RMI_SERVER_HOSTNAME, LoopbackNetworkInterface.loopbackInetAddressName)
+    }
+}

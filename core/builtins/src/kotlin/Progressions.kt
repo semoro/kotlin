@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ public open class CharProgression
             step: Int
     ) : Iterable<Char> {
     init {
-        if (step == 0) throw IllegalArgumentException("Step must be non-zero")
+        if (step == 0) throw kotlin.IllegalArgumentException("Step must be non-zero")
     }
 
     /**
@@ -85,7 +85,7 @@ public open class IntProgression
             step: Int
     ) : Iterable<Int> {
     init {
-        if (step == 0) throw IllegalArgumentException("Step must be non-zero")
+        if (step == 0) throw kotlin.IllegalArgumentException("Step must be non-zero")
     }
 
     /**
@@ -139,7 +139,7 @@ public open class LongProgression
             step: Long
     ) : Iterable<Long> {
     init {
-        if (step == 0L) throw IllegalArgumentException("Step must be non-zero")
+        if (step == 0L) throw kotlin.IllegalArgumentException("Step must be non-zero")
     }
 
     /**

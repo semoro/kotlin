@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.ConstModifierChecker
+import org.jetbrains.kotlin.resolve.checkers.ConstModifierChecker
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.source.PsiSourceElement
 
@@ -77,7 +77,7 @@ class AddConstModifierIntention : SelfTargetingIntention<KtProperty>(KtProperty:
                 return false
             }
             val propertyDescriptor = element.descriptor as? VariableDescriptor ?: return false
-            return ConstModifierChecker.checkCanBeConst(element, element, propertyDescriptor) == null
+            return ConstModifierChecker.canBeConst(element, element, propertyDescriptor)
         }
     }
 }
@@ -89,7 +89,7 @@ object ConstFixFactory : KotlinSingleIntentionActionFactory() {
         val bindingContext = expr.analyze(BodyResolveMode.PARTIAL)
         val targetDescriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, expr) as? VariableDescriptor ?: return null
         val declaration = (targetDescriptor.source as? PsiSourceElement)?.psi as? KtProperty ?: return null
-        if (ConstModifierChecker.checkCanBeConst(declaration, declaration, targetDescriptor) == null) {
+        if (ConstModifierChecker.canBeConst(declaration, declaration, targetDescriptor)) {
             return AddConstModifierFix(declaration)
         }
         return null

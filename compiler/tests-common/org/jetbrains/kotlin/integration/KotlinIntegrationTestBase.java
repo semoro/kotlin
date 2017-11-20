@@ -27,13 +27,11 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import kotlin.jvm.functions.Function1;
-import kotlin.text.MatchResult;
 import kotlin.text.Regex;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.cli.common.KotlinVersion;
+import org.jetbrains.kotlin.config.KotlinCompilerVersion;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestCaseWithTmpdir;
 import org.jetbrains.kotlin.utils.PathUtil;
@@ -71,12 +69,9 @@ public abstract class KotlinIntegrationTestBase extends TestCaseWithTmpdir {
         @Language("RegExp")
         String RELATIVE_PATH_WITH_MIXED_SEPARATOR = Regex.Companion.escape(pathId) + "[-.\\w/\\\\]*";
 
-        return new Regex(RELATIVE_PATH_WITH_MIXED_SEPARATOR).replace(contentWithRelativePaths, new Function1<MatchResult, String>() {
-            @Override
-            public String invoke(MatchResult mr) {
-                return FileUtil.toSystemIndependentName(mr.getValue());
-            }
-        });
+        return new Regex(RELATIVE_PATH_WITH_MIXED_SEPARATOR).replace(
+                contentWithRelativePaths, mr -> FileUtil.toSystemIndependentName(mr.getValue())
+        );
     }
 
     @NotNull
@@ -85,7 +80,8 @@ public abstract class KotlinIntegrationTestBase extends TestCaseWithTmpdir {
         content = normalizePath(content, tmpdir, "[Temp]");
         content = normalizePath(content, getCompilerLib(), "[CompilerLib]");
         content = normalizePath(content, getKotlinProjectHome(), "[KotlinProjectHome]");
-        content = content.replaceAll(Pattern.quote(KotlinVersion.VERSION), "[KotlinVersion]");
+        content = content.replaceAll(Pattern.quote(KotlinCompilerVersion.VERSION), "[KotlinVersion]");
+        content = content.replaceAll("\\(JRE .+\\)", "(JRE [JREVersion])");
         content = StringUtil.convertLineSeparators(content);
         return content;
     }

@@ -28,12 +28,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ForTestCompileRuntime {
-    private static volatile SoftReference<ClassLoader> reflectJarClassLoader = new SoftReference<ClassLoader>(null);
-    private static volatile SoftReference<ClassLoader> runtimeJarClassLoader = new SoftReference<ClassLoader>(null);
+    private static volatile SoftReference<ClassLoader> reflectJarClassLoader = new SoftReference<>(null);
+    private static volatile SoftReference<ClassLoader> runtimeJarClassLoader = new SoftReference<>(null);
 
     @NotNull
     public static File runtimeJarForTests() {
-        return assertExists(new File("dist/kotlinc/lib/kotlin-runtime.jar"));
+        return assertExists(new File("dist/kotlinc/lib/kotlin-stdlib.jar"));
     }
 
     @NotNull
@@ -52,6 +52,44 @@ public class ForTestCompileRuntime {
     }
 
     @NotNull
+    public static File scriptRuntimeJarForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-script-runtime.jar"));
+    }
+
+    @NotNull
+    public static File runtimeSourcesJarForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-runtime-sources.jar"));
+    }
+
+    @NotNull
+    public static File stdlibCommonForTests() {
+        return assertExists(new File("dist/common/kotlin-stdlib-common.jar"));
+    }
+
+    @NotNull
+    public static File stdlibJsForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-stdlib-js.jar"));
+    }
+
+    @NotNull
+    public static File jvmAnnotationsForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-annotations-jvm.jar"));
+    }
+
+    @NotNull
+    public static File androidAnnotationsForTests() {
+        return assertExists(new File("dist/kotlinc/lib/android-annotations.jar"));
+    }
+
+    // TODO: Do not use these classes, remove them after stdlib tests are merged in the same build as the compiler
+    @NotNull
+    @Deprecated
+    public static File[] runtimeClassesForTests() {
+        // TODO: replace hardcoded path with something flexible
+        return new File[] { assertExists(new File("dist/builtins")), assertExists(new File("build/kotlin-stdlib/classes/java/builtins")), assertExists(new File("build/kotlin-stdlib/classes/java/main")) };
+    }
+
+    @NotNull
     private static File assertExists(@NotNull File file) {
         if (!file.exists()) {
             throw new IllegalStateException(file + " does not exist. Run 'ant dist'");
@@ -63,8 +101,8 @@ public class ForTestCompileRuntime {
     public static synchronized ClassLoader runtimeAndReflectJarClassLoader() {
         ClassLoader loader = reflectJarClassLoader.get();
         if (loader == null) {
-            loader = createClassLoader(runtimeJarForTests(), reflectJarForTests(), kotlinTestJarForTests());
-            reflectJarClassLoader = new SoftReference<ClassLoader>(loader);
+            loader = createClassLoader(runtimeJarForTests(), reflectJarForTests(), scriptRuntimeJarForTests(), kotlinTestJarForTests());
+            reflectJarClassLoader = new SoftReference<>(loader);
         }
         return loader;
     }
@@ -73,8 +111,8 @@ public class ForTestCompileRuntime {
     public static synchronized ClassLoader runtimeJarClassLoader() {
         ClassLoader loader = runtimeJarClassLoader.get();
         if (loader == null) {
-            loader = createClassLoader(runtimeJarForTests());
-            runtimeJarClassLoader = new SoftReference<ClassLoader>(loader);
+            loader = createClassLoader(runtimeJarForTests(), scriptRuntimeJarForTests(), kotlinTestJarForTests());
+            runtimeJarClassLoader = new SoftReference<>(loader);
         }
         return loader;
     }
@@ -82,7 +120,7 @@ public class ForTestCompileRuntime {
     @NotNull
     private static ClassLoader createClassLoader(@NotNull File... files) {
         try {
-            List<URL> urls = new ArrayList<URL>(2);
+            List<URL> urls = new ArrayList<>(2);
             for (File file : files) {
                 urls.add(file.toURI().toURL());
             }

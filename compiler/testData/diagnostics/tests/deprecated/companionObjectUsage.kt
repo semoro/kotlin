@@ -8,8 +8,8 @@ class Another {
 
 fun first() {
     <!DEPRECATION!>Another<!>.use()
-    Another.<!DEPRECATION!>Companion<!>.<!DEPRECATION!>USE<!> // TODO
-    <!DEPRECATION!>Another<!>.<!DEPRECATION!>USE<!> // TODO
+    Another.<!DEPRECATION!>Companion<!>.USE
+    <!DEPRECATION!>Another<!>.USE
 }
 
 fun useCompanion() {
@@ -17,4 +17,16 @@ fun useCompanion() {
     val <!UNUSED_VARIABLE!>x<!> = Another.<!DEPRECATION!>Companion<!>
     Another.<!DEPRECATION!>Companion<!>.use()
     <!DEPRECATION!>Another<!>.use()
+}
+
+@Deprecated("Some")
+class Some {
+    companion object {
+        fun use() {}
+    }
+}
+
+fun some() {
+    <!DEPRECATION!>Some<!>.use()
+    <!DEPRECATION!>Some<!>.Companion.use()
 }

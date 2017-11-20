@@ -27,29 +27,31 @@ import kotlin.reflect.KClass
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.CONSTRUCTOR)
 @Retention(AnnotationRetention.BINARY)
 @MustBeDocumented
-annotation class JvmOverloads
-
+public annotation class JvmOverloads
 
 /**
- * Specifies that a static method or field needs to be generated from this element.
- * See the [Kotlin language documentation](http://kotlinlang.org/docs/reference/java-interop.html#static-methods-and-fields)
+ * Specifies that an additional static method needs to be generated from this element if it's a function.
+ * If this element is a property, additional static getter/setter methods should be generated.
+ *
+ * See the [Kotlin language documentation](https://kotlinlang.org/docs/reference/java-to-kotlin-interop.html#static-methods)
  * for more information.
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER)
 @Retention(AnnotationRetention.RUNTIME)
 @MustBeDocumented
-annotation class JvmStatic
+public annotation class JvmStatic
 
 /**
  * Specifies the name for the Java class or method which is generated from this element.
- * See the [Kotlin language documentation](http://kotlinlang.org/docs/reference/java-interop.html#handling-signature-clashes-with-jvmname)
+ *
+ * See the [Kotlin language documentation](https://kotlinlang.org/docs/reference/java-to-kotlin-interop.html#handling-signature-clashes-with-jvmname)
  * for more information.
  * @property name the name of the element.
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER, AnnotationTarget.FILE)
 @Retention(AnnotationRetention.BINARY)
 @MustBeDocumented
-annotation class JvmName(val name: String)
+public annotation class JvmName(val name: String)
 
 /**
  * Instructs the Kotlin compiler to generate a multifile class with top-level functions and properties declared in this file as one of its parts.
@@ -58,11 +60,11 @@ annotation class JvmName(val name: String)
 @Target(AnnotationTarget.FILE)
 @Retention(AnnotationRetention.SOURCE)
 @MustBeDocumented
-annotation class JvmMultifileClass
+public annotation class JvmMultifileClass
 
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER, AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.SOURCE)
-annotation class JvmSynthetic
+public annotation class JvmSynthetic
 
 /**
  * This annotation indicates what exceptions should be declared by a function when compiled to a JVM method.
@@ -84,16 +86,19 @@ annotation class JvmSynthetic
  */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER, AnnotationTarget.CONSTRUCTOR)
 @Retention(AnnotationRetention.SOURCE)
-annotation class Throws(vararg val exceptionClasses: KClass<out Throwable>)
+public annotation class Throws(vararg val exceptionClasses: KClass<out Throwable>)
 
 
 /**
  * Instructs the Kotlin compiler not to generate getters/setters for this property and expose it as a field.
+ *
+ * See the [Kotlin language documentation](https://kotlinlang.org/docs/reference/java-to-kotlin-interop.html#instance-fields)
+ * for more information.
  */
 @Target(AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.BINARY)
 @MustBeDocumented
-annotation class JvmField
+public annotation class JvmField
 
 /**
  * Instructs compiler to generate or omit wildcards for type arguments corresponding to parameters with
@@ -107,7 +112,7 @@ annotation class JvmField
 @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY, AnnotationTarget.TYPE)
 @Retention(AnnotationRetention.BINARY)
 @MustBeDocumented
-annotation class JvmSuppressWildcards(val suppress: Boolean = true)
+public annotation class JvmSuppressWildcards(val suppress: Boolean = true)
 
 /**
  * Instructs compiler to generate wildcard for annotated type arguments corresponding to parameters with declaration-site variance.
@@ -117,4 +122,4 @@ annotation class JvmSuppressWildcards(val suppress: Boolean = true)
 @Target(AnnotationTarget.TYPE)
 @Retention(AnnotationRetention.BINARY)
 @MustBeDocumented
-annotation class JvmWildcard
+public annotation class JvmWildcard

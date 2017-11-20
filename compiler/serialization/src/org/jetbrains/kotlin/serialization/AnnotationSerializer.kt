@@ -20,23 +20,23 @@ import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationArgumentVisitor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.resolve.constants.*
+import org.jetbrains.kotlin.resolve.descriptorUtil.annotationClass
 import org.jetbrains.kotlin.serialization.ProtoBuf.Annotation.Argument.Value
 import org.jetbrains.kotlin.serialization.ProtoBuf.Annotation.Argument.Value.Type
 import org.jetbrains.kotlin.types.ErrorUtils
 
 class AnnotationSerializer(private val stringTable: StringTable) {
     fun serializeAnnotation(annotation: AnnotationDescriptor): ProtoBuf.Annotation = ProtoBuf.Annotation.newBuilder().apply {
-        val annotationClass = annotation.type.constructor.declarationDescriptor as? ClassDescriptor
-                              ?: error("Annotation type is not a class: ${annotation.type}")
+        val annotationClass = annotation.annotationClass ?: error("Annotation type is not a class: ${annotation.type}")
         if (ErrorUtils.isError(annotationClass)) {
-            error("Unresolved annotation type: ${annotation.type}")
+            error("Unresolved annotation type: ${annotation.type} at ${annotation.source.containingFile}")
         }
 
         id = stringTable.getFqNameIndex(annotationClass)
 
-        for ((parameter, value) in annotation.allValueArguments) {
+        for ((name, value) in annotation.allValueArguments) {
             val argument = ProtoBuf.Annotation.Argument.newBuilder()
-            argument.nameId = stringTable.getStringIndex(parameter.name.asString())
+            argument.nameId = stringTable.getStringIndex(name.asString())
             argument.setValue(valueProto(value))
             addArgument(argument)
         }

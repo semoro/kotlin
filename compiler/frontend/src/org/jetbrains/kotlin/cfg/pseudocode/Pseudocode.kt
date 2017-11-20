@@ -39,9 +39,14 @@ interface Pseudocode {
 
     val exitInstruction: SubroutineExitInstruction
 
+    val errorInstruction: SubroutineExitInstruction
+
     val sinkInstruction: SubroutineSinkInstruction
 
     val enterInstruction: SubroutineEnterInstruction
+
+    val containsDoWhile: Boolean
+    val rootPseudocode: Pseudocode
 
     fun getElementValue(element: KtElement?): PseudoValue?
 

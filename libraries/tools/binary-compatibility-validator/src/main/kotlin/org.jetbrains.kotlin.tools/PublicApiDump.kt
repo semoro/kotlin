@@ -35,21 +35,25 @@ fun getBinaryAPI(classStreams: Sequence<InputStream>, visibilityMap: Map<String,
             val supertypes = listOf(superName) - "java/lang/Object" + interfaces.sorted()
 
             val memberSignatures = (
-                    fields.map { with(it) { FieldBinarySignature(name, desc, isInlineExposed(), AccessFlags(access)) } } +
-                    methods.map { with(it) { MethodBinarySignature(name, desc, isInlineExposed(), AccessFlags(access)) } }
+                    fields.map { with(it) { FieldBinarySignature(name, desc, isPublishedApi(), AccessFlags(access)) } } +
+                    methods.map { with(it) { MethodBinarySignature(name, desc, isPublishedApi(), AccessFlags(access)) } }
             ).filter {
                 it.isEffectivelyPublic(classAccess, classVisibility)
             }
 
-            ClassBinarySignature(name, superName, outerClassName, supertypes, memberSignatures, classAccess, isEffectivelyPublic(classVisibility), isFileOrMultipartFacade())
+            ClassBinarySignature(name, superName, outerClassName, supertypes, memberSignatures, classAccess, isEffectivelyPublic(classVisibility), isFileOrMultipartFacade() || isDefaultImpls())
         }}
         .asIterable()
         .sortedBy { it.name }
 
 
 
-fun List<ClassBinarySignature>.filterOutNonPublic(): List<ClassBinarySignature> {
+fun List<ClassBinarySignature>.filterOutNonPublic(nonPublicPackages: List<String> = emptyList()): List<ClassBinarySignature> {
+    val nonPublicPaths = nonPublicPackages.map { it.replace('.', '/') + '/' }
     val classByName = associateBy { it.name }
+
+    fun ClassBinarySignature.isInNonPublicPackage() =
+            nonPublicPaths.any { name.startsWith(it) }
 
     fun ClassBinarySignature.isPublicAndAccessible(): Boolean =
             isEffectivelyPublic &&
@@ -72,9 +76,9 @@ fun List<ClassBinarySignature>.filterOutNonPublic(): List<ClassBinarySignature> 
         return this.copy(memberSignatures = memberSignatures + inheritedStaticSignatures, supertypes = supertypes - superName)
     }
 
-    return filter { it.isPublicAndAccessible() }
+    return filter { !it.isInNonPublicPackage() && it.isPublicAndAccessible() }
             .map { it.flattenNonPublicBases() }
-            .filterNot { it.isFileOrMultipartFacade && it.memberSignatures.isEmpty()}
+            .filterNot { it.isNotUsedWhenEmpty && it.memberSignatures.isEmpty()}
 }
 
 fun List<ClassBinarySignature>.dump() = dump(to = System.out)

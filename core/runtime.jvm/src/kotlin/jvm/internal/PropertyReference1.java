@@ -16,18 +16,22 @@
 
 package kotlin.jvm.internal;
 
+import kotlin.SinceKotlin;
 import kotlin.reflect.KCallable;
 import kotlin.reflect.KProperty1;
 
-public class PropertyReference1 extends PropertyReference implements KProperty1 {
-    @Override
-    protected KCallable computeReflected() {
-        return Reflection.property1(this);
+public abstract class PropertyReference1 extends PropertyReference implements KProperty1 {
+    public PropertyReference1() {
+    }
+
+    @SinceKotlin(version = "1.1")
+    public PropertyReference1(Object receiver) {
+        super(receiver);
     }
 
     @Override
-    public Object get(Object receiver) {
-        return ((KProperty1) getReflected()).get(receiver);
+    protected KCallable computeReflected() {
+        return Reflection.property1(this);
     }
 
     @Override
@@ -38,5 +42,11 @@ public class PropertyReference1 extends PropertyReference implements KProperty1 
     @Override
     public KProperty1.Getter getGetter() {
         return ((KProperty1) getReflected()).getGetter();
+    }
+
+    @Override
+    @SinceKotlin(version = "1.1")
+    public Object getDelegate(Object receiver) {
+        return ((KProperty1) getReflected()).getDelegate(receiver);
     }
 }

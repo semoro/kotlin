@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2016 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,25 +18,30 @@
 
 package kotlin.collections
 
-import java.util.AbstractList
 
-private open class ReversedListReadOnly<T>(protected open val delegate: List<T>) : AbstractList<T>() {
+private open class ReversedListReadOnly<out T>(private val delegate: List<T>) : AbstractList<T>() {
     override val size: Int get() = delegate.size
-    override fun get(index: Int): T = delegate[index.flipIndex()]
-
-    protected fun Int.flipIndex(): Int = if (this in 0..size - 1) size - this - 1 else throw IndexOutOfBoundsException("index $this should be in range [${0..size - 1}].")
-    protected fun Int.flipIndexForward(): Int = if (this in 0..size) size - this else throw IndexOutOfBoundsException("index $this should be in range [${0..size}].")
+    override fun get(index: Int): T = delegate[reverseElementIndex(index)]
 }
 
-private class ReversedList<T>(protected override val delegate: MutableList<T>) : ReversedListReadOnly<T>(delegate) {
-    override fun clear() = delegate.clear()
-    override fun removeAt(index: Int): T = delegate.removeAt(index.flipIndex())
+private class ReversedList<T>(private val delegate: MutableList<T>) : AbstractMutableList<T>() {
+    override val size: Int get() = delegate.size
+    override fun get(index: Int): T = delegate[reverseElementIndex(index)]
 
-    override fun set(index: Int, element: T): T = delegate.set(index.flipIndex(), element)
+    override fun clear() = delegate.clear()
+    override fun removeAt(index: Int): T = delegate.removeAt(reverseElementIndex(index))
+
+    override fun set(index: Int, element: T): T = delegate.set(reverseElementIndex(index), element)
     override fun add(index: Int, element: T) {
-        delegate.add(index.flipIndexForward(), element)
+        delegate.add(reversePositionIndex(index), element)
     }
 }
+private fun List<*>.reverseElementIndex(index: Int) =
+        if (index in 0..lastIndex) lastIndex - index else throw IndexOutOfBoundsException("Element index $index must be in range [${0..lastIndex}].")
+
+private fun List<*>.reversePositionIndex(index: Int) =
+        if (index in 0..size) size - index else throw IndexOutOfBoundsException("Position index $index must be in range [${0..size}].")
+
 
 /**
  * Returns a reversed read-only view of the original List.

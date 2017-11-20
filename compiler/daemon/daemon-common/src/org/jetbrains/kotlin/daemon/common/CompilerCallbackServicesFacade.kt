@@ -29,6 +29,7 @@ import java.rmi.RemoteException
  * the reason for having common facade is attempt to reduce number of connections between client and daemon
  * Note: non-standard naming convention used to denote combining several entities in one facade - prefix <entityName>_ is used for every function belonging to the entity
  */
+@Deprecated("The usages should be replaced with `compile` method and `CompilerServicesFacadeBase` implementations", ReplaceWith("CompilerServicesFacadeBase"))
 interface CompilerCallbackServicesFacade : Remote {
 
     @Throws(RemoteException::class)
@@ -47,9 +48,6 @@ interface CompilerCallbackServicesFacade : Remote {
 
     @Throws(RemoteException::class)
     fun incrementalCache_getObsoleteMultifileClassFacades(target: TargetId): Collection<String>
-
-    @Throws(RemoteException::class)
-    fun incrementalCache_getMultifileFacade(target: TargetId, partInternalName: String): String?
 
     @Throws(RemoteException::class)
     fun incrementalCache_getPackagePartData(target: TargetId, partInternalName: String): JvmPackagePartProto?
@@ -83,7 +81,7 @@ interface CompilerCallbackServicesFacade : Remote {
     // ----------------------------------------------------
     // CompilationCanceledStatus
     @Throws(RemoteException::class, RmiFriendlyCompilationCanceledException::class)
-    fun compilationCanceledStatus_checkCanceled(): Unit
+    fun compilationCanceledStatus_checkCanceled(): Void?
 }
 
 

@@ -18,6 +18,8 @@ package org.jetbrains.kotlin
 
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager
 import com.intellij.psi.codeStyle.PackageEntry
+import com.intellij.testFramework.LightProjectDescriptor
+import junit.framework.TestCase
 import org.jetbrains.kotlin.idea.core.formatter.KotlinCodeStyleSettings
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
@@ -29,24 +31,23 @@ import java.io.File
 
 abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
     override fun getTestDataPath() = KotlinTestUtils.getHomeDirectory()
-    override fun getProjectDescriptor() = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
+    override fun getProjectDescriptor(): LightProjectDescriptor = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
 
     protected fun doTest(testPath: String) {
         val settingManager = CodeStyleSettingsManager.getInstance()
         val tempSettings = settingManager.currentSettings.clone()
-        settingManager.temporarySettings = tempSettings
+        settingManager.setTemporarySettings(tempSettings)
 
         val codeStyleSettings = KotlinCodeStyleSettings.getInstance(project)
 
         try {
             val fixture = myFixture
-            val dependencyPath = testPath.replace(".kt", ".dependency.kt")
-            if (File(dependencyPath).exists()) {
-                fixture.configureByFile(dependencyPath)
-            }
-            val javaDependencyPath = testPath.replace(".kt", ".dependency.java")
-            if (File(javaDependencyPath).exists()) {
-                fixture.configureByFile(javaDependencyPath)
+            val dependencySuffixes = listOf(".dependency.kt", ".dependency.java", ".dependency1.kt", ".dependency2.kt")
+            for (suffix in dependencySuffixes) {
+                val dependencyPath = testPath.replace(".kt", suffix)
+                if (File(dependencyPath).exists()) {
+                    fixture.configureByFile(dependencyPath)
+                }
             }
 
             fixture.configureByFile(testPath)
@@ -66,18 +67,26 @@ abstract class AbstractImportsTest : KotlinLightCodeInsightFixtureTestCase() {
                 codeStyleSettings.PACKAGES_TO_USE_STAR_IMPORTS.addEntry(PackageEntry(false, it.trim(), true))
             }
 
-            project.executeWriteCommand("") {
-                doTest(file)
-            }
+            val log = project.executeWriteCommand<String?>("") { doTest(file) }
 
             KotlinTestUtils.assertEqualsToFile(File(testPath + ".after"), myFixture.file.text)
+            if (log != null) {
+                val logFile = File(testPath + ".log")
+                if (log.isNotEmpty()) {
+                    KotlinTestUtils.assertEqualsToFile(logFile, log)
+                }
+                else {
+                    TestCase.assertFalse(logFile.exists())
+                }
+            }
         }
         finally {
             settingManager.dropTemporarySettings()
         }
     }
 
-    protected abstract fun doTest(file: KtFile)
+    // returns test log
+    protected abstract fun doTest(file: KtFile): String?
 
     protected open val nameCountToUseStarImportDefault: Int
         get() = 1

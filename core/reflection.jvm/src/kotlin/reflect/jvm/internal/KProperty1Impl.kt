@@ -17,11 +17,12 @@
 package kotlin.reflect.jvm.internal
 
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import kotlin.LazyThreadSafetyMode.PUBLICATION
 import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KProperty1
 
-internal open class KProperty1Impl<T, out R> : DescriptorBasedProperty<R>, KProperty1<T, R>, KPropertyImpl<R> {
-    constructor(container: KDeclarationContainerImpl, name: String, signature: String) : super(container, name, signature)
+internal open class KProperty1Impl<T, out R> : KProperty1<T, R>, KPropertyImpl<R> {
+    constructor(container: KDeclarationContainerImpl, name: String, signature: String, boundReceiver: Any?) : super(container, name, signature, boundReceiver)
 
     constructor(container: KDeclarationContainerImpl, descriptor: PropertyDescriptor) : super(container, descriptor)
 
@@ -31,6 +32,10 @@ internal open class KProperty1Impl<T, out R> : DescriptorBasedProperty<R>, KProp
 
     override fun get(receiver: T): R = getter.call(receiver)
 
+    private val delegateField = lazy(PUBLICATION) { computeDelegateField() }
+
+    override fun getDelegate(receiver: T): Any? = getDelegate(delegateField.value, receiver)
+
     override fun invoke(receiver: T): R = get(receiver)
 
     class Getter<T, out R>(override val property: KProperty1Impl<T, R>) : KPropertyImpl.Getter<R>(), KProperty1.Getter<T, R> {
@@ -38,8 +43,8 @@ internal open class KProperty1Impl<T, out R> : DescriptorBasedProperty<R>, KProp
     }
 }
 
-internal open class KMutableProperty1Impl<T, R> : KProperty1Impl<T, R>, KMutableProperty1<T, R>, KMutablePropertyImpl<R> {
-    constructor(container: KDeclarationContainerImpl, name: String, signature: String) : super(container, name, signature)
+internal class KMutableProperty1Impl<T, R> : KProperty1Impl<T, R>, KMutableProperty1<T, R> {
+    constructor(container: KDeclarationContainerImpl, name: String, signature: String, boundReceiver: Any?) : super(container, name, signature, boundReceiver)
 
     constructor(container: KDeclarationContainerImpl, descriptor: PropertyDescriptor) : super(container, descriptor)
 
@@ -49,7 +54,7 @@ internal open class KMutableProperty1Impl<T, R> : KProperty1Impl<T, R>, KMutable
 
     override fun set(receiver: T, value: R) = setter.call(receiver, value)
 
-    class Setter<T, R>(override val property: KMutableProperty1Impl<T, R>) : KMutablePropertyImpl.Setter<R>(), KMutableProperty1.Setter<T, R> {
+    class Setter<T, R>(override val property: KMutableProperty1Impl<T, R>) : KPropertyImpl.Setter<R>(), KMutableProperty1.Setter<T, R> {
         override fun invoke(receiver: T, value: R): Unit = property.set(receiver, value)
     }
 }

@@ -13,6 +13,10 @@ class MapTest {
         assertEquals(0, map.getOrDefault("y", 0))
         assertEquals(null, map.getOrDefault("z", 0))
         assertEquals(null, map.getOrDefault("y" as CharSequence, null))
+
+        val nonNullMap = mapOf("x" to 1)
+        assertEquals(null, nonNullMap.getOrDefault("y" as CharSequence, null))  // should pass
+        assertEquals("none", nonNullMap.getOrDefault("y" as CharSequence, "none"))  // should not compile
     }
 
     @Test fun forEach() {
@@ -69,43 +73,56 @@ class MapTest {
     }
 
     @Test fun computeIfAbsent() {
-        val map = mutableMapOf(2 to "x", 3 to null)
+        val map = mutableMapOf(2 to "x")
         assertEquals("x", map.computeIfAbsent(2) { it.toString() })
         assertEquals("3", map.computeIfAbsent(3) { it.toString() })
-        assertEquals(null, map.computeIfAbsent(0) { null })
+        // prohibited: map.computeIfAbsent(0) { null }
+
+        val map2 = mutableMapOf(2 to "x", 3 to null)
+        assertEquals("x", map2.computeIfAbsent(2) { it.toString() })
+        assertEquals("3", map2.computeIfAbsent(3) { it.toString() })
+        assertEquals(null, map2.computeIfAbsent(0) { null })
+        assertFalse(0 in map2)
     }
 
     @Test fun computeIfPresent() {
         val map = mutableMapOf(2 to "x")
         assertEquals("2x", map.computeIfPresent(2) { k, v -> k.toString() + v })
         assertEquals(null, map.computeIfPresent(3) { k, v -> k.toString() + v })
-        // fails due to KT-12144
-        // assertEquals(null, map.computeIfPresent(2) { k, v -> null })
-        // assertFalse(2 in map)
+        assertEquals(null, map.computeIfPresent(2) { _, _ -> null })
+        assertFalse(2 in map)
+
+        val map2 = mutableMapOf<Int, String?>(2 to "x")
+        assertEquals("2x", map2.computeIfPresent(2) { k, v -> k.toString() + v })
+        assertEquals(null, map2.computeIfPresent(3) { k, v -> k.toString() + v })
+        assertEquals(null, map2.computeIfPresent(2) { _, _ -> null })
+        assertFalse(2 in map2)
     }
 
     @Test fun compute() {
         val map = mutableMapOf(2 to "x")
         assertEquals("2x", map.compute(2) { k, v -> k.toString() + v })
-        // fails due to KT-12144
-        // assertEquals(null, map.compute(2) { k, v -> null })
-        // assertFalse { 2 in map }
+        assertEquals(null, map.compute(2) { _, _ -> null })
+        assertFalse { 2 in map }
         assertEquals("1null", map.compute(1) { k, v -> k.toString() + v })
     }
 
     @Test fun merge() {
         val map = mutableMapOf(2 to "x")
-        // fails due to KT-12144
-//        assertEquals("y", map.merge(3, "y") { old, new -> null })
-//        assertEquals(null, map.merge(3, "z") { old, new ->
-//            assertEquals("y", old)
-//            assertEquals("z", new)
-//            null
-//        })
-        // assertFalse(3 in map)
+        assertEquals("y", map.merge(3, "y") { _, _ -> null })
+        assertEquals(null, map.merge(3, "z") { old, new ->
+            assertEquals("y", old)
+            assertEquals("z", new)
+            null
+        })
+        assertFalse(3 in map)
 
-        val map2 = mutableMapOf<Int, Any?>(1 to null)
-        // new value must be V!!
-        assertFails { map2.merge(1, null) { k, v -> 2 } }
+        // fails due to KT-12144
+        val map2 = mutableMapOf<Int, String?>(1 to null)
+        // new value must be V&Any
+        assertEquals("e", map2.merge(1, "e") { old, new -> (old.length + new.length).toString() ?: null })
+        assertEquals("3", map2.merge(1, "fg") { old, new -> (old.length + new.length).toString() ?: null })
+        assertEquals(null, map2.merge(1, "3") { _, _ -> null })
+        assertFalse(1 in map)
     }
 }

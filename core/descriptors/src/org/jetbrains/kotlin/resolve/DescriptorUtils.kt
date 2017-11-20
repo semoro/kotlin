@@ -20,22 +20,34 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.ClassKind.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotated
+import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.KotlinRetention
+import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.FqNameUnsafe
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.DescriptorUtils.getContainingClass
 import org.jetbrains.kotlin.resolve.constants.EnumValue
+import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
+import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.TypeProjection
+import org.jetbrains.kotlin.types.TypeSubstitutor
+import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
+import org.jetbrains.kotlin.types.typeUtil.isAnyOrNullableAny
+import org.jetbrains.kotlin.types.typeUtil.makeNullable
 import org.jetbrains.kotlin.utils.DFS
-import org.jetbrains.kotlin.utils.addToStdlib.check
+import org.jetbrains.kotlin.utils.SmartList
 
 fun ClassDescriptor.getClassObjectReferenceTarget(): ClassDescriptor = companionObjectDescriptor ?: this
 
 fun DeclarationDescriptor.getImportableDescriptor(): DeclarationDescriptor {
     return when {
+        this is TypeAliasConstructorDescriptor -> containingDeclaration
         this is ConstructorDescriptor -> containingDeclaration
         this is PropertyAccessorDescriptor -> correspondingProperty
         else -> this
@@ -59,35 +71,47 @@ fun ModuleDescriptor.resolveTopLevelClass(topLevelClassFqName: FqName, location:
     return getPackage(topLevelClassFqName.parent()).memberScope.getContributedClassifier(topLevelClassFqName.shortName(), location) as? ClassDescriptor
 }
 
-val ClassDescriptor.classId: ClassId
-    get() {
-        val owner = containingDeclaration
-        if (owner is PackageFragmentDescriptor) {
-            return ClassId(owner.fqName, name)
-        }
-        else if (owner is ClassDescriptor) {
-            return owner.classId.createNestedClassId(name)
-        }
-        throw IllegalStateException("Illegal container: $owner")
+val ClassifierDescriptorWithTypeParameters.denotedClassDescriptor: ClassDescriptor?
+    get() = when (this) {
+        is ClassDescriptor -> this
+        is TypeAliasDescriptor -> classDescriptor
+        else -> throw UnsupportedOperationException("Unexpected descriptor kind: $this")
     }
 
-val ClassDescriptor.hasCompanionObject: Boolean get() = companionObjectDescriptor != null
+val ClassifierDescriptorWithTypeParameters.classId: ClassId?
+    get() = containingDeclaration.let { owner ->
+        when (owner) {
+            is PackageFragmentDescriptor -> ClassId(owner.fqName, name)
+            is ClassifierDescriptorWithTypeParameters -> owner.classId?.createNestedClassId(name)
+            else -> null
+        }
+    }
+
+val ClassifierDescriptorWithTypeParameters.hasCompanionObject: Boolean
+    get() = denotedClassDescriptor?.companionObjectDescriptor != null
 
 val ClassDescriptor.hasClassValueDescriptor: Boolean get() = classValueDescriptor != null
 
-val ClassDescriptor.classValueDescriptor: ClassDescriptor?
-    get() = if (kind.isSingleton) this else companionObjectDescriptor
+val ClassifierDescriptorWithTypeParameters.classValueDescriptor: ClassDescriptor?
+    get() = denotedClassDescriptor?.let {
+        if (it.kind.isSingleton)
+            it
+        else
+            it.companionObjectDescriptor
+    }
 
-val ClassDescriptor.classValueTypeDescriptor: ClassDescriptor?
-    get() = when (kind) {
-        OBJECT -> this
-        ENUM_ENTRY -> {
-            // enum entry has the type of enum class
-            val container = this.containingDeclaration
-            assert(container is ClassDescriptor && container.kind == ENUM_CLASS)
-            container as ClassDescriptor
+val ClassifierDescriptorWithTypeParameters.classValueTypeDescriptor: ClassDescriptor?
+    get() = denotedClassDescriptor?.let {
+        when (it.kind) {
+            OBJECT -> it
+            ENUM_ENTRY -> {
+                // enum entry has the type of enum class
+                val container = this.containingDeclaration
+                assert(container is ClassDescriptor && container.kind == ENUM_CLASS)
+                container as ClassDescriptor
+            }
+            else -> it.companionObjectDescriptor
         }
-        else -> companionObjectDescriptor
     }
 
 /** If a literal of this class can be used as a value, returns the type of this value */
@@ -103,7 +127,7 @@ val DeclarationDescriptorWithVisibility.isEffectivelyPrivateApi: Boolean
 
 val DeclarationDescriptor.isInsidePrivateClass: Boolean
     get() {
-        var parent = containingDeclaration as? ClassDescriptor
+        val parent = containingDeclaration as? ClassDescriptor
         return parent != null && Visibilities.isPrivate(parent.visibility)
     }
 
@@ -131,7 +155,7 @@ fun ClassDescriptor.getSuperInterfaces(): List<ClassDescriptor> =
                     else null
                 }
 
-val ClassDescriptor.secondaryConstructors: List<ConstructorDescriptor>
+val ClassDescriptor.secondaryConstructors: List<ClassConstructorDescriptor>
     get() = constructors.filterNot { it.isPrimary }
 
 val DeclarationDescriptor.builtIns: KotlinBuiltIns
@@ -175,6 +199,14 @@ fun ValueParameterDescriptor.hasDefaultValue(): Boolean {
     )
 }
 
+fun FunctionDescriptor.hasOrInheritsParametersWithDefaultValue(): Boolean = DFS.ifAny(
+        listOf(this),
+        { current -> current.overriddenDescriptors.map { it.original } },
+        { it.hasOwnParametersWithDefaultValue() }
+)
+
+fun FunctionDescriptor.hasOwnParametersWithDefaultValue() = original.valueParameters.any { it.declaresDefaultValue() }
+
 fun Annotated.isRepeatableAnnotation(): Boolean =
         annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.repeatable) != null
 
@@ -182,10 +214,10 @@ fun Annotated.isDocumentedAnnotation(): Boolean =
         annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.mustBeDocumented) != null
 
 fun Annotated.getAnnotationRetention(): KotlinRetention? {
-    val annotationEntryDescriptor = annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.retention) ?: return null
-    val retentionArgumentValue = annotationEntryDescriptor.allValueArguments.entries.firstOrNull {
-        it.key.name.asString() == "value"
-    }?.value as? EnumValue ?: return null
+    val retentionArgumentValue = annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.retention)
+                                         ?.allValueArguments
+                                         ?.get(Name.identifier("value"))
+                                         as? EnumValue ?: return null
     return KotlinRetention.valueOf(retentionArgumentValue.value.name.asString())
 }
 
@@ -198,7 +230,7 @@ val DeclarationDescriptor.parents: Sequence<DeclarationDescriptor>
 val CallableMemberDescriptor.propertyIfAccessor: CallableMemberDescriptor
     get() = if (this is PropertyAccessorDescriptor) correspondingProperty else this
 
-fun CallableDescriptor.fqNameOrNull(): FqName? = fqNameUnsafe.check { it.isSafe }?.toSafe()
+fun CallableDescriptor.fqNameOrNull(): FqName? = fqNameUnsafe.takeIf { it.isSafe }?.toSafe()
 
 fun CallableMemberDescriptor.firstOverridden(
         useOriginal: Boolean = false,
@@ -231,16 +263,17 @@ fun CallableMemberDescriptor.overriddenTreeAsSequence(useOriginal: Boolean): Seq
         sequenceOf(this) + overriddenDescriptors.asSequence().flatMap { it.overriddenTreeAsSequence(useOriginal) }
     }
 
-fun CallableDescriptor.overriddenTreeUniqueAsSequence(useOriginal: Boolean): Sequence<CallableDescriptor> {
-    val set = hashSetOf<CallableDescriptor>()
+fun <D : CallableDescriptor> D.overriddenTreeUniqueAsSequence(useOriginal: Boolean): Sequence<D> {
+    val set = hashSetOf<D>()
 
-    fun CallableDescriptor.doBuildOverriddenTreeAsSequence(): Sequence<CallableDescriptor> {
-        return with(if (useOriginal) original else this) {
+    @Suppress("UNCHECKED_CAST")
+    fun D.doBuildOverriddenTreeAsSequence(): Sequence<D> {
+        return with(if (useOriginal) original as D else this) {
             if (original in set)
                 emptySequence()
             else {
-                set += original
-                sequenceOf(this) + overriddenDescriptors.asSequence().flatMap { it.doBuildOverriddenTreeAsSequence() }
+                set += original as D
+                sequenceOf(this) + (overriddenDescriptors as Collection<D>).asSequence().flatMap { it.doBuildOverriddenTreeAsSequence() }
             }
         }
     }
@@ -248,19 +281,155 @@ fun CallableDescriptor.overriddenTreeUniqueAsSequence(useOriginal: Boolean): Seq
     return doBuildOverriddenTreeAsSequence()
 }
 
-fun ClassDescriptor.getConstructorByParams(params: List<KotlinType>): ConstructorDescriptor? =
-    getConstructors().firstOrNull {
-        when {
-            it.valueParameters.isEmpty() && params.isEmpty() -> true
-            it.valueParameters.size != params.size -> false
-            else -> it.valueParameters.zip(params) { ctorP, p -> ctorP.type == p }.all { it }
+fun CallableDescriptor.varargParameterPosition() =
+        valueParameters.indexOfFirst { it.varargElementType != null }
+
+/**
+ * When `Inner` is used as type outside of `Outer` class all type arguments should be specified, e.g. `Outer<String, Int>.Inner<Double>`
+ * However, it's not necessary inside Outer's members, only the last one should be specified there.
+ * So this function return a list of arguments that should be used if relevant arguments weren't specified explicitly inside the [scopeOwner].
+ *
+ * Examples:
+ * for `Outer` class the map will contain: Outer -> (X, Y) (i.e. defaultType mapping)
+ * for `Derived` class the map will contain: Derived -> (E), Outer -> (E, String)
+ * for `A.B` class the map will contain: B -> (), Outer -> (Int, CharSequence), A -> ()
+ *
+ * open class Outer<X, Y> {
+ *  inner class Inner<Z>
+ * }
+ *
+ * class Derived<E> : Outer<E, String>()
+ *
+ * class A : Outer<String, Double>() {
+ *   inner class B : Outer<Int, CharSequence>()
+ * }
+ */
+fun findImplicitOuterClassArguments(scopeOwner: ClassDescriptor, outerClass: ClassDescriptor): List<TypeProjection>? {
+    for (current in scopeOwner.classesFromInnerToOuter()) {
+        for (supertype in current.getAllSuperClassesTypesIncludeItself()) {
+            val classDescriptor = supertype.constructor.declarationDescriptor as ClassDescriptor
+            if (classDescriptor == outerClass) return supertype.arguments
         }
     }
 
-// TODO: inline and remove as soon as all usage sies are converted to kotlin
-fun getConstructorByParamsMap(classDescriptor: ClassDescriptor, params: List<Pair<Name, KotlinType>>): ConstructorDescriptor? =
-        classDescriptor.getConstructorByParams(params.map { it.second })
+    return null
+}
 
+private fun ClassDescriptor.classesFromInnerToOuter() = generateSequence(this) {
+    if (it.isInner)
+        it.containingDeclaration.original as? ClassDescriptor
+    else
+        null
+}
 
-fun CallableDescriptor.varargParameterPosition() =
-        valueParameters.indexOfFirst { it.varargElementType != null }
+private fun ClassDescriptor.getAllSuperClassesTypesIncludeItself(): List<KotlinType> {
+    val result = arrayListOf<KotlinType>()
+    var current: KotlinType = defaultType
+
+    while (!current.isAnyOrNullableAny()) {
+        result.add(current)
+        val next = DescriptorUtils.getSuperClassType(current.constructor.declarationDescriptor as ClassDescriptor)
+        current = TypeSubstitutor.create(current).substitute(next, Variance.INVARIANT) ?: break
+    }
+
+    return result
+}
+
+fun FunctionDescriptor.isEnumValueOfMethod(): Boolean {
+    val methodTypeParameters = valueParameters
+    val nullableString = builtIns.stringType.makeNullable()
+    return DescriptorUtils.ENUM_VALUE_OF == name
+           && methodTypeParameters.size == 1
+           && KotlinTypeChecker.DEFAULT.isSubtypeOf(methodTypeParameters[0].type, nullableString)
+}
+
+val DeclarationDescriptor.isExtensionProperty: Boolean
+    get() = this is PropertyDescriptor && extensionReceiverParameter != null
+
+fun ClassDescriptor.getAllSuperclassesWithoutAny() =
+        generateSequence(getSuperClassNotAny(), ClassDescriptor::getSuperClassNotAny).toCollection(SmartList<ClassDescriptor>())
+
+fun ClassifierDescriptor.getAllSuperClassifiers(): Sequence<ClassifierDescriptor> {
+    val set = hashSetOf<ClassifierDescriptor>()
+
+    fun ClassifierDescriptor.doGetAllSuperClassesAndInterfaces(): Sequence<ClassifierDescriptor> =
+        if (original in set) {
+            emptySequence()
+        }
+        else {
+            set += original
+            sequenceOf(original) + typeConstructor.supertypes.asSequence().flatMap { it.constructor.declarationDescriptor?.doGetAllSuperClassesAndInterfaces() ?: sequenceOf() }
+        }
+
+    return doGetAllSuperClassesAndInterfaces()
+}
+
+// Note this is a generic and slow implementation which would work almost for any subclass of ClassDescriptor.
+// Please avoid using it in new code.
+// TODO: do something more clever instead at call sites of this function
+fun computeSealedSubclasses(sealedClass: ClassDescriptor): Collection<ClassDescriptor> {
+    if (sealedClass.modality != Modality.SEALED) return emptyList()
+
+    val result = linkedSetOf<ClassDescriptor>()
+
+    fun collectSubclasses(scope: MemberScope, collectNested: Boolean) {
+        for (descriptor in scope.getContributedDescriptors(DescriptorKindFilter.CLASSIFIERS)) {
+            if (descriptor !is ClassDescriptor) continue
+
+            if (DescriptorUtils.isDirectSubclass(descriptor, sealedClass)) {
+                result.add(descriptor)
+            }
+
+            if (collectNested) {
+                collectSubclasses(descriptor.unsubstitutedInnerClassesScope, collectNested)
+            }
+        }
+    }
+
+    val container = sealedClass.containingDeclaration
+    if (container is PackageFragmentDescriptor) {
+        collectSubclasses(container.getMemberScope(), collectNested = false)
+    }
+    collectSubclasses(sealedClass.unsubstitutedInnerClassesScope, collectNested = true)
+    return result
+}
+
+fun ClassDescriptor.getNoArgsConstructor(): ClassConstructorDescriptor? =
+        constructors.find { it.valueParameters.isEmpty() }
+
+fun ClassDescriptor.getConstructorForEmptyArgumentsList(): List<ClassConstructorDescriptor> =
+        constructors.filter { it.valueParameters.all { it.hasDefaultValue() || it.varargElementType != null } }
+
+fun DeclarationDescriptor.isPublishedApi(): Boolean {
+    val descriptor = if (this is CallableMemberDescriptor) DescriptorUtils.getDirectMember(this) else this
+    return descriptor.annotations.hasAnnotation(KotlinBuiltIns.FQ_NAMES.publishedApi)
+}
+
+fun DeclarationDescriptor.isAncestorOf(descriptor: DeclarationDescriptor, strict: Boolean): Boolean
+        = DescriptorUtils.isAncestor(this, descriptor, strict)
+
+fun DeclarationDescriptor.isCompanionObject(): Boolean = DescriptorUtils.isCompanionObject(this)
+
+fun ClassDescriptor.isSubclassOf(superclass: ClassDescriptor): Boolean = DescriptorUtils.isSubclass(this, superclass)
+
+val AnnotationDescriptor.annotationClass: ClassDescriptor?
+    get() = type.constructor.declarationDescriptor as? ClassDescriptor
+
+fun AnnotationDescriptor.firstArgumentValue() = allValueArguments.values.firstOrNull()?.value
+
+fun MemberDescriptor.isEffectivelyExternal(): Boolean {
+    if (isExternal) return true
+
+    if (this is PropertyAccessorDescriptor) {
+        val variableDescriptor = correspondingProperty
+        if (variableDescriptor.isEffectivelyExternal()) return true
+    }
+
+    if (this is PropertyDescriptor) {
+        if (getter?.isExternal == true &&
+            (!isVar || setter?.isExternal == true)) return true
+    }
+
+    val containingClass = getContainingClass(this)
+    return containingClass != null && containingClass.isEffectivelyExternal()
+}

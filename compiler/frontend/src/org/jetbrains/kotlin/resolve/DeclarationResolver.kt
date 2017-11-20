@@ -18,14 +18,13 @@ package org.jetbrains.kotlin.resolve
 
 import com.google.common.collect.HashMultimap
 import com.google.common.collect.Multimap
-import com.google.common.collect.Sets
-import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.MemberDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Errors.REDECLARATION
+import org.jetbrains.kotlin.diagnostics.reportOnDeclaration
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.name.FqName
@@ -60,39 +59,18 @@ class DeclarationResolver(
                 }
             }
 
-            reportRedeclarations(descriptorMap)
+            reportRedeclarationsWithClassifiers(descriptorMap)
         }
     }
 
-    private fun reportRedeclarations(descriptorMap: Multimap<Name, DeclarationDescriptor>) {
-        val redeclarations = Sets.newHashSet<Pair<PsiElement, Name>>()
+    private fun reportRedeclarationsWithClassifiers(descriptorMap: Multimap<Name, DeclarationDescriptor>) {
         for (name in descriptorMap.keySet()) {
             val descriptors = descriptorMap[name]
-            if (descriptors.size <= 1) {
-                continue
-            }
-            // We mustn't compare PropertyDescriptor with PropertyDescriptor because we do this at OverloadResolver
-            for (descriptor in descriptors) {
-                if (descriptor is ClassifierDescriptor) {
-                    for (descriptor2 in descriptors) {
-                        if (descriptor === descriptor2) {
-                            continue
-                        }
-
-                        DescriptorToSourceUtils.getSourceFromDescriptor(descriptor)?.let {
-                            redeclarations.add(Pair(it, descriptor.getName()))
-                        }
-                        if (descriptor2 is PropertyDescriptor) {
-                            DescriptorToSourceUtils.descriptorToDeclaration(descriptor2)?.let {
-                                redeclarations.add(Pair(it, descriptor2.getName()))
-                            }
-                        }
-                    }
+            if (descriptors.size > 1 && descriptors.any { it is ClassifierDescriptor }) {
+                for (descriptor in descriptors) {
+                    reportOnDeclaration(trace, descriptor) { REDECLARATION.on(it, descriptors) }
                 }
             }
-        }
-        for ((first, second) in redeclarations) {
-            trace.report(REDECLARATION.on(first, second.asString()))
         }
     }
 
@@ -100,14 +78,17 @@ class DeclarationResolver(
         for ((fqName, declarationsOrPackageDirectives) in topLevelFqNames.asMap()) {
             if (fqName.isRoot) continue
 
-            val descriptors = getTopLevelDescriptorsByFqName(topLevelDescriptorProvider, fqName, NoLookupLocation.WHEN_CHECK_REDECLARATIONS)
+            // TODO: report error on expected class and actual val, or vice versa
+            val (expected, actual) =
+                    getTopLevelDescriptorsByFqName(topLevelDescriptorProvider, fqName, NoLookupLocation.WHEN_CHECK_DECLARATION_CONFLICTS)
+                    .partition { it is MemberDescriptor && it.isExpect }
 
-            if (descriptors.size > 1) {
-                for (declarationOrPackageDirective in declarationsOrPackageDirectives) {
-                    val reportAt =
-                            if (declarationOrPackageDirective is KtPackageDirective) declarationOrPackageDirective.getNameIdentifier()
-                            else declarationOrPackageDirective
-                    trace.report(Errors.REDECLARATION.on(reportAt!!, fqName.shortName().asString()))
+            for (descriptors in listOf(expected, actual)) {
+                if (descriptors.size > 1) {
+                    for (directive in declarationsOrPackageDirectives) {
+                        val reportAt = (directive as? KtPackageDirective)?.nameIdentifier ?: directive
+                        trace.report(Errors.PACKAGE_OR_CLASSIFIER_REDECLARATION.on(reportAt, fqName.shortName().asString()))
+                    }
                 }
             }
         }

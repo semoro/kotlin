@@ -84,9 +84,7 @@ public class LazySubstitutingClassDescriptor implements ClassDescriptor {
                 supertypes.add(substitutor.substitute(supertype, Variance.INVARIANT));
             }
 
-            typeConstructor = new ClassTypeConstructorImpl(
-                    this, originalTypeConstructor.getAnnotations(), originalTypeConstructor.isFinal(), typeConstructorParameters, supertypes
-            );
+            typeConstructor = new ClassTypeConstructorImpl(this, originalTypeConstructor.isFinal(), typeConstructorParameters, supertypes);
         }
 
         return typeConstructor;
@@ -143,11 +141,11 @@ public class LazySubstitutingClassDescriptor implements ClassDescriptor {
 
     @NotNull
     @Override
-    public Collection<ConstructorDescriptor> getConstructors() {
-        Collection<ConstructorDescriptor> originalConstructors = original.getConstructors();
-        Collection<ConstructorDescriptor> result = new ArrayList<ConstructorDescriptor>(originalConstructors.size());
-        for (ConstructorDescriptor constructor : originalConstructors) {
-            ConstructorDescriptor copy =
+    public Collection<ClassConstructorDescriptor> getConstructors() {
+        Collection<ClassConstructorDescriptor> originalConstructors = original.getConstructors();
+        Collection<ClassConstructorDescriptor> result = new ArrayList<ClassConstructorDescriptor>(originalConstructors.size());
+        for (ClassConstructorDescriptor constructor : originalConstructors) {
+            ClassConstructorDescriptor copy =
                     constructor.copy(this, constructor.getModality(), constructor.getVisibility(), constructor.getKind(), false);
             result.add(copy.substitute(getSubstitutor()));
         }
@@ -219,8 +217,23 @@ public class LazySubstitutingClassDescriptor implements ClassDescriptor {
     }
 
     @Override
+    public boolean isExternal() {
+        return original.isExternal();
+    }
+
+    @Override
     public boolean isCompanionObject() {
         return original.isCompanionObject();
+    }
+
+    @Override
+    public boolean isExpect() {
+        return original.isExpect();
+    }
+
+    @Override
+    public boolean isActual() {
+        return original.isActual();
     }
 
     @Override
@@ -241,7 +254,7 @@ public class LazySubstitutingClassDescriptor implements ClassDescriptor {
 
     @Nullable
     @Override
-    public ConstructorDescriptor getUnsubstitutedPrimaryConstructor() {
+    public ClassConstructorDescriptor getUnsubstitutedPrimaryConstructor() {
         return original.getUnsubstitutedPrimaryConstructor();
     }
 
@@ -256,5 +269,11 @@ public class LazySubstitutingClassDescriptor implements ClassDescriptor {
     public List<TypeParameterDescriptor> getDeclaredTypeParameters() {
         getSubstitutor();
         return declaredTypeParameters;
+    }
+
+    @NotNull
+    @Override
+    public Collection<ClassDescriptor> getSealedSubclasses() {
+        return original.getSealedSubclasses();
     }
 }

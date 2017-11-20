@@ -17,15 +17,21 @@
 package org.jetbrains.kotlin.serialization
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.isSuspendFunctionType
+import org.jetbrains.kotlin.builtins.transformSuspendFunctionToRuntimeFunctionType
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotated
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.protobuf.MessageLite
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils.isEnumEntry
 import org.jetbrains.kotlin.resolve.MemberComparator
 import org.jetbrains.kotlin.resolve.constants.NullValue
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.SinceKotlinInfo
 import org.jetbrains.kotlin.types.*
+import org.jetbrains.kotlin.types.typeUtil.contains
 import org.jetbrains.kotlin.utils.Interner
 import java.io.ByteArrayOutputStream
 import java.util.*
@@ -35,6 +41,7 @@ class DescriptorSerializer private constructor(
         private val typeParameters: Interner<TypeParameterDescriptor>,
         private val extension: SerializerExtension,
         private val typeTable: MutableTypeTable,
+        private val sinceKotlinInfoTable: MutableSinceKotlinInfoTable,
         private val serializeTypeTableToFunction: Boolean
 ) {
     fun serialize(message: MessageLite): ByteArray {
@@ -45,7 +52,8 @@ class DescriptorSerializer private constructor(
     }
 
     private fun createChildSerializer(descriptor: DeclarationDescriptor): DescriptorSerializer =
-            DescriptorSerializer(descriptor, Interner(typeParameters), extension, typeTable, serializeTypeTableToFunction = false)
+            DescriptorSerializer(descriptor, Interner(typeParameters), extension, typeTable, sinceKotlinInfoTable,
+                                 serializeTypeTableToFunction = false)
 
     val stringTable: StringTable
         get() = extension.stringTable
@@ -57,7 +65,8 @@ class DescriptorSerializer private constructor(
 
         val flags = Flags.getClassFlags(
                 hasAnnotations(classDescriptor), classDescriptor.visibility, classDescriptor.modality, classDescriptor.kind,
-                classDescriptor.isInner, classDescriptor.isCompanionObject, classDescriptor.isData
+                classDescriptor.isInner, classDescriptor.isCompanionObject, classDescriptor.isData, classDescriptor.isExternal,
+                classDescriptor.isExpect
         )
         if (flags != builder.flags) {
             builder.flags = flags
@@ -111,6 +120,10 @@ class DescriptorSerializer private constructor(
             }
         }
 
+        for (sealedSubclass in classDescriptor.sealedSubclasses) {
+            builder.addSealedSubclassFqName(getClassifierId(sealedSubclass))
+        }
+
         val companionObjectDescriptor = classDescriptor.companionObjectDescriptor
         if (companionObjectDescriptor != null) {
             builder.companionObjectName = getSimpleNameIndex(companionObjectDescriptor.name)
@@ -119,6 +132,11 @@ class DescriptorSerializer private constructor(
         val typeTableProto = typeTable.serialize()
         if (typeTableProto != null) {
             builder.typeTable = typeTableProto
+        }
+
+        val sinceKotlinInfoProto = sinceKotlinInfoTable.serialize()
+        if (sinceKotlinInfoProto != null) {
+            builder.sinceKotlinInfoTable = sinceKotlinInfoProto
         }
 
         extension.serializeClass(classDescriptor, builder)
@@ -133,8 +151,6 @@ class DescriptorSerializer private constructor(
 
         var hasGetter = false
         var hasSetter = false
-        val lateInit = descriptor.isLateInit
-        val isConst = descriptor.isConst
 
         val compileTimeConstant = descriptor.compileTimeInitializer
         val hasConstant = compileTimeConstant != null && compileTimeConstant !is NullValue
@@ -170,7 +186,8 @@ class DescriptorSerializer private constructor(
 
         val flags = Flags.getPropertyFlags(
                 hasAnnotations, descriptor.visibility, descriptor.modality, descriptor.kind, descriptor.isVar,
-                hasGetter, hasSetter, hasConstant, isConst, lateInit
+                hasGetter, hasSetter, hasConstant, descriptor.isConst, descriptor.isLateInit, descriptor.isExternal,
+                @Suppress("DEPRECATION") descriptor.isDelegated, descriptor.isExpect
         )
         if (flags != builder.flags) {
             builder.flags = flags
@@ -199,6 +216,10 @@ class DescriptorSerializer private constructor(
             }
         }
 
+        if (descriptor.isSuspendOrHasSuspendTypesInSignature()) {
+            builder.sinceKotlinInfo = writeSinceKotlinInfo(LanguageFeature.Coroutines)
+        }
+
         extension.serializeProperty(descriptor, builder)
 
         return builder
@@ -211,7 +232,8 @@ class DescriptorSerializer private constructor(
 
         val flags = Flags.getFunctionFlags(
                 hasAnnotations(descriptor), descriptor.visibility, descriptor.modality, descriptor.kind, descriptor.isOperator,
-                descriptor.isInfix, descriptor.isInline, descriptor.isTailrec, descriptor.isExternal, descriptor.isSuspend
+                descriptor.isInfix, descriptor.isInline, descriptor.isTailrec, descriptor.isExternal, descriptor.isSuspend,
+                descriptor.isExpect
         )
         if (flags != builder.flags) {
             builder.flags = flags
@@ -251,6 +273,10 @@ class DescriptorSerializer private constructor(
             }
         }
 
+        if (descriptor.isSuspendOrHasSuspendTypesInSignature()) {
+            builder.sinceKotlinInfo = writeSinceKotlinInfo(LanguageFeature.Coroutines)
+        }
+
         extension.serializeFunction(descriptor, builder)
 
         return builder
@@ -270,9 +296,23 @@ class DescriptorSerializer private constructor(
             builder.addValueParameter(local.valueParameter(valueParameterDescriptor))
         }
 
+        if (descriptor.isSuspendOrHasSuspendTypesInSignature()) {
+            builder.sinceKotlinInfo = writeSinceKotlinInfo(LanguageFeature.Coroutines)
+        }
+
         extension.serializeConstructor(descriptor, builder)
 
         return builder
+    }
+
+    private fun CallableMemberDescriptor.isSuspendOrHasSuspendTypesInSignature(): Boolean {
+        if (this is FunctionDescriptor && isSuspend) return true
+
+        return listOfNotNull(
+                extensionReceiverParameter?.type,
+                returnType,
+                *valueParameters.map(ValueParameterDescriptor::getType).toTypedArray()
+        ).any { type -> type.contains(UnwrappedType::isSuspendFunctionType) }
     }
 
     fun typeAliasProto(descriptor: TypeAliasDescriptor): ProtoBuf.TypeAlias.Builder {
@@ -323,7 +363,7 @@ class DescriptorSerializer private constructor(
 
         val flags = Flags.getValueParameterFlags(
                 hasAnnotations(descriptor), descriptor.declaresDefaultValue(),
-                descriptor.isCrossinline, descriptor.isNoinline, descriptor.isCoroutine
+                descriptor.isCrossinline, descriptor.isNoinline
         )
         if (flags != builder.flags) {
             builder.flags = flags
@@ -408,6 +448,12 @@ class DescriptorSerializer private constructor(
                 lowerBound.setFlexibleUpperBound(upperBound)
             }
             return lowerBound
+        }
+
+        if (type.isSuspendFunctionType) {
+            val functionType = type(transformSuspendFunctionToRuntimeFunctionType(type))
+            functionType.flags = Flags.getTypeFlags(true)
+            return functionType
         }
 
         val descriptor = type.constructor.declarationDescriptor
@@ -495,36 +541,7 @@ class DescriptorSerializer private constructor(
         return builder
     }
 
-    @JvmOverloads
-    fun packageProto(
-            fragments: Collection<PackageFragmentDescriptor>, skip: ((DeclarationDescriptor) -> Boolean)? = null
-    ): ProtoBuf.Package.Builder {
-        val builder = ProtoBuf.Package.newBuilder()
-
-        val members = fragments.flatMap { fragment ->
-            DescriptorUtils.getAllDescriptors(fragment.getMemberScope())
-        }
-
-        for (declaration in sort(members)) {
-            if (skip?.invoke(declaration) == true) continue
-
-            when (declaration) {
-                is PropertyDescriptor -> builder.addProperty(propertyProto(declaration))
-                is FunctionDescriptor -> builder.addFunction(functionProto(declaration))
-            }
-        }
-
-        val typeTableProto = typeTable.serialize()
-        if (typeTableProto != null) {
-            builder.typeTable = typeTableProto
-        }
-
-        extension.serializePackage(builder)
-
-        return builder
-    }
-
-    fun packagePartProto(members: Collection<DeclarationDescriptor>): ProtoBuf.Package.Builder {
+    fun packagePartProto(packageFqName: FqName, members: Collection<DeclarationDescriptor>): ProtoBuf.Package.Builder {
         val builder = ProtoBuf.Package.newBuilder()
 
         for (declaration in sort(members)) {
@@ -540,9 +557,25 @@ class DescriptorSerializer private constructor(
             builder.typeTable = typeTableProto
         }
 
-        extension.serializePackage(builder)
+        val sinceKotlinInfoProto = sinceKotlinInfoTable.serialize()
+        if (sinceKotlinInfoProto != null) {
+            builder.sinceKotlinInfoTable = sinceKotlinInfoProto
+        }
+
+        extension.serializePackage(packageFqName, builder)
 
         return builder
+    }
+
+    private fun writeSinceKotlinInfo(languageFeature: LanguageFeature): Int {
+        val languageVersion = languageFeature.sinceVersion!!
+        val sinceKotlinInfo = ProtoBuf.SinceKotlinInfo.newBuilder().apply {
+            SinceKotlinInfo.Version(languageVersion.major, languageVersion.minor).encode(
+                    writeVersion = { version = it },
+                    writeVersionFull = { versionFull = it }
+            )
+        }
+        return sinceKotlinInfoTable[sinceKotlinInfo]
     }
 
     private fun getClassifierId(descriptor: ClassifierDescriptorWithTypeParameters): Int =
@@ -557,12 +590,14 @@ class DescriptorSerializer private constructor(
     companion object {
         @JvmStatic
         fun createTopLevel(extension: SerializerExtension): DescriptorSerializer {
-            return DescriptorSerializer(null, Interner(), extension, MutableTypeTable(), serializeTypeTableToFunction = false)
+            return DescriptorSerializer(null, Interner(), extension, MutableTypeTable(), MutableSinceKotlinInfoTable(),
+                                        serializeTypeTableToFunction = false)
         }
 
         @JvmStatic
         fun createForLambda(extension: SerializerExtension): DescriptorSerializer {
-            return DescriptorSerializer(null, Interner(), extension, MutableTypeTable(), serializeTypeTableToFunction = true)
+            return DescriptorSerializer(null, Interner(), extension, MutableTypeTable(), MutableSinceKotlinInfoTable(),
+                                        serializeTypeTableToFunction = true)
         }
 
         @JvmStatic
@@ -581,6 +616,7 @@ class DescriptorSerializer private constructor(
                     Interner(parentSerializer.typeParameters),
                     parentSerializer.extension,
                     MutableTypeTable(),
+                    MutableSinceKotlinInfoTable(),
                     serializeTypeTableToFunction = false
             )
             for (typeParameter in descriptor.declaredTypeParameters) {

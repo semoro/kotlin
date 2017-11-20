@@ -16,7 +16,6 @@
 
 package org.jetbrains.kotlin.load.java;
 
-import kotlin.text.Regex;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.builtins.CompanionObjectMapping;
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor;
@@ -33,7 +32,13 @@ import static org.jetbrains.kotlin.resolve.DescriptorUtils.isCompanionObject;
 
 public final class JvmAbi {
     public static final String DEFAULT_IMPLS_CLASS_NAME = "DefaultImpls";
+
+    /**
+     * Warning: use DEFAULT_IMPLS_CLASS_NAME and TypeMappingConfiguration.innerClassNameFactory when possible.
+     * This is false for KAPT3 mode.
+     */
     public static final String DEFAULT_IMPLS_SUFFIX = "$" + DEFAULT_IMPLS_CLASS_NAME;
+    public static final String DEFAULT_IMPLS_DELEGATE_SUFFIX = "$defaultImpl";
 
     public static final String DEFAULT_PARAMS_IMPL_SUFFIX = "$default";
 
@@ -44,7 +49,9 @@ public final class JvmAbi {
     public static final String DELEGATED_PROPERTY_NAME_SUFFIX = "$delegate";
     public static final String DELEGATED_PROPERTIES_ARRAY_NAME = "$$delegatedProperties";
     public static final String DELEGATE_SUPER_FIELD_PREFIX = "$$delegate_";
-    public static final String ANNOTATED_PROPERTY_METHOD_NAME_SUFFIX = "$annotations";
+    private static final String ANNOTATIONS_SUFFIX = "$annotations";
+    private static final String ANNOTATED_PROPERTY_METHOD_NAME_SUFFIX = ANNOTATIONS_SUFFIX;
+    private static final String ANNOTATED_TYPEALIAS_METHOD_NAME_SUFFIX = ANNOTATIONS_SUFFIX;
 
     public static final String INSTANCE_FIELD = "INSTANCE";
 
@@ -54,11 +61,14 @@ public final class JvmAbi {
     public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT = "$i$a$";
     public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION = "$i$f$";
 
-    private static final Regex SANITIZE_AS_JAVA_INVALID_CHARACTERS = new Regex("[^\\p{L}\\p{Digit}]");
-
     @NotNull
     public static String getSyntheticMethodNameForAnnotatedProperty(@NotNull Name propertyName) {
         return propertyName.asString() + ANNOTATED_PROPERTY_METHOD_NAME_SUFFIX;
+    }
+
+    @NotNull
+    public static String getSyntheticMethodNameForAnnotatedTypeAlias(@NotNull Name typeAliasName) {
+        return typeAliasName.asString() + ANNOTATED_TYPEALIAS_METHOD_NAME_SUFFIX;
     }
 
     public static boolean isGetterName(@NotNull String name) {
@@ -79,9 +89,10 @@ public final class JvmAbi {
 
     @NotNull
     public static String setterName(@NotNull String propertyName) {
-        return startsWithIsPrefix(propertyName)
-               ? SET_PREFIX + propertyName.substring(IS_PREFIX.length())
-               : SET_PREFIX + CapitalizeDecapitalizeKt.capitalizeAsciiOnly(propertyName);
+        return SET_PREFIX +
+               (startsWithIsPrefix(propertyName)
+                ? propertyName.substring(IS_PREFIX.length())
+                : CapitalizeDecapitalizeKt.capitalizeAsciiOnly(propertyName));
     }
 
     public static boolean startsWithIsPrefix(String name) {
@@ -89,11 +100,6 @@ public final class JvmAbi {
         if (name.length() == IS_PREFIX.length()) return false;
         char c = name.charAt(IS_PREFIX.length());
         return !('a' <= c && c <= 'z');
-    }
-
-    @NotNull
-    public static String sanitizeAsJavaIdentifier(@NotNull String str) {
-        return SANITIZE_AS_JAVA_INVALID_CHARACTERS.replace(str, "_");
     }
 
     public static boolean isPropertyWithBackingFieldInOuterClass(@NotNull PropertyDescriptor propertyDescriptor) {

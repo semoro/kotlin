@@ -75,8 +75,8 @@ class NotImportedStaticMemberWeigher(private val classifier: ImportableFqNameCla
 class ImportedWeigher(private val classifier: ImportableFqNameClassifier) : LookupElementWeigher("kotlin.imported") {
     private enum class Weight {
         currentPackage,
-        defaultImport,
         preciseImport,
+        defaultImport,
         allUnderImport
     }
 
@@ -138,7 +138,55 @@ object KindWeigher : LookupElementWeigher("kotlin.kind") {
 }
 
 object CallableWeigher : LookupElementWeigher("kotlin.callableWeight") {
-    override fun weigh(element: LookupElement) = element.getUserData(CALLABLE_WEIGHT_KEY)
+    private enum class Weight1 {
+        local,
+        memberOrExtension,
+        globalOrStatic,
+        typeParameterExtension,
+        receiverCastRequired
+    }
+
+    private enum class Weight2 {
+        thisClassMember,
+        baseClassMember,
+        thisTypeExtension,
+        baseTypeExtension,
+        other
+    }
+
+    private class CompoundWeight(val weight1: Weight1, val receiverIndex: Int, val weight2: Weight2) : Comparable<CompoundWeight> {
+        override fun compareTo(other: CompoundWeight): Int {
+            if (weight1 != other.weight1) return weight1.compareTo(other.weight1)
+            if (receiverIndex != other.receiverIndex) return receiverIndex.compareTo(other.receiverIndex)
+            return weight2.compareTo(other.weight2)
+        }
+    }
+
+    override fun weigh(element: LookupElement): Comparable<*>? {
+        val weight = element.getUserData(CALLABLE_WEIGHT_KEY) ?: return null
+        val w1 = when (weight.enum) {
+            CallableWeightEnum.local -> Weight1.local
+
+            CallableWeightEnum.thisClassMember,
+            CallableWeightEnum.baseClassMember,
+            CallableWeightEnum.thisTypeExtension,
+            CallableWeightEnum.baseTypeExtension -> Weight1.memberOrExtension
+
+            CallableWeightEnum.globalOrStatic -> Weight1.globalOrStatic
+
+            CallableWeightEnum.typeParameterExtension -> Weight1.typeParameterExtension
+
+            CallableWeightEnum.receiverCastRequired -> Weight1.receiverCastRequired
+        }
+        val w2 = when (weight.enum) {
+            CallableWeightEnum.thisClassMember -> Weight2.thisClassMember
+            CallableWeightEnum.baseClassMember -> Weight2.baseClassMember
+            CallableWeightEnum.thisTypeExtension -> Weight2.thisTypeExtension
+            CallableWeightEnum.baseTypeExtension -> Weight2.baseTypeExtension
+            else -> Weight2.other
+        }
+        return CompoundWeight(w1, weight.receiverIndex ?: Int.MAX_VALUE, w2)
+    }
 }
 
 object VariableOrFunctionWeigher : LookupElementWeigher("kotlin.variableOrFunction"){
@@ -166,7 +214,7 @@ object PreferGetSetMethodsToPropertyWeigher : LookupElementWeigher("kotlin.prefe
         val prefixMatcher = context.itemMatcher(element)
         if (prefixMatcher.prefixMatches(property.name.asString())) return 0
         val matchedLookupStrings = element.allLookupStrings.filter { prefixMatcher.prefixMatches(it) }
-        if (matchedLookupStrings.all { it.startsWith("get") || it.startsWith("set") }) return 1 else return 0
+        return if (matchedLookupStrings.all { it.startsWith("get") || it.startsWith("set") }) 1 else 0
     }
 }
 
@@ -182,6 +230,7 @@ object PreferMatchingItemWeigher : LookupElementWeigher("kotlin.preferMatching",
         keywordExactMatch,
         defaultExactMatch,
         functionExactMatch,
+        notImportedExactMatch,
         specialExactMatch,
         notExactMatch
     }
@@ -200,6 +249,7 @@ object PreferMatchingItemWeigher : LookupElementWeigher("kotlin.preferMatching",
                     val smartCompletionPriority = element.getUserData(SMART_COMPLETION_ITEM_PRIORITY_KEY)
                     when {
                         smartCompletionPriority != null && smartCompletionPriority != SmartCompletionItemPriority.DEFAULT -> Weight.specialExactMatch
+                        element.getUserData(NOT_IMPORTED_KEY) != null -> Weight.notImportedExactMatch
                         o.descriptor is FunctionDescriptor -> Weight.functionExactMatch
                         else -> Weight.defaultExactMatch
                     }
@@ -226,11 +276,10 @@ class SmartCompletionInBasicWeigher(
     private val descriptorsToSkip = smartCompletion.descriptorsToSkip
     private val expectedInfos = smartCompletion.expectedInfos
 
-    private fun fullMatchWeight(nameSimilarity: Int) = (3L shl 32) + nameSimilarity
+    private val PRIORITY_COUNT = SmartCompletionItemPriority.values().size
 
-    private fun ifNotNullMatchWeight(nameSimilarity: Int) = (2L shl 32) + nameSimilarity
-
-    private fun smartCompletionItemWeight(nameSimilarity: Int) = (1L shl 32) + nameSimilarity
+    private fun itemWeight(priority: SmartCompletionItemPriority, nameSimilarity: Int)
+            = (nameSimilarity.toLong() shl 32) + PRIORITY_COUNT - priority.ordinal
 
     private val NAMED_ARGUMENT_WEIGHT = 1L
 
@@ -239,16 +288,13 @@ class SmartCompletionInBasicWeigher(
     private val DESCRIPTOR_TO_SKIP_WEIGHT = -1L // if descriptor is skipped from smart completion then it's probably irrelevant
 
     override fun weigh(element: LookupElement): Long {
-        if (element.getUserData(KEYWORD_VALUE_MATCHED_KEY) != null) {
-            return fullMatchWeight(0)
-        }
-
         if (element.getUserData(NAMED_ARGUMENT_KEY) != null) {
             return NAMED_ARGUMENT_WEIGHT
         }
 
-        if (element.getUserData(SMART_COMPLETION_ITEM_PRIORITY_KEY) != null) { // it's an "additional item" came from smart completion, don't match it against expected type
-            return smartCompletionItemWeight(element.getUserData(NAME_SIMILARITY_KEY) ?: 0)
+        val priority = element.getUserData(SMART_COMPLETION_ITEM_PRIORITY_KEY)
+        if (priority != null) { // it's an "additional item" came from smart completion, don't match it against expected type
+            return itemWeight(priority, element.getUserData(NAME_SIMILARITY_KEY) ?: 0)
         }
 
         val o = element.`object`
@@ -284,9 +330,9 @@ class SmartCompletionInBasicWeigher(
         }
 
         return if (matched.any { it.second.isMatch() })
-            fullMatchWeight(nameSimilarity)
+            itemWeight(SmartCompletionItemPriority.DEFAULT, nameSimilarity)
         else
-            ifNotNullMatchWeight(nameSimilarity)
+            itemWeight(SmartCompletionItemPriority.NULLABLE, nameSimilarity)
     }
 }
 

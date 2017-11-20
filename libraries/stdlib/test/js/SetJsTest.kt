@@ -4,8 +4,6 @@ import kotlin.test.*
 import org.junit.Test
 import test.collections.*
 import test.collections.behaviors.*
-import java.util.HashSet
-import java.util.LinkedHashSet
 
 class ComplexSetJsTest : SetJsTest() {
     // Helper function with generic parameter to force to use ComlpexHashMap
@@ -14,6 +12,7 @@ class ComplexSetJsTest : SetJsTest() {
         HashSet<T>(3)
         HashSet<T>(3, 0.5f)
 
+        @Suppress("UNCHECKED_CAST")
         val set = HashSet<T>(data as HashSet<T>)
 
         assertEquals(data, set)
@@ -32,7 +31,7 @@ class ComplexSetJsTest : SetJsTest() {
 }
 
 class PrimitiveSetJsTest : SetJsTest() {
-    override fun createEmptyMutableSet(): MutableSet<String> = HashSet()
+    override fun createEmptyMutableSet(): MutableSet<String> = stringSetOf()
     override fun createEmptyMutableSetWithNullableValues(): MutableSet<String?> = HashSet()
     @Test
     override fun constructors() {
@@ -73,6 +72,18 @@ class LinkedHashSetJsTest : SetJsTest() {
     }
 }
 
+class LinkedPrimitiveSetJsTest : SetJsTest() {
+    override fun createEmptyMutableSet(): MutableSet<String> = linkedStringSetOf()
+    override fun createEmptyMutableSetWithNullableValues(): MutableSet<String?> = LinkedHashSet()
+    @Test
+    override fun constructors() {
+        val orderedData = data.toList()
+        val set = linkedStringSetOf(*orderedData.toTypedArray())
+
+        assertEquals(orderedData, set.toList())
+    }
+}
+
 abstract class SetJsTest {
     val data: Set<String> = createTestMutableSet()
     val empty: Set<String> = createEmptyMutableSet()
@@ -92,7 +103,7 @@ abstract class SetJsTest {
     }
 
     @Test
-    fun equals() {
+    fun equalsMethod() {
         assertNotEquals(createEmptyMutableSet(), data)
         assertNotEquals(data, empty)
         assertEquals(createEmptyMutableSet(), empty)
@@ -137,6 +148,10 @@ abstract class SetJsTest {
         assertFalse(data.add("baz"))
         assertEquals(3, data.size)
         assertTrue(data.containsAll(arrayListOf("foo", "bar", "baz")))
+
+        val nullableSet = createEmptyMutableSetWithNullableValues()
+        assertTrue(nullableSet.add(null))
+        assertFalse(nullableSet.add(null))
     }
 
     @Test
@@ -147,6 +162,12 @@ abstract class SetJsTest {
         assertFalse(data.remove("foo"))
         assertEquals(1, data.size)
         assertTrue(data.contains("bar"))
+
+        val nullableSet = createEmptyMutableSetWithNullableValues()
+        nullableSet.add(null)
+
+        assertTrue(nullableSet.remove(null))
+        assertFalse(nullableSet.remove(null))
     }
 
     @Test
@@ -171,9 +192,11 @@ abstract class SetJsTest {
         assertTrue(data.removeAll(arrayListOf("foo", "bar")))
         assertEquals(0, data.size)
 
-        val data2 = createTestMutableSet()
         assertFalse(data.removeAll(arrayListOf("foo", "bar", "baz")))
-        assertTrue(data.isEmpty())
+
+        val data2 = createTestMutableSet()
+        assertTrue(data2.removeAll(arrayListOf("foo", "bar", "baz")))
+        assertTrue(data2.isEmpty())
     }
 
     @Test

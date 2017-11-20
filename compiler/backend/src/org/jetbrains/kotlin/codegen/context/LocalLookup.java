@@ -55,9 +55,12 @@ public interface LocalLookup {
                 boolean idx = localLookup != null && localLookup.lookupLocal(vd);
                 if (!idx) return null;
 
-                VariableDescriptor delegateVariableDescriptor = state.getBindingContext().get(LOCAL_VARIABLE_DELEGATE, vd);
+                KotlinType delegateType =
+                        vd instanceof VariableDescriptorWithAccessors
+                        ? JvmCodegenUtil.getPropertyDelegateType((VariableDescriptorWithAccessors) vd, state.getBindingContext())
+                        : null;
                 Type sharedVarType = state.getTypeMapper().getSharedVarType(vd);
-                Type localType = state.getTypeMapper().mapType(delegateVariableDescriptor != null ? delegateVariableDescriptor : vd);
+                Type localType = state.getTypeMapper().mapType(delegateType != null ? delegateType : vd.getType());
                 Type type = sharedVarType != null ? sharedVarType : localType;
 
                 String fieldName = "$" + vd.getName();
@@ -67,7 +70,7 @@ public interface LocalLookup {
                 EnclosedValueDescriptor enclosedValueDescriptor;
                 if (sharedVarType != null) {
                     StackValue.Field wrapperValue = StackValue.receiverWithRefWrapper(localType, classType, fieldName, thiz, vd);
-                    innerValue = StackValue.fieldForSharedVar(localType, classType, fieldName, wrapperValue);
+                    innerValue = StackValue.fieldForSharedVar(localType, classType, fieldName, wrapperValue, vd);
                     enclosedValueDescriptor = new EnclosedValueDescriptor(fieldName, d, innerValue, wrapperValue, type);
                 }
                 else {
@@ -75,7 +78,6 @@ public interface LocalLookup {
                     enclosedValueDescriptor = new EnclosedValueDescriptor(fieldName, d, innerValue, type);
                 }
 
-                closure.recordField(fieldName, type);
                 closure.captureVariable(enclosedValueDescriptor);
 
                 return innerValue;
@@ -115,7 +117,6 @@ public interface LocalLookup {
                 StackValue.StackValueWithSimpleReceiver innerValue = StackValue.field(localType, classType, fieldName, false,
                                                                                       StackValue.LOCAL_0, vd);
 
-                closure.recordField(fieldName, localType);
                 closure.captureVariable(new EnclosedValueDescriptor(fieldName, d, innerValue, localType));
 
                 return innerValue;

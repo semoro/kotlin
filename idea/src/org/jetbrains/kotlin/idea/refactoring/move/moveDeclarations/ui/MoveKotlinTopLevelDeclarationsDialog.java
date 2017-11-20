@@ -26,16 +26,12 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.JavaProjectRootsUtil;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Pass;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.refactoring.JavaRefactoringSettings;
-import com.intellij.refactoring.MoveDestination;
-import com.intellij.refactoring.PackageWrapper;
-import com.intellij.refactoring.RefactoringBundle;
+import com.intellij.refactoring.*;
 import com.intellij.refactoring.classMembers.AbstractMemberInfoModel;
 import com.intellij.refactoring.classMembers.MemberInfoChange;
 import com.intellij.refactoring.classMembers.MemberInfoChangeListener;
@@ -43,7 +39,6 @@ import com.intellij.refactoring.move.MoveCallback;
 import com.intellij.refactoring.move.MoveHandler;
 import com.intellij.refactoring.move.moveClassesOrPackages.AutocreatingSingleSourceRootMoveDestination;
 import com.intellij.refactoring.move.moveClassesOrPackages.DestinationFolderComboBox;
-import com.intellij.refactoring.move.moveClassesOrPackages.MoveClassesOrPackagesUtil;
 import com.intellij.refactoring.move.moveClassesOrPackages.MultipleRootsMoveDestination;
 import com.intellij.refactoring.ui.PackageNameReferenceEditorCombo;
 import com.intellij.refactoring.ui.RefactoringDialog;
@@ -84,11 +79,8 @@ import java.util.List;
 
 public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
     private static final String RECENTS_KEY = "MoveKotlinTopLevelDeclarationsDialog.RECENTS_KEY";
-
-    private static class MemberInfoModelImpl extends AbstractMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo> {
-
-    }
-
+    private final MoveCallback moveCallback;
+    private final PsiDirectory initialTargetDirectory;
     private JCheckBox cbSearchInComments;
     private JCheckBox cbSearchTextOccurrences;
     private JPanel mainPanel;
@@ -103,10 +95,6 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
     private JCheckBox cbSpecifyFileNameInPackage;
     private JCheckBox cbUpdatePackageDirective;
     private KotlinMemberSelectionTable memberTable;
-
-    private final MoveCallback moveCallback;
-    private final PsiDirectory initialTargetDirectory;
-
     public MoveKotlinTopLevelDeclarationsDialog(
             @NotNull Project project,
             @NotNull Set<KtNamedDeclaration> elementsToMove,
@@ -193,6 +181,40 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
             if (!PackageUtilsKt.packageMatchesDirectory(sourceFile)) return false;
         }
         return true;
+    }
+
+    @NotNull
+    private static List<PsiFile> getFilesExistingInTargetDir(
+            @NotNull List<KtFile> sourceFiles,
+            @Nullable String targetFileName,
+            @Nullable final PsiDirectory targetDirectory
+    ) {
+        if (targetDirectory == null) return Collections.emptyList();
+
+        List<String> fileNames =
+                targetFileName != null
+                ? Collections.singletonList(targetFileName)
+                : CollectionsKt.map(
+                        sourceFiles,
+                        new Function1<KtFile, String>() {
+                            @Override
+                            public String invoke(KtFile jetFile) {
+                                return jetFile.getName();
+                            }
+                        }
+                );
+
+        return CollectionsKt.filterNotNull(
+                CollectionsKt.map(
+                        fileNames,
+                        new Function1<String, PsiFile>() {
+                            @Override
+                            public PsiFile invoke(String s) {
+                                return targetDirectory.findFile(s);
+                            }
+                        }
+                )
+        );
     }
 
     private void initMemberInfo(
@@ -456,16 +478,17 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
         }
 
         DirectoryChooser.ItemWrapper selectedItem = (DirectoryChooser.ItemWrapper)destinationFolderCB.getComboBox().getSelectedItem();
-        PsiDirectory selectedPsiDirectory = selectedItem.getDirectory();
-        if (selectedPsiDirectory == null) return Pair.create(null, new MultipleRootsMoveDestination(targetPackage));
+        PsiDirectory selectedPsiDirectory = selectedItem != null ? selectedItem.getDirectory() : null;
+        if (selectedPsiDirectory == null) {
+            if (initialTargetDirectory != null) {
+                selectedPsiDirectory = initialTargetDirectory;
+            }
+            else {
+                return Pair.create(null, new MultipleRootsMoveDestination(targetPackage));
+            }
+        }
 
         VirtualFile targetDirectory = selectedPsiDirectory.getVirtualFile();
-        List<VirtualFile> sourceRoots = JavaProjectRootsUtil.getSuitableDestinationSourceRoots(getProject());
-        if (initialTargetDirectory != null && Comparing.equal(targetDirectory, initialTargetDirectory.getVirtualFile()) &&
-            sourceRoots.size() > 1) {
-            targetDirectory = MoveClassesOrPackagesUtil.chooseSourceRoot(targetPackage, sourceRoots, initialTargetDirectory);
-        }
-        if (targetDirectory == null) return null;
         return Pair.create(targetDirectory, new AutocreatingSingleSourceRootMoveDestination(targetPackage, targetDirectory));
     }
 
@@ -473,40 +496,6 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
         if (FileTypeManager.getInstance().getFileTypeByFileName(fileName) == KotlinFileType.INSTANCE) return true;
         setErrorText("Can't move to non-Kotlin file");
         return false;
-    }
-
-    @NotNull
-    private static List<PsiFile> getFilesExistingInTargetDir(
-            @NotNull List<KtFile> sourceFiles,
-            @Nullable String targetFileName,
-            @Nullable final PsiDirectory targetDirectory
-    ) {
-        if (targetDirectory == null) return Collections.emptyList();
-
-        List<String> fileNames =
-                targetFileName != null
-                ? Collections.singletonList(targetFileName)
-                : CollectionsKt.map(
-                        sourceFiles,
-                        new Function1<KtFile, String>() {
-                            @Override
-                            public String invoke(KtFile jetFile) {
-                                return jetFile.getName();
-                            }
-                        }
-                );
-
-        return CollectionsKt.filterNotNull(
-                CollectionsKt.map(
-                        fileNames,
-                        new Function1<String, PsiFile>() {
-                            @Override
-                            public PsiFile invoke(String s) {
-                                return targetDirectory.findFile(s);
-                            }
-                        }
-                )
-        );
     }
 
     @Nullable
@@ -536,11 +525,6 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
 
             List<PsiFile> filesExistingInTargetDir = getFilesExistingInTargetDir(sourceFiles, targetFileName, targetDirectory);
             if (!filesExistingInTargetDir.isEmpty()) {
-                if (!CollectionsKt.intersect(sourceFiles, filesExistingInTargetDir).isEmpty()) {
-                    setErrorText("Can't move to the original file(s)");
-                    return null;
-                }
-
                 if (filesExistingInTargetDir.size() > 1) {
                     String filePathsToReport = StringUtil.join(
                             filesExistingInTargetDir,
@@ -560,13 +544,17 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
                     return null;
                 }
 
-                String question = String.format(
-                        "File '%s' already exists. Do you want to move selected declarations to this file?",
-                        filesExistingInTargetDir.get(0).getVirtualFile().getPath()
-                );
-                int ret =
-                        Messages.showYesNoDialog(myProject, question, RefactoringBundle.message("move.title"), Messages.getQuestionIcon());
-                if (ret != Messages.YES) return null;
+                PsiFile targetFile = filesExistingInTargetDir.get(0);
+
+                if (!sourceFiles.contains(targetFile)) {
+                    String question = String.format(
+                            "File '%s' already exists. Do you want to move selected declarations to this file?",
+                            targetFile.getVirtualFile().getPath()
+                    );
+                    int ret =
+                            Messages.showYesNoDialog(myProject, question, RefactoringBundle.message("move.title"), Messages.getQuestionIcon());
+                    if (ret != Messages.YES) return null;
+                }
             }
 
             // All source files must be in the same directory
@@ -732,7 +720,8 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
                     PsiDirectory targetDir = moveDestination.getTargetIfExists(sourceDirectory);
                     String targetFileName = sourceFiles.size() > 1 ? null : tfFileNameInPackage.getText();
                     List<PsiFile> filesExistingInTargetDir = getFilesExistingInTargetDir(sourceFiles, targetFileName, targetDir);
-                    if (filesExistingInTargetDir.isEmpty()) {
+                    if (filesExistingInTargetDir.isEmpty()
+                        || (filesExistingInTargetDir.size() == 1 && sourceFiles.contains(filesExistingInTargetDir.get(0)))) {
                         PsiDirectory targetDirectory = ApplicationUtilsKt.runWriteAction(
                                 new Function0<PsiDirectory>() {
                                     @Override
@@ -746,15 +735,23 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
                             MoveUtilsKt.setUpdatePackageDirective(sourceFile, cbUpdatePackageDirective.isSelected());
                         }
 
-                        invokeRefactoring(
-                                new MoveFilesWithDeclarationsProcessor(myProject,
-                                                                       sourceFiles,
-                                                                       targetDirectory,
-                                                                       targetFileName,
-                                                                       isSearchInComments(),
-                                                                       isSearchInNonJavaFiles(),
-                                                                       moveCallback)
-                        );
+                        BaseRefactoringProcessor processor;
+                        processor = sourceFiles.size() == 1 && targetFileName != null
+                                    ? new MoveToKotlinFileProcessor(myProject,
+                                                                    CollectionsKt.single(sourceFiles),
+                                                                    targetDirectory,
+                                                                    targetFileName,
+                                                                    isSearchInComments(),
+                                                                    isSearchInNonJavaFiles(),
+                                                                    moveCallback)
+                                    : new KotlinAwareMoveFilesOrDirectoriesProcessor(myProject,
+                                                                                     sourceFiles,
+                                                                                     targetDirectory,
+                                                                                     isSearchInComments(),
+                                                                                     isSearchInNonJavaFiles(),
+                                                                                     moveCallback);
+
+                        invokeRefactoring(processor);
 
                         return;
                     }
@@ -771,17 +768,18 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
             }
 
             MoveDeclarationsDescriptor options = new MoveDeclarationsDescriptor(
+                    myProject,
                     elementsToMove,
                     target,
                     MoveDeclarationsDelegate.TopLevel.INSTANCE,
                     isSearchInComments(),
                     isSearchInNonJavaFiles(),
-                    true,
+                    false,
                     deleteSourceFile,
                     moveCallback,
                     false
             );
-            invokeRefactoring(new MoveKotlinDeclarationsProcessor(myProject, options, Mover.Default.INSTANCE));
+            invokeRefactoring(new MoveKotlinDeclarationsProcessor(options, Mover.Default.INSTANCE));
         }
         catch (IncorrectOperationException e) {
             CommonRefactoringUtil.showErrorMessage(RefactoringBundle.message("error.title"), e.getMessage(), null, myProject);
@@ -803,5 +801,9 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
     @Override
     public JComponent getPreferredFocusedComponent() {
         return classPackageChooser.getChildComponent();
+    }
+
+    private static class MemberInfoModelImpl extends AbstractMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo> {
+
     }
 }

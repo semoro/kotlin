@@ -16,7 +16,8 @@
 @file:JvmVersion
 package kotlin.text
 
-import java.util.*
+import java.util.Collections
+import java.util.EnumSet
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import kotlin.internal.IMPLEMENTATIONS
@@ -93,7 +94,7 @@ public data class MatchGroup(public val value: String, public val range: IntRang
  * For pattern syntax reference see [Pattern]
  */
 public class Regex
-@kotlin.internal.InlineExposed
+@PublishedApi
 internal constructor(private val nativePattern: Pattern) {
 
 
@@ -115,7 +116,7 @@ internal constructor(private val nativePattern: Pattern) {
     public val options: Set<RegexOption> = fromInt(nativePattern.flags())
 
     /** Indicates whether the regular expression matches the entire [input]. */
-    public fun matches(input: CharSequence): Boolean = nativePattern.matcher(input).matches()
+    public infix fun matches(input: CharSequence): Boolean = nativePattern.matcher(input).matches()
 
     /** Indicates whether the regular expression can find at least one match in the specified [input]. */
     public fun containsMatchIn(input: CharSequence): Boolean = nativePattern.matcher(input).find()
@@ -131,7 +132,7 @@ internal constructor(private val nativePattern: Pattern) {
     /**
      * Returns a sequence of all occurrences of a regular expression within the [input] string, beginning at the specified [startIndex].
      */
-    public fun findAll(input: CharSequence, startIndex: Int = 0): Sequence<MatchResult> = generateSequence({ find(input, startIndex) }, { match -> match.next() })
+    public fun findAll(input: CharSequence, startIndex: Int = 0): Sequence<MatchResult> = generateSequence({ find(input, startIndex) }, MatchResult::next)
 
     /**
      * Attempts to match the entire [input] CharSequence against the pattern.
@@ -232,11 +233,9 @@ private class MatcherMatchResult(private val matcher: Matcher, private val input
     override val value: String
         get() = matchResult.group()
 
-    override val groups: MatchGroupCollection = object : MatchNamedGroupCollection {
+    override val groups: MatchGroupCollection = object : MatchNamedGroupCollection, AbstractCollection<MatchGroup?>() {
         override val size: Int get() = matchResult.groupCount() + 1
         override fun isEmpty(): Boolean = false
-        override fun contains(element: MatchGroup?): Boolean = this.any { it == element }
-        override fun containsAll(elements: Collection<MatchGroup?>): Boolean = elements.all { contains(it) }
 
         override fun iterator(): Iterator<MatchGroup?> = indices.asSequence().map { this[it] }.iterator()
         override fun get(index: Int): MatchGroup? {

@@ -19,17 +19,18 @@ package org.jetbrains.kotlin.idea.search.usagesSearch
 import com.intellij.psi.PsiNamedElement
 import org.jetbrains.kotlin.asJava.LightClassUtil
 import org.jetbrains.kotlin.asJava.LightClassUtil.PropertyAccessorsPsiMethods
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
+import org.jetbrains.kotlin.descriptors.ConstructorDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.references.KtDestructuringDeclarationReference
-import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
-import org.jetbrains.kotlin.lexer.KtSingleValueToken
+import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DataClassDescriptorResolver
 import java.util.*
 
 fun PsiNamedElement.getAccessorNames(readable: Boolean = true, writable: Boolean = true): List<String> {
@@ -65,36 +66,24 @@ fun PsiNamedElement.getClassNameForCompanionObject(): String? {
     }
 }
 
-fun PsiNamedElement.getSpecialNamesToSearch(options: KotlinReferencesSearchOptions): Pair<List<String>, Class<*>?> {
-    val name = name
-    return when {
-        name == null || !Name.isValidIdentifier(name) -> Collections.emptyList<String>() to null
-        this is KtParameter -> {
-            if (!options.searchForComponentConventions) return Collections.emptyList<String>() to null
-
-            val componentFunctionName = this.dataClassComponentFunction()?.name
-            if (componentFunctionName == null) return Collections.emptyList<String>() to null
-
-            return listOf(componentFunctionName.asString(), KtTokens.LPAR.value) to KtDestructuringDeclarationReference::class.java
-        }
-        else -> {
-            val operationSymbolsToSearch = Name.identifier(name).getOperationSymbolsToSearch()
-            operationSymbolsToSearch.first.map { (it as KtSingleValueToken).value } to operationSymbolsToSearch.second
-        }
-    }
-}
-
 fun KtParameter.dataClassComponentFunction(): FunctionDescriptor? {
-    if (!hasValOrVar()) return null
-
-    // Forcing full resolve of owner class: otherwise DATA_CLASS_COMPONENT_FUNCTION won't be calculated.
-    // This is a hack, but better solution would need refactoring of data class component function resolution: they need to be resolved
-    // when resolving corresponding property.
-    LightClassUtil.getLightClassPropertyMethods(this)
+    if (!isDataClassProperty()) return null
 
     val context = this.analyze()
     val paramDescriptor = context[BindingContext.DECLARATION_TO_DESCRIPTOR, this] as? ValueParameterDescriptor
+
+    val constructor = paramDescriptor?.containingDeclaration as? ConstructorDescriptor ?: return null
+    val index = constructor.valueParameters.indexOf(paramDescriptor)
+    val correspondingComponentName = DataClassDescriptorResolver.createComponentName(index + 1)
+
+    val dataClass = constructor.containingDeclaration as? ClassDescriptor ?: return null
+    dataClass.unsubstitutedMemberScope.getContributedFunctions(correspondingComponentName, NoLookupLocation.FROM_IDE)
+
     return context[BindingContext.DATA_CLASS_COMPONENT_FUNCTION, paramDescriptor]
 }
 
+fun KtParameter.isDataClassProperty(): Boolean {
+    if (!hasValOrVar()) return false
+    return this.containingClassOrObject?.hasModifier(KtTokens.DATA_KEYWORD) ?: false
+}
 

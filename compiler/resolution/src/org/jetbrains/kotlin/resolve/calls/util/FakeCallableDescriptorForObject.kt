@@ -21,9 +21,10 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.classValueType
 import org.jetbrains.kotlin.resolve.descriptorUtil.getClassObjectReferenceTarget
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasClassValueDescriptor
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.TypeSubstitutor
 import java.util.*
 
-class FakeCallableDescriptorForObject(
+open class FakeCallableDescriptorForObject(
         val classDescriptor: ClassDescriptor
 ) : DeclarationDescriptorWithVisibility by classDescriptor.getClassObjectReferenceTarget(), VariableDescriptor {
 
@@ -34,7 +35,9 @@ class FakeCallableDescriptorForObject(
 
     }
 
-    fun getReferencedDescriptor(): ClassDescriptor = classDescriptor.getClassObjectReferenceTarget()
+    open fun getReferencedDescriptor(): ClassifierDescriptorWithTypeParameters = classDescriptor.getClassObjectReferenceTarget()
+
+    fun getReferencedObject(): ClassDescriptor = classDescriptor.getClassObjectReferenceTarget()
 
     override fun getExtensionReceiverParameter(): ReceiverParameterDescriptor? = null
 
@@ -64,7 +67,13 @@ class FakeCallableDescriptorForObject(
 
     override fun isConst(): Boolean = false
 
+    override fun isLateInit(): Boolean = false
+
     override fun equals(other: Any?) = other is FakeCallableDescriptorForObject && classDescriptor == other.classDescriptor
 
     override fun hashCode() = classDescriptor.hashCode()
+
+    override fun getContainingDeclaration() = classDescriptor.getClassObjectReferenceTarget().containingDeclaration
+
+    override fun substitute(substitutor: TypeSubstitutor) = this
 }

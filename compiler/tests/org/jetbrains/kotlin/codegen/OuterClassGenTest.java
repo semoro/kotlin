@@ -109,9 +109,10 @@ public class OuterClassGenTest extends CodegenTestCase {
 
     public void testLocalObjectInLambdaInlinedIntoObject() throws Exception {
         OuterClassInfo intoObjectInfo = new OuterClassInfo("foo/Bar", "objectInLambdaInlinedIntoObject", "()V");
-
         doCustomTest("foo/Bar\\$objectInLambdaInlinedIntoObject\\$\\$inlined\\$inlineFoo\\$1", intoObjectInfo, "inlineObject");
+    }
 
+    public void testLocalObjectInLambdaInlinedIntoObject2() throws Exception {
         OuterClassInfo objectInLambda = new OuterClassInfo("foo/Bar$objectInLambdaInlinedIntoObject$$inlined$inlineFoo$1", "run", "()V");
         doCustomTest("foo/Bar\\$objectInLambdaInlinedIntoObject\\$\\$inlined\\$inlineFoo\\$1\\$lambda\\$1",
                      objectInLambda, "inlineObject");
@@ -134,9 +135,10 @@ public class OuterClassGenTest extends CodegenTestCase {
 
     public void testLambdaInLambdaInlinedIntoObject() throws Exception {
         OuterClassInfo intoObjectInfo = new OuterClassInfo("foo/Bar", "objectInLambdaInlinedIntoObject", "()V");
-
         doCustomTest("foo/Bar\\$objectInLambdaInlinedIntoObject\\$\\$inlined\\$inlineFoo\\$1", intoObjectInfo, "inlineLambda");
+    }
 
+    public void testLambdaInLambdaInlinedIntoObject2() throws Exception {
         OuterClassInfo objectInLambda = new OuterClassInfo("foo/Bar$objectInLambdaInlinedIntoObject$$inlined$inlineFoo$1", "invoke", "()V");
         doCustomTest("foo/Bar\\$objectInLambdaInlinedIntoObject\\$\\$inlined\\$inlineFoo\\$1\\$lambda\\$1",
                      objectInLambda, "inlineLambda");
@@ -155,8 +157,8 @@ public class OuterClassGenTest extends CodegenTestCase {
     private void doTest(@NotNull String classFqName, @NotNull String javaClassName, @NotNull String testDataFile) throws Exception {
         File javaOut = CodegenTestUtil.compileJava(
                 Collections.singletonList(KotlinTestUtils.getTestDataPathBase() + "/codegen/" + getPrefix() + "/" + testDataFile + ".java"),
-                Collections.<String>emptyList(),
-                Collections.<String>emptyList()
+                Collections.emptyList(),
+                Collections.emptyList()
         );
 
         String javaClassPath = javaClassName.replace('.', File.separatorChar) + ".class";
@@ -216,7 +218,7 @@ public class OuterClassGenTest extends CodegenTestCase {
 
     @Nullable
     private static OuterClassInfo readOuterClassInfo(@NotNull ClassReader reader) {
-        final Ref<OuterClassInfo> info = Ref.create();
+        Ref<OuterClassInfo> info = Ref.create();
         reader.accept(new ClassVisitor(Opcodes.ASM5) {
             @Override
             public void visitOuterClass(@NotNull String owner, @Nullable String name, @Nullable String desc) {

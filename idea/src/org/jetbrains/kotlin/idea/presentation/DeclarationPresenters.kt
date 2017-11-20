@@ -23,7 +23,9 @@ import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.util.Iconable
 import org.jetbrains.kotlin.idea.KotlinIconProvider
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 
 open class KotlinDefaultNamedDeclarationPresentation(private val declaration: KtNamedDeclaration) : ColoredItemPresentation {
 
@@ -37,16 +39,25 @@ open class KotlinDefaultNamedDeclarationPresentation(private val declaration: Kt
     override fun getPresentableText() = declaration.name
 
     override fun getLocationString(): String? {
-        val name = declaration.fqName ?: return null
-        val receiverTypeRef = (declaration as? KtCallableDeclaration)?.receiverTypeReference
-        if (receiverTypeRef != null) {
-            return "(for " + receiverTypeRef.text + " in " + name.parent() + ")"
+        if ((declaration is KtFunction && declaration.isLocal) || (declaration is KtClassOrObject && declaration.isLocal)) {
+            val containingDeclaration = declaration.getStrictParentOfType<KtNamedDeclaration>() ?: return null
+            val containerName = containingDeclaration.fqName ?: containingDeclaration.name
+            return "(in $containerName)"
         }
-        else if (declaration.parent is KtFile) {
-            return "(" + name.parent() + ")"
+        val name = declaration.fqName ?: return null
+        val qualifiedContainer = name.parent().toString()
+        val parent = declaration.parent
+        val containerText = if (parent is KtFile && declaration.hasModifier(KtTokens.PRIVATE_KEYWORD)) {
+            "${parent.name} in $qualifiedContainer"
         }
         else {
-            return "(in " + name.parent() + ")"
+            qualifiedContainer
+        }
+        val receiverTypeRef = (declaration as? KtCallableDeclaration)?.receiverTypeReference
+        return when {
+            receiverTypeRef != null -> "(for " + receiverTypeRef.text + " in " + containerText + ")"
+            parent is KtFile -> "($containerText)"
+            else -> "(in $containerText)"
         }
     }
 
@@ -68,7 +79,9 @@ class KtFunctionPresenter : ItemPresentationProvider<KtFunction> {
                     function.name?.let { append(it) }
 
                     append("(")
-                    append(function.valueParameters.joinToString { it.typeReference?.text ?: "" })
+                    append(function.valueParameters.joinToString {
+                        (if (it.isVarArg) "vararg " else "") + (it.typeReference?.text ?: "")
+                    })
                     append(")")
                 }
             }

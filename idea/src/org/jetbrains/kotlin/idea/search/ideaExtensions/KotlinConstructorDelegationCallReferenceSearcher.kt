@@ -20,15 +20,16 @@ import com.intellij.openapi.application.QueryExecutorBase
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.searches.MethodReferencesSearch.SearchParameters
 import com.intellij.util.Processor
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.search.usagesSearch.processDelegationCallConstructorUsages
 
-class KotlinConstructorDelegationCallReferenceSearcher() : QueryExecutorBase<PsiReference, SearchParameters>(true) {
+class KotlinConstructorDelegationCallReferenceSearcher : QueryExecutorBase<PsiReference, SearchParameters>(true) {
     override fun processQuery(queryParameters: SearchParameters, consumer: Processor<PsiReference>) {
         val method = queryParameters.method
         if (!method.isConstructor) return
 
         method.processDelegationCallConstructorUsages(method.useScope.intersectWith(queryParameters.effectiveSearchScope)) {
-            it.calleeExpression?.reference?.let { consumer.process(it) } ?: true
+            it.calleeExpression?.mainReference?.let { consumer.process(it) } ?: true
         }
     }
 }

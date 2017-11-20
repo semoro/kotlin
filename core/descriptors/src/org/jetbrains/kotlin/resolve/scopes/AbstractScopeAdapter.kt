@@ -16,7 +16,10 @@
 
 package org.jetbrains.kotlin.resolve.scopes
 
-import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import org.jetbrains.kotlin.descriptors.SimpleFunctionDescriptor
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.Printer
@@ -50,8 +53,16 @@ abstract class AbstractScopeAdapter : MemberScope {
         return workerScope.getContributedDescriptors(kindFilter, nameFilter)
     }
 
+    override fun getFunctionNames() = workerScope.getFunctionNames()
+    override fun getVariableNames() = workerScope.getVariableNames()
+    override fun getClassifierNames() = workerScope.getClassifierNames()
+
+    override fun recordLookup(name: Name, location: LookupLocation) {
+        workerScope.recordLookup(name, location)
+    }
+
     override fun printScopeStructure(p: Printer) {
-        p.println(javaClass.simpleName, " {")
+        p.println(this::class.java.simpleName, " {")
         p.pushIndent()
 
         p.print("worker =")

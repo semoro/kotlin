@@ -58,6 +58,8 @@ With that, an exact type of an expression can be checked in the following way:
        expr checkType { _<A>() }
     }
 
+`CHECK_TYPE` directive also disables `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` diagnostics output.
+
 #### Usage:
 
     // !CHECK_TYPE
@@ -76,10 +78,22 @@ The directive lets you compose a test consisting of several files in one actual 
 
 ### 4. LANGUAGE
 
-This directive lets you enable or disable certain language features. Language features are named as enum entries of the class `LanguageFeature`. Each feature can be enabled with `+` or disabled with `-`.
+This directive lets you enable or disable certain language features. Language features are named as enum entries of the class `LanguageFeature`.
+Each feature can be enabled with `+`, disabled with `-`, or enabled with warning with `warn:`.
 
 #### Usage:
 
     // !LANGUAGE: -TopLevelSealedInheritance
 
     // !LANGUAGE: +TypeAliases -LocalDelegatedProperties
+
+    // !LANGUAGE: warn:Coroutines
+
+### 5. API_VERSION
+
+This directive emulates the behavior of the `-api-version` command line option, disallowing to use declarations annotated with `@SinceKotlin(X)` where X is greater than the specified API version.
+Note that if this directive is present, the NEWER_VERSION_IN_SINCE_KOTLIN diagnostic is automatically disabled, _unless_ the "!DIAGNOSTICS" directive is present.
+
+#### Usage:
+
+    // !API_VERSION: 1.0

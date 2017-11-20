@@ -55,13 +55,13 @@ internal annotation class OnlyInputTypes
 /**
  * Specifies that this function should not be called directly without inlining
  */
-@Target(AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER)
 @Retention(AnnotationRetention.BINARY)
 internal annotation class InlineOnly
 
 /**
- * Specifies that this part of internal API is effectively public exposed by using in public inline function
+ * Specifies that this declaration can have dynamic receiver type.
  */
-@Target(AnnotationTarget.CLASS, AnnotationTarget.CONSTRUCTOR, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.BINARY)
-internal annotation class InlineExposed
+internal annotation class DynamicExtension

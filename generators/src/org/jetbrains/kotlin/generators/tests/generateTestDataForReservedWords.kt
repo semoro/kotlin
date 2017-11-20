@@ -16,8 +16,8 @@
 
 package org.jetbrains.kotlin.generators.tests
 
-import com.google.dart.compiler.backend.js.ast.JsFunctionScope
 import org.jetbrains.kotlin.generators.util.GeneratorsFileUtil
+import org.jetbrains.kotlin.js.backend.ast.JsDeclarationScope
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.renderer.KeywordStringsGenerated
 import java.io.File
@@ -43,7 +43,7 @@ fun main(args: Array<String>) {
     generateTestDataForReservedWords()
 }
 
-val TEST_DATA_DIR_FOR_RESERVED_WORDS = "js/js.translator/testData/reservedWords/cases"
+val TEST_DATA_DIR_FOR_RESERVED_WORDS = "js/js.translator/testData/box/reservedWords"
 
 fun generateTestDataForReservedWords() {
     generate(TEST_DATA_DIR_FOR_RESERVED_WORDS) {
@@ -366,8 +366,8 @@ val testNotRenamedByRef = testNotRenamed("$KEYWORD_MARKER()")
 
 // KEYWORDS
 
-val SHOULD_BE_ESCAPED = JsFunctionScope.RESERVED_WORDS.filter { it in KeywordStringsGenerated.KEYWORDS }.sorted()
-val SHOULD_NOT_BE_ESCAPED = JsFunctionScope.RESERVED_WORDS.filter { it !in SHOULD_BE_ESCAPED }.sorted()
+val SHOULD_BE_ESCAPED = JsDeclarationScope.RESERVED_WORDS.filter { it in KeywordStringsGenerated.KEYWORDS }.sorted()
+val SHOULD_NOT_BE_ESCAPED = JsDeclarationScope.RESERVED_WORDS.filter { it !in SHOULD_BE_ESCAPED }.sorted()
 
 // all keywords by portions
 

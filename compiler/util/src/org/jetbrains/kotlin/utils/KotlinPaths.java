@@ -28,16 +28,19 @@ public interface KotlinPaths {
     File getLibPath();
 
     @NotNull
-    File getRuntimePath();
+    File getStdlibPath();
 
     @NotNull
     File getReflectPath();
 
     @NotNull
+    File getScriptRuntimePath();
+
+    @NotNull
     File getKotlinTestPath();
 
     @NotNull
-    File getRuntimeSourcesPath();
+    File getStdlibSourcesPath();
 
     @NotNull
     File getJsStdLibJarPath();
@@ -46,5 +49,20 @@ public interface KotlinPaths {
     File getJsStdLibSrcJarPath();
 
     @NotNull
+    File getJsKotlinTestJarPath();
+
+    @NotNull
+    File getAllOpenPluginJarPath();
+
+    @NotNull
+    File getNoArgPluginJarPath();
+
+    @NotNull
+    File getSamWithReceiverJarPath();
+
+    @NotNull
     File getCompilerPath();
+
+    @NotNull
+    File getBuildNumberFile();
 }

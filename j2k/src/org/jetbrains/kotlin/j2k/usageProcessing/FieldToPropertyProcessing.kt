@@ -22,7 +22,7 @@ import com.intellij.util.IncorrectOperationException
 import org.jetbrains.kotlin.j2k.AccessorKind
 import org.jetbrains.kotlin.j2k.CodeConverter
 import org.jetbrains.kotlin.j2k.ast.*
-import org.jetbrains.kotlin.utils.addToStdlib.singletonList
+import org.jetbrains.kotlin.j2k.dot
 
 class FieldToPropertyProcessing(
         private val field: PsiField,
@@ -37,16 +37,15 @@ class FieldToPropertyProcessing(
             if (field.name != propertyName || replaceReadWithFieldReference || replaceWriteWithFieldReference) MyConvertedCodeProcessor() else null
 
     override var javaCodeProcessors =
-            if (field.hasModifierProperty(PsiModifier.PRIVATE))
-                emptyList()
-            else if (field.name != propertyName)
-                listOf(ElementRenamedCodeProcessor(propertyName), UseAccessorsJavaCodeProcessor())
-            else
-                UseAccessorsJavaCodeProcessor().singletonList()
+            when {
+                field.hasModifierProperty(PsiModifier.PRIVATE) -> emptyList()
+                field.name != propertyName -> listOf(ElementRenamedCodeProcessor(propertyName), UseAccessorsJavaCodeProcessor())
+                else -> listOf(UseAccessorsJavaCodeProcessor())
+            }
 
     override val kotlinCodeProcessors =
             if (field.name != propertyName)
-                ElementRenamedCodeProcessor(propertyName).singletonList()
+                listOf(ElementRenamedCodeProcessor(propertyName))
             else
                 emptyList()
 
@@ -60,7 +59,7 @@ class FieldToPropertyProcessing(
 
             val qualifier = expression.qualifierExpression
             if (qualifier != null && !useFieldReference) {
-                return QualifiedExpression(codeConverter.convertExpression(qualifier), identifier)
+                return QualifiedExpression(codeConverter.convertExpression(qualifier), identifier, expression.dot())
             }
             else {
                 // check if field name is shadowed
@@ -74,7 +73,7 @@ class FieldToPropertyProcessing(
                 return if (refExpr.resolve() == null)
                     identifier
                 else
-                    QualifiedExpression(ThisExpression(Identifier.Empty).assignNoPrototype(), identifier) //TODO: this is not correct in case of nested/anonymous classes
+                    QualifiedExpression(ThisExpression(Identifier.Empty).assignNoPrototype(), identifier, null) //TODO: this is not correct in case of nested/anonymous classes
             }
         }
     }
@@ -105,10 +104,8 @@ class FieldToPropertyProcessing(
 
                 is PsiPrefixExpression, is PsiPostfixExpression -> {
                     //TODO: what if it's used as value?
-                    val operationType = if (parent is PsiPrefixExpression)
-                        parent.operationTokenType
-                    else
-                        (parent as PsiPostfixExpression).operationTokenType
+                    val operationType = (parent as? PsiPrefixExpression)?.operationTokenType
+                                        ?: (parent as PsiPostfixExpression).operationTokenType
                     val opText = when (operationType) {
                         JavaTokenType.PLUSPLUS -> "+"
                         JavaTokenType.MINUSMINUS -> "-"

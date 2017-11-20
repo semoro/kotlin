@@ -43,7 +43,7 @@ public class KotlinParser implements PsiParser {
     @NotNull
     public ASTNode parse(IElementType iElementType, PsiBuilder psiBuilder, PsiFile psiFile) {
         KotlinParsing ktParsing = KotlinParsing.createForTopLevel(new SemanticWhitespaceAwarePsiBuilderImpl(psiBuilder));
-        if (scriptDefinitionProvider != null && scriptDefinitionProvider.isScript(psiFile)
+        if (scriptDefinitionProvider != null && scriptDefinitionProvider.isScript(psiFile.getName())
             || psiFile.getName().endsWith(KotlinParserDefinition.STD_SCRIPT_EXT)) {
             ktParsing.parseScript();
         }
@@ -71,6 +71,13 @@ public class KotlinParser implements PsiParser {
     public static ASTNode parseBlockCodeFragment(PsiBuilder psiBuilder) {
         KotlinParsing ktParsing = KotlinParsing.createForTopLevel(new SemanticWhitespaceAwarePsiBuilderImpl(psiBuilder));
         ktParsing.parseBlockCodeFragment();
+        return psiBuilder.getTreeBuilt();
+    }
+
+    @NotNull
+    public static ASTNode parseLambdaExpression(PsiBuilder psiBuilder) {
+        KotlinParsing ktParsing = KotlinParsing.createForTopLevel(new SemanticWhitespaceAwarePsiBuilderImpl(psiBuilder));
+        ktParsing.parseLambdaExpression();
         return psiBuilder.getTreeBuilt();
     }
 }

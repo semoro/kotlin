@@ -16,19 +16,28 @@
 
 package org.jetbrains.kotlin.idea.imports
 
-import com.intellij.openapi.command.CommandProcessor
-import com.intellij.openapi.command.UndoConfirmationPolicy
-import java.io.File
-import org.junit.Assert
-import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
-import org.jetbrains.kotlin.*
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.AbstractImportsTest
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.idea.test.KotlinStdJSProjectDescriptor
 
 abstract class AbstractOptimizeImportsTest() : AbstractImportsTest() {
-    override fun doTest(file: KtFile) {
-        KotlinImportOptimizer().processFile(file).run()
+    override fun doTest(file: KtFile): String {
+        OptimizedImportsBuilder.testLog = StringBuilder()
+        try {
+            KotlinImportOptimizer().processFile(file).run()
+            return OptimizedImportsBuilder.testLog.toString()
+        }
+        finally {
+            OptimizedImportsBuilder.testLog = null
+        }
     }
 
     override val nameCountToUseStarImportDefault: Int
         get() = Integer.MAX_VALUE
+}
+
+abstract class AbstractJvmOptimizeImportsTest : AbstractOptimizeImportsTest()
+
+abstract class AbstractJsOptimizeImportsTest : AbstractOptimizeImportsTest() {
+    override fun getProjectDescriptor() = KotlinStdJSProjectDescriptor
 }

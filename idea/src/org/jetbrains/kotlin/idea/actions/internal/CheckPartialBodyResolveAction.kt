@@ -127,7 +127,7 @@ class CheckPartialBodyResolveAction : AnAction() {
                 val offset = expression.textOffset
                 val line = document.getLineNumber(offset)
                 val column = offset - document.getLineStartOffset(line)
-                val exprName = if (expression is KtNameReferenceExpression) expression.getReferencedName() else expression.javaClass.simpleName
+                val exprName = (expression as? KtNameReferenceExpression)?.getReferencedName() ?: expression::class.java.simpleName
                 builder.append("$exprName at (${line + 1}:${column + 1})")
 
                 if (expression is KtReferenceExpression) {
@@ -193,7 +193,7 @@ class CheckPartialBodyResolveAction : AnAction() {
             is KtBlockExpression -> expression == parent.lastStatement() && isValueNeeded(parent)
 
             is KtContainerNode -> { //TODO - not quite correct
-                val pparent = parent.getParent() as? KtExpression
+                val pparent = parent.parent as? KtExpression
                 pparent != null && isValueNeeded(pparent)
             }
 

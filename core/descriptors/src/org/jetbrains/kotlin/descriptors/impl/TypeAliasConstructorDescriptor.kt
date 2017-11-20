@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,32 +20,107 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.types.TypeSubstitutor
-import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.storage.StorageManager
+import org.jetbrains.kotlin.storage.getValue
+import org.jetbrains.kotlin.types.*
 
-interface TypeAliasConstructorDescriptor : ConstructorDescriptor {
-    val typeAliasDescriptor: TypeAliasDescriptor
-    val underlyingConstructorDescriptor: ConstructorDescriptor
+interface TypeAliasConstructorDescriptor : ConstructorDescriptor, DescriptorDerivedFromTypeAlias {
+    val underlyingConstructorDescriptor: ClassConstructorDescriptor
+
+    override fun getContainingDeclaration(): TypeAliasDescriptor
+
+    override fun getReturnType(): KotlinType
+
+    override fun getOriginal(): TypeAliasConstructorDescriptor
+
+    override fun substitute(substitutor: TypeSubstitutor): TypeAliasConstructorDescriptor?
+
+    val withDispatchReceiver: TypeAliasConstructorDescriptor?
+
+    override fun copy(
+            newOwner: DeclarationDescriptor,
+            modality: Modality,
+            visibility: Visibility,
+            kind: Kind,
+            copyOverrides: Boolean
+    ): TypeAliasConstructorDescriptor
 }
 
 class TypeAliasConstructorDescriptorImpl private constructor(
+        val storageManager: StorageManager,
         override val typeAliasDescriptor: TypeAliasDescriptor,
-        override val underlyingConstructorDescriptor: ConstructorDescriptor,
-        containingDeclaration: ClassDescriptor,
+        underlyingConstructorDescriptor: ClassConstructorDescriptor,
         original: TypeAliasConstructorDescriptor?,
         annotations: Annotations,
-        primary: Boolean,
         kind: Kind,
         source: SourceElement
 ) : TypeAliasConstructorDescriptor,
-        ConstructorDescriptorImpl(containingDeclaration, original, annotations,
-                                  primary, kind, source)
+        FunctionDescriptorImpl(typeAliasDescriptor, original, annotations, Name.special("<init>"), kind, source)
 {
+    // When resolution is ran for common calls, type aliases constructors are resolved as extensions
+    // (i.e. after members, and with extension receiver)
+    // But when resolving super-calls (with known set of candidates) constructors of inner classes are expected to have
+    // a dispatch receiver
+    override val withDispatchReceiver: TypeAliasConstructorDescriptor? by storageManager.createNullableLazyValue {
+        TypeAliasConstructorDescriptorImpl(
+                storageManager,
+                typeAliasDescriptor,
+                underlyingConstructorDescriptor,
+                this,
+                underlyingConstructorDescriptor.annotations,
+                underlyingConstructorDescriptor.kind,
+                typeAliasDescriptor.source
+        ).also { typeAliasConstructor ->
+            val substitutorForUnderlyingClass = typeAliasDescriptor.getTypeSubstitutorForUnderlyingClass() ?:
+                                                return@createNullableLazyValue null
+
+            typeAliasConstructor.initialize(
+                    null,
+                    underlyingConstructorDescriptor.dispatchReceiverParameter?.substitute(substitutorForUnderlyingClass),
+                    typeAliasDescriptor.declaredTypeParameters,
+                    valueParameters,
+                    returnType,
+                    Modality.FINAL,
+                    typeAliasDescriptor.visibility
+            )
+        }
+    }
+
+    override var underlyingConstructorDescriptor: ClassConstructorDescriptor = underlyingConstructorDescriptor
+            private set
+
+    override fun isPrimary(): Boolean =
+            underlyingConstructorDescriptor.isPrimary
+
+    override fun getContainingDeclaration(): TypeAliasDescriptor =
+            typeAliasDescriptor
+
+    override fun getConstructedClass(): ClassDescriptor =
+            underlyingConstructorDescriptor.constructedClass
+
+    override fun getReturnType(): KotlinType =
+            super.getReturnType()!!
+
     override fun getOriginal(): TypeAliasConstructorDescriptor =
             super.getOriginal() as TypeAliasConstructorDescriptor
 
-    override fun substitute(substitutor: TypeSubstitutor): TypeAliasConstructorDescriptor =
-            super.substitute(substitutor) as TypeAliasConstructorDescriptor
+    override fun substitute(substitutor: TypeSubstitutor): TypeAliasConstructorDescriptor? {
+        //    class C<T>(val x: T)
+        //    typealias A<Q> = C<List<Q>>
+        //
+        //    val test = A(listOf(42))
+        //
+        // Here return type for substituted type alias constructor is 'C<List<Int>>',
+        // which yields us a substitution [T -> List<Int>] that should be applied to
+        // the unsubstituted underlying constructor with signature '<T> (T) -> C<T>'
+        // producing substituted underlying constructor with signature '(List<Int>) -> C<List<Int>>'.
+        val substitutedTypeAliasConstructor = super.substitute(substitutor) as TypeAliasConstructorDescriptorImpl
+        val underlyingConstructorSubstitutor = TypeSubstitutor.create(substitutedTypeAliasConstructor.returnType)
+        val substitutedUnderlyingConstructor = underlyingConstructorDescriptor.original.substitute(underlyingConstructorSubstitutor)
+                                               ?: return null
+        substitutedTypeAliasConstructor.underlyingConstructorDescriptor = substitutedUnderlyingConstructor
+        return substitutedTypeAliasConstructor
+    }
 
     override fun copy(
             newOwner: DeclarationDescriptor,
@@ -75,31 +150,57 @@ class TypeAliasConstructorDescriptorImpl private constructor(
         }
         assert(newName == null) { "Renaming type alias constructor: $this" }
         return TypeAliasConstructorDescriptorImpl(
-                typeAliasDescriptor, underlyingConstructorDescriptor,
-                newOwner as ClassDescriptor,
+                storageManager,
+                typeAliasDescriptor,
+                underlyingConstructorDescriptor,
                 this,
-                annotations, isPrimary, Kind.DECLARATION, source)
+                annotations,
+                Kind.DECLARATION, source)
     }
 
     companion object {
-        fun create(
+        private fun TypeAliasDescriptor.getTypeSubstitutorForUnderlyingClass(): TypeSubstitutor? {
+            if (classDescriptor == null) return null
+            return TypeSubstitutor.create(expandedType)
+        }
+
+        fun createIfAvailable(
+                storageManager: StorageManager,
                 typeAliasDescriptor: TypeAliasDescriptor,
-                underlyingConstructor: ConstructorDescriptor,
-                substitutor: TypeSubstitutor
-        ): TypeAliasConstructorDescriptor? = with(underlyingConstructor) {
+                constructor: ClassConstructorDescriptor
+        ): TypeAliasConstructorDescriptor? {
+            val substitutorForUnderlyingClass = typeAliasDescriptor.getTypeSubstitutorForUnderlyingClass() ?: return null
+
             val typeAliasConstructor =
-                    TypeAliasConstructorDescriptorImpl(typeAliasDescriptor, underlyingConstructor, containingDeclaration, null,
-                                                       annotations, isPrimary, kind, typeAliasDescriptor.source)
+                    TypeAliasConstructorDescriptorImpl(
+                            storageManager, typeAliasDescriptor, constructor, null, constructor.annotations,
+                            constructor.kind, typeAliasDescriptor.source)
 
             val valueParameters =
-                    FunctionDescriptorImpl.getSubstitutedValueParameters(typeAliasConstructor, valueParameters, substitutor, false)
-                    ?: return null
+                    FunctionDescriptorImpl.getSubstitutedValueParameters(
+                            typeAliasConstructor, constructor.valueParameters, substitutorForUnderlyingClass, false, false,
+                            null
+                    ) ?: return null
 
-            typeAliasConstructor.initialize(valueParameters, visibility, typeAliasDescriptor.declaredTypeParameters)
+            val returnType = run {
+                val returnTypeNoAbbreviation = substitutorForUnderlyingClass.substitute(constructor.returnType, Variance.INVARIANT)
+                                               ?: return null
+                returnTypeNoAbbreviation.unwrap().lowerIfFlexible().withAbbreviation(typeAliasDescriptor.defaultType)
+            }
 
-            typeAliasConstructor.returnType = substitutor.substitute(returnType, Variance.OUT_VARIANCE) ?: return null
+            val receiverParameterType = constructor.dispatchReceiverParameter?.let { substitutorForUnderlyingClass.safeSubstitute(it.type, Variance.INVARIANT) }
 
-            typeAliasConstructor
+            typeAliasConstructor.initialize(
+                    receiverParameterType,
+                    null,
+                    typeAliasDescriptor.declaredTypeParameters,
+                    valueParameters,
+                    returnType,
+                    Modality.FINAL,
+                    typeAliasDescriptor.visibility
+            )
+
+            return typeAliasConstructor
         }
     }
 }

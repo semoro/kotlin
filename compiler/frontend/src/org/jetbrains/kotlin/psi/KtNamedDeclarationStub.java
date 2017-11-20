@@ -90,7 +90,14 @@ abstract class KtNamedDeclarationStub<T extends KotlinStubWithFqName<?>> extends
             removeModifier(KtTokens.OPERATOR_KEYWORD);
         }
 
-        return identifier.replace(KtPsiFactory(this).createNameIdentifier(name));
+        PsiElement newIdentifier = KtPsiFactory(this).createNameIdentifierIfPossible(name);
+        if (newIdentifier != null) {
+            identifier.replace(newIdentifier);
+        }
+        else {
+            identifier.delete();
+        }
+        return this;
     }
 
     @Override
@@ -103,7 +110,18 @@ abstract class KtNamedDeclarationStub<T extends KotlinStubWithFqName<?>> extends
     @Override
     public SearchScope getUseScope() {
         KtElement enclosingBlock = KtPsiUtil.getEnclosingElementForLocalDeclaration(this, false);
-        if (enclosingBlock != null) return new LocalSearchScope(enclosingBlock);
+        if (enclosingBlock != null) {
+            PsiElement enclosingParent = enclosingBlock.getParent();
+            if (enclosingParent instanceof KtContainerNode) {
+                enclosingParent = enclosingParent.getParent();
+            }
+            if (enclosingBlock instanceof KtBlockExpression && enclosingParent instanceof KtDoWhileExpression) {
+                KtExpression condition = ((KtDoWhileExpression) enclosingParent).getCondition();
+                if (condition != null) return new LocalSearchScope(new PsiElement[] { enclosingBlock, condition });
+            }
+
+            return new LocalSearchScope(enclosingBlock);
+        }
 
         if (hasModifier(KtTokens.PRIVATE_KEYWORD)) {
             KtElement containingClass = PsiTreeUtil.getParentOfType(this, KtClassOrObject.class);
@@ -138,5 +156,18 @@ abstract class KtNamedDeclarationStub<T extends KotlinStubWithFqName<?>> extends
             return stub.getFqName();
         }
         return KtNamedDeclarationUtil.getFQName(this);
+    }
+
+    @Override
+    public void delete() throws IncorrectOperationException {
+        KtClassOrObject classOrObject = KtPsiUtilKt.getContainingClassOrObject(this);
+
+        super.delete();
+
+        if (classOrObject instanceof KtObjectDeclaration
+            && ((KtObjectDeclaration) classOrObject).isCompanion()
+            && classOrObject.getDeclarations().isEmpty()) {
+            classOrObject.delete();
+        }
     }
 }

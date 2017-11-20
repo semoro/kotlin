@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,30 +19,53 @@ package org.jetbrains.kotlin.js.resolve
 import org.jetbrains.kotlin.container.StorageComponentContainer
 import org.jetbrains.kotlin.container.useImpl
 import org.jetbrains.kotlin.container.useInstance
-import org.jetbrains.kotlin.js.resolve.diagnostics.JsCallChecker
-import org.jetbrains.kotlin.js.resolve.diagnostics.NativeInnerClassChecker
-import org.jetbrains.kotlin.resolve.IdentifierChecker
+import org.jetbrains.kotlin.js.resolve.diagnostics.*
+import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap
 import org.jetbrains.kotlin.resolve.OverloadFilter
+import org.jetbrains.kotlin.resolve.OverridesBackwardCompatibilityHelper
 import org.jetbrains.kotlin.resolve.PlatformConfigurator
+import org.jetbrains.kotlin.resolve.calls.checkers.ReifiedTypeParameterSubstitutionChecker
+import org.jetbrains.kotlin.resolve.checkers.ExpectedActualDeclarationChecker
+import org.jetbrains.kotlin.resolve.lazy.DelegationFilter
 import org.jetbrains.kotlin.resolve.scopes.SyntheticScopes
 import org.jetbrains.kotlin.types.DynamicTypesAllowed
 
 object JsPlatformConfigurator : PlatformConfigurator(
         DynamicTypesAllowed(),
-        additionalDeclarationCheckers = listOf(NativeInvokeChecker(), NativeGetterChecker(), NativeSetterChecker(),
-                                               NativeInnerClassChecker()),
-        additionalCallCheckers = listOf(),
+        additionalDeclarationCheckers = listOf(
+                NativeInvokeChecker(), NativeGetterChecker(), NativeSetterChecker(),
+                JsNameChecker, JsModuleChecker, JsExternalFileChecker,
+                JsExternalChecker, JsInheritanceChecker,
+                JsRuntimeAnnotationChecker,
+                JsDynamicDeclarationChecker,
+                ExpectedActualDeclarationChecker
+        ),
+        additionalCallCheckers = listOf(
+                ReifiedTypeParameterSubstitutionChecker(),
+                JsModuleCallChecker,
+                JsDynamicCallChecker,
+                JsDefinedExternallyCallChecker
+        ),
         additionalTypeCheckers = listOf(),
         additionalClassifierUsageCheckers = listOf(),
         additionalAnnotationCheckers = listOf(),
-        identifierChecker = IdentifierChecker.DEFAULT,
-        overloadFilter = OverloadFilter.DEFAULT
+        identifierChecker = JsIdentifierChecker,
+        overloadFilter = OverloadFilter.DEFAULT,
+        platformToKotlinClassMap = PlatformToKotlinClassMap.EMPTY,
+        delegationFilter = DelegationFilter.DEFAULT,
+        overridesBackwardCompatibilityHelper = OverridesBackwardCompatibilityHelper.DEFAULT
 ) {
-    override fun configure(container: StorageComponentContainer) {
-        super.configure(container)
-
+    override fun configureModuleComponents(container: StorageComponentContainer) {
         container.useImpl<JsCallChecker>()
         container.useInstance(SyntheticScopes.Empty)
         container.useInstance(JsTypeSpecificityComparator)
+        container.useInstance(JsNameClashChecker())
+        container.useInstance(JsNameCharsChecker())
+        container.useInstance(JsModuleClassLiteralChecker)
+        container.useImpl<JsReflectionAPICallChecker>()
+        container.useImpl<JsNativeRttiChecker>()
+        container.useImpl<JsReifiedNativeChecker>()
+        container.useInstance(ExtensionFunctionToExternalIsInlinable)
+        container.useInstance(JsQualifierChecker)
     }
 }

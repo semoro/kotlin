@@ -22,7 +22,7 @@ import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.compile.AbstractCompile
 import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 
-class ExampleSubplugin : KotlinGradleSubplugin {
+class ExampleSubplugin : KotlinGradleSubplugin<AbstractCompile> {
 
     override fun isApplicable(project: Project, task: AbstractCompile): Boolean {
         return true
@@ -33,13 +33,14 @@ class ExampleSubplugin : KotlinGradleSubplugin {
             kotlinCompile: AbstractCompile, 
             javaCompile: AbstractCompile, 
             variantData: Any?,
+            androidProjectHandler: Any?,
             javaSourceSet: SourceSet?
     ): List<SubpluginOption> {
         println("ExampleSubplugin loaded")
         return listOf(SubpluginOption("exampleKey", "exampleValue"))
     }
 
-    override fun getPluginName(): String {
+    override fun getCompilerPluginId(): String {
         return "example.plugin"
     }
 

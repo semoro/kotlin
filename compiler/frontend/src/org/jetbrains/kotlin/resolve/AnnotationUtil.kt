@@ -16,17 +16,16 @@
 
 package org.jetbrains.kotlin.resolve.annotations
 
-import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
-import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.constants.ConstantValue
 import org.jetbrains.kotlin.resolve.constants.ErrorValue
-import org.jetbrains.kotlin.resolve.inline.InlineUtil
 
 private val JVM_STATIC_ANNOTATION_FQ_NAME = FqName("kotlin.jvm.JvmStatic")
+
+val JVM_FIELD_ANNOTATION_FQ_NAME = FqName("kotlin.jvm.JvmField")
 
 fun DeclarationDescriptor.hasJvmStaticAnnotation(): Boolean {
     return annotations.findAnnotation(JVM_STATIC_ANNOTATION_FQ_NAME) != null
@@ -44,43 +43,6 @@ private val STRICTFP_ANNOTATION_FQ_NAME = FqName("kotlin.jvm.Strictfp")
 fun DeclarationDescriptor.findStrictfpAnnotation() =
         DescriptorUtils.getAnnotationByFqName(annotations, STRICTFP_ANNOTATION_FQ_NAME)
 
-fun CallableDescriptor.isPlatformStaticInObjectOrClass(): Boolean =
-        isPlatformStaticIn { DescriptorUtils.isNonCompanionObject(it) || DescriptorUtils.isClassOrEnumClass(it) }
-
-fun CallableDescriptor.isPlatformStaticInCompanionObject(): Boolean =
-        isPlatformStaticIn { DescriptorUtils.isCompanionObject(it) }
-
-private fun CallableDescriptor.isPlatformStaticIn(predicate: (DeclarationDescriptor) -> Boolean): Boolean =
-        when (this) {
-            is PropertyAccessorDescriptor -> {
-                val propertyDescriptor = correspondingProperty
-                predicate(propertyDescriptor.containingDeclaration) &&
-                (hasJvmStaticAnnotation() || propertyDescriptor.hasJvmStaticAnnotation())
-            }
-            else -> predicate(containingDeclaration) && hasJvmStaticAnnotation()
-        }
-
 fun AnnotationDescriptor.argumentValue(parameterName: String): Any? {
-    val constant: ConstantValue<*>? = allValueArguments.entries
-            .singleOrNull { it.key.name.asString() == parameterName }
-            ?.value
-
-    if (constant == null || constant is ErrorValue)
-        return null
-
-    return constant.value
-}
-
-private val INLINE_ONLY_ANNOTATION_FQ_NAME = FqName("kotlin.internal.InlineOnly")
-
-fun MemberDescriptor.isInlineOnlyOrReified(): Boolean {
-    if (this !is FunctionDescriptor) return false
-    return typeParameters.any { it.isReified } || hasInlineOnlyAnnotation()
-}
-
-fun MemberDescriptor.hasInlineOnlyAnnotation(): Boolean {
-    if (this !is FunctionDescriptor) return false
-    return annotations.hasAnnotation(INLINE_ONLY_ANNOTATION_FQ_NAME) && InlineUtil.isInline(this).apply {
-        assert(this) { "Function is not inline: ${this@hasInlineOnlyAnnotation}"; }
-    }
+    return allValueArguments[Name.identifier(parameterName)].takeUnless { it is ErrorValue }?.value
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,12 @@ package org.jetbrains.kotlin.resolve.jvm.platform
 import org.jetbrains.kotlin.container.StorageComponentContainer
 import org.jetbrains.kotlin.container.useImpl
 import org.jetbrains.kotlin.container.useInstance
+import org.jetbrains.kotlin.load.java.sam.SamConversionResolverImpl
+import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.resolve.PlatformConfigurator
-import org.jetbrains.kotlin.resolve.jvm.JvmOverloadFilter
-import org.jetbrains.kotlin.resolve.jvm.JvmTypeSpecificityComparator
-import org.jetbrains.kotlin.resolve.jvm.RuntimeAssertionsTypeChecker
+import org.jetbrains.kotlin.resolve.calls.checkers.ReifiedTypeParameterSubstitutionChecker
+import org.jetbrains.kotlin.resolve.checkers.ExpectedActualDeclarationChecker
+import org.jetbrains.kotlin.resolve.jvm.*
 import org.jetbrains.kotlin.resolve.jvm.checkers.*
 import org.jetbrains.kotlin.synthetic.JavaSyntheticScopes
 import org.jetbrains.kotlin.types.DynamicTypesSettings
@@ -35,36 +37,35 @@ object JvmPlatformConfigurator : PlatformConfigurator(
                 VolatileAnnotationChecker(),
                 SynchronizedAnnotationChecker(),
                 LocalFunInlineChecker(),
-                ReifiedTypeParameterAnnotationChecker(),
                 ExternalFunChecker(),
                 OverloadsAnnotationChecker(),
                 JvmFieldApplicabilityChecker(),
                 TypeParameterBoundIsNotArrayChecker(),
                 JvmSyntheticApplicabilityChecker(),
                 StrictfpApplicabilityChecker(),
-                AdditionalBuiltInsMemberOverrideDeclarationChecker
+                ExpectedActualDeclarationChecker
         ),
 
         additionalCallCheckers = listOf(
                 JavaAnnotationCallChecker(),
-                InterfaceDefaultMethodCallChecker(),
                 JavaClassOnCompanionChecker(),
                 ProtectedInSuperClassCompanionCallChecker(),
                 UnsupportedSyntheticCallableReferenceChecker(),
                 SuperCallWithDefaultArgumentsChecker(),
-                MissingDependencyClassChecker(),
                 ProtectedSyntheticExtensionCallChecker,
-                AdditionalBuiltInsMembersCallChecker
+                ReifiedTypeParameterSubstitutionChecker(),
+                RuntimeAssertionsOnExtensionReceiverCallChecker
         ),
 
         additionalTypeCheckers = listOf(
-                WhenByPlatformEnumChecker(),
+                JavaNullabilityChecker(),
                 RuntimeAssertionsTypeChecker,
                 JavaGenericVarianceViolationTypeChecker,
                 JavaTypeAccessibilityChecker()
         ),
 
-        additionalClassifierUsageCheckers = listOf(),
+        additionalClassifierUsageCheckers = listOf(
+        ),
 
         additionalAnnotationCheckers = listOf(
                 RepeatableAnnotationChecker,
@@ -73,14 +74,22 @@ object JvmPlatformConfigurator : PlatformConfigurator(
 
         identifierChecker = JvmSimpleNameBacktickChecker,
 
-        overloadFilter = JvmOverloadFilter
+        overloadFilter = JvmOverloadFilter,
+
+        platformToKotlinClassMap = JavaToKotlinClassMap,
+
+        delegationFilter = JvmDelegationFilter,
+
+        overridesBackwardCompatibilityHelper = JvmOverridesBackwardCompatibilityHelper
 ) {
-
-    override fun configure(container: StorageComponentContainer) {
-        super.configure(container)
-
-        container.useImpl<ReflectionAPICallChecker>()
+    override fun configureModuleComponents(container: StorageComponentContainer) {
+        container.useImpl<JvmReflectionAPICallChecker>()
         container.useImpl<JavaSyntheticScopes>()
+        container.useImpl<SamConversionResolverImpl>()
+        container.useImpl<InterfaceDefaultMethodCallChecker>()
+        container.useImpl<InlinePlatformCompatibilityChecker>()
+        container.useImpl<JvmModuleAccessibilityChecker>()
+        container.useImpl<JvmModuleAccessibilityChecker.ClassifierUsage>()
         container.useInstance(JvmTypeSpecificityComparator)
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,19 +19,23 @@ package org.jetbrains.kotlin.idea.references
 import com.intellij.psi.PsiReference
 import com.intellij.psi.PsiReferenceRegistrar
 import org.jetbrains.kotlin.idea.kdoc.KDocReference
-import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
 import org.jetbrains.kotlin.lexer.KtTokens
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtImportDirective
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
+import org.jetbrains.kotlin.psi.KtPackageDirective
+import org.jetbrains.kotlin.psi.KtUserType
+import org.jetbrains.kotlin.psi.psiUtil.parents
 
 class KotlinReferenceContributor() : AbstractKotlinReferenceContributor() {
     override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
         with(registrar) {
-            registerProvider<KtSimpleNameExpression> {
-                KtSimpleNameReference(it)
-            }
+            registerProvider(factory = ::KtSimpleNameReference)
 
             registerMultiProvider<KtNameReferenceExpression> {
                 if (it.getReferencedNameElementType() != KtTokens.IDENTIFIER) return@registerMultiProvider emptyArray()
+                if (it.parents.any { it is KtImportDirective || it is KtPackageDirective || it is KtUserType }) {
+                    return@registerMultiProvider emptyArray()
+                }
 
                 when (it.readWriteAccess(useResolveForReadWrite = false)) {
                     ReferenceAccess.READ ->
@@ -43,33 +47,21 @@ class KotlinReferenceContributor() : AbstractKotlinReferenceContributor() {
                 }
             }
 
-            registerProvider<KtConstructorDelegationReferenceExpression> {
-                KtConstructorDelegationReference(it)
-            }
+            registerProvider(factory = ::KtConstructorDelegationReference)
 
-            registerProvider<KtCallExpression> {
-                KtInvokeFunctionReference(it)
-            }
+            registerProvider(factory = ::KtInvokeFunctionReference)
 
-            registerProvider<KtArrayAccessExpression> {
-                KtArrayAccessReference(it)
-            }
+            registerProvider(factory = ::KtArrayAccessReference)
 
-            registerProvider<KtForExpression> {
-                KtForLoopInReference(it)
-            }
+            registerProvider(factory = ::KtCollectionLiteralReference)
 
-            registerProvider<KtPropertyDelegate> {
-                KtPropertyDelegationMethodsReference(it)
-            }
+            registerProvider(factory = ::KtForLoopInReference)
 
-            registerProvider<KtDestructuringDeclaration> {
-                KtDestructuringDeclarationReference(it)
-            }
+            registerProvider(factory = ::KtPropertyDelegationMethodsReference)
 
-            registerProvider<KDocName> {
-                KDocReference(it)
-            }
+            registerProvider(factory = ::KtDestructuringDeclarationReference)
+
+            registerProvider(factory = ::KDocReference)
         }
     }
 }

@@ -33,13 +33,7 @@ class RemoteIncrementalCacheClient(val facade: CompilerCallbackServicesFacade, v
 
     override fun getPackagePartData(partInternalName: String): JvmPackagePartProto? = profiler.withMeasure(this) { facade.incrementalCache_getPackagePartData(target, partInternalName) }
 
-    override fun getMultifileFacade(partInternalName: String): String? = profiler.withMeasure(this) { facade.incrementalCache_getMultifileFacade(target, partInternalName) }
-
     override fun getModuleMappingData(): ByteArray? = profiler.withMeasure(this) { facade.incrementalCache_getModuleMappingData(target) }
-
-    override fun registerInline(fromPath: String, jvmSignature: String, toPath: String) {
-        profiler.withMeasure(this) { facade.incrementalCache_registerInline(target, fromPath, jvmSignature, toPath) }
-    }
 
     override fun getClassFilePath(internalClassName: String): String = profiler.withMeasure(this) { facade.incrementalCache_getClassFilePath(target,internalClassName) }
 

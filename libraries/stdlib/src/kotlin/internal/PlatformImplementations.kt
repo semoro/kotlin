@@ -6,24 +6,14 @@ import java.util.regex.MatchResult
 
 internal open class PlatformImplementations {
 
-    public open fun closeSuppressed(instance: Closeable, cause: Throwable) {
-        try {
-            instance.close()
-        } catch (closeException: Throwable) {
-            // eat the closeException as we are already throwing the original cause
-            // and we don't want to mask the real exception;
-            // on Java 7 we should call
-            // e.addSuppressed(closeException)
-        }
+    public open fun addSuppressed(cause: Throwable, exception: Throwable) {
+        // do nothing
     }
 
     public open fun getMatchResultNamedGroup(matchResult: MatchResult, name: String): MatchGroup? {
         throw UnsupportedOperationException("Retrieving groups by name is not supported on this platform.")
     }
 }
-
-@kotlin.internal.InlineExposed
-internal fun platformCloseSuppressed(instance: Closeable, cause: Throwable) = IMPLEMENTATIONS.closeSuppressed(instance, cause)
 
 
 @JvmField
@@ -44,9 +34,11 @@ internal val IMPLEMENTATIONS: PlatformImplementations = run {
 
 private fun getJavaVersion(): Int {
     val default = 0x10006
-    val version = System.getProperty("java.version") ?: return default
+    val version = System.getProperty("java.specification.version") ?: return default
     val firstDot = version.indexOf('.')
-    if (firstDot < 0) return default
+    if (firstDot < 0)
+        return try { version.toInt() * 0x10000 } catch (e: NumberFormatException) { default }
+
     var secondDot = version.indexOf('.', firstDot + 1)
     if (secondDot < 0) secondDot = version.length
 

@@ -19,13 +19,10 @@ package org.jetbrains.kotlin.context
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
-import org.jetbrains.kotlin.descriptors.ModuleParameters
 import org.jetbrains.kotlin.descriptors.PackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap
-import org.jetbrains.kotlin.resolve.TargetPlatform
-import org.jetbrains.kotlin.resolve.createModule
+import org.jetbrains.kotlin.resolve.MultiTargetPlatform
 import org.jetbrains.kotlin.storage.ExceptionTracker
 import org.jetbrains.kotlin.storage.LockBasedStorageManager
 import org.jetbrains.kotlin.storage.StorageManager
@@ -41,12 +38,6 @@ interface ProjectContext : GlobalContext {
 
 interface ModuleContext : ProjectContext {
     val module: ModuleDescriptor
-
-    val platformToKotlinClassMap: PlatformToKotlinClassMap
-        get() = module.platformToKotlinClassMap
-
-    val builtIns: KotlinBuiltIns
-        get() = module.builtIns
 }
 
 interface MutableModuleContext: ModuleContext {
@@ -105,34 +96,11 @@ fun GlobalContext.withProject(project: Project): ProjectContext = ProjectContext
 fun ProjectContext.withModule(module: ModuleDescriptor): ModuleContext = ModuleContextImpl(module, this)
 
 fun ContextForNewModule(
-        project: Project,
-        moduleName: Name,
-        parameters: ModuleParameters,
-        builtIns: KotlinBuiltIns
-): MutableModuleContext {
-    val projectContext = ProjectContext(project)
-    val module = ModuleDescriptorImpl(moduleName, projectContext.storageManager, parameters, builtIns)
-    return MutableModuleContextImpl(module, projectContext)
-}
-
-fun ContextForNewModule(
         projectContext: ProjectContext,
         moduleName: Name,
-        targetPlatform: TargetPlatform,
-        builtIns: KotlinBuiltIns
+        builtIns: KotlinBuiltIns,
+        multiTargetPlatform: MultiTargetPlatform?
 ): MutableModuleContext {
-    val module = targetPlatform.createModule(moduleName, projectContext.storageManager, builtIns)
+    val module = ModuleDescriptorImpl(moduleName, projectContext.storageManager, builtIns, multiTargetPlatform)
     return MutableModuleContextImpl(module, projectContext)
-}
-
-
-@Deprecated("Used temporarily while we are in transition from to lazy resolve")
-open class TypeLazinessToken {
-    @Deprecated("Used temporarily while we are in transition from to lazy resolve")
-    open fun isLazy(): Boolean = false
-}
-
-@Deprecated("Used temporarily while we are in transition from to lazy resolve") class LazyResolveToken : TypeLazinessToken() {
-    @Deprecated("Used temporarily while we are in transition from to lazy resolve")
-    override fun isLazy() = true
 }

@@ -49,11 +49,6 @@ public class TypeUtils {
             throw new IllegalStateException(name);
         }
 
-        @Override
-        public boolean isError() {
-            return false;
-        }
-
         @NotNull
         @Override
         public SimpleType replaceAnnotations(@NotNull Annotations newAnnotations) {
@@ -66,6 +61,7 @@ public class TypeUtils {
             throw new IllegalStateException(name);
         }
 
+        @NotNull
         @Override
         public String toString() {
             return name;
@@ -216,7 +212,7 @@ public class TypeUtils {
         for (TypeParameterDescriptor parameterDescriptor : parameters) {
             result.add(new TypeProjectionImpl(parameterDescriptor.getDefaultType()));
         }
-        return org.jetbrains.kotlin.utils.CollectionsKt.toReadOnlyList(result);
+        return CollectionsKt.toList(result);
     }
 
     @NotNull
@@ -304,8 +300,7 @@ public class TypeUtils {
         }
 
         for (KotlinType supertype : getImmediateSupertypes(type)) {
-            if (supertype.isMarkedNullable()) return true;
-            if (hasNullableSuperType(supertype)) return true;
+            if (isNullableType(supertype)) return true;
         }
 
         return false;
@@ -377,9 +372,9 @@ public class TypeUtils {
     }
 
     public static boolean contains(@Nullable KotlinType type, @NotNull final KotlinType specialType) {
-        return contains(type, new Function1<KotlinType, Boolean>() {
+        return contains(type, new Function1<UnwrappedType, Boolean>() {
             @Override
-            public Boolean invoke(KotlinType type) {
+            public Boolean invoke(UnwrappedType type) {
                 return specialType.equals(type);
             }
         });
@@ -387,17 +382,28 @@ public class TypeUtils {
 
     public static boolean contains(
             @Nullable KotlinType type,
-            @NotNull Function1<KotlinType, Boolean> isSpecialType
+            @NotNull Function1<UnwrappedType, Boolean> isSpecialType
     ) {
         if (type == null) return false;
-        if (isSpecialType.invoke(type)) return true;
 
         UnwrappedType unwrappedType = type.unwrap();
+        if (isSpecialType.invoke(unwrappedType)) return true;
+
         FlexibleType flexibleType = unwrappedType instanceof FlexibleType ? (FlexibleType) unwrappedType : null;
         if (flexibleType != null
             && (contains(flexibleType.getLowerBound(), isSpecialType) || contains(flexibleType.getUpperBound(), isSpecialType))) {
             return true;
         }
+
+        TypeConstructor typeConstructor = type.getConstructor();
+        if (typeConstructor instanceof IntersectionTypeConstructor) {
+            IntersectionTypeConstructor intersectionTypeConstructor = (IntersectionTypeConstructor) typeConstructor;
+            for (KotlinType supertype : intersectionTypeConstructor.getSupertypes()) {
+                if (contains(supertype, isSpecialType)) return true;
+            }
+            return false;
+        }
+
         for (TypeProjection projection : type.getArguments()) {
             if (!projection.isStarProjection() && contains(projection.getType(), isSpecialType)) return true;
         }
@@ -444,7 +450,7 @@ public class TypeUtils {
             @NotNull IntegerValueTypeConstructor numberValueTypeConstructor,
             @NotNull KotlinType expectedType
     ) {
-        if (noExpectedType(expectedType) || expectedType.isError()) {
+        if (noExpectedType(expectedType) || KotlinTypeKt.isError(expectedType)) {
             return getDefaultPrimitiveNumberType(numberValueTypeConstructor);
         }
         for (KotlinType primitiveNumberType : numberValueTypeConstructor.getSupertypes()) {

@@ -8,7 +8,7 @@
 | Precedence | Title | Symbols |
 |------------|-------|---------|
 | Highest    | Postfix | `++`, `--`, `.`, `?.`, `?` |
-| | Prefix | `-`, `+`, `++`, `--`, `!`, [`labelDefinition@`](#IDENTIFIER)`@` |
+| | Prefix | `-`, `+`, `++`, `--`, `!`, [`labelDefinition`](#IDENTIFIER)`@` |
 | | Type RHS | `:`, `as`, `as?` |
 | | Multiplicative | `*`, `/`, `%` |
 | | Additive | `+`, `-` |
@@ -66,7 +66,7 @@ comparison
 
 namedInfix
   : elvisExpression (inOperation elvisExpression)*
-  : elvisExpression (isOperation isRHS)?
+  : elvisExpression (isOperation type)?
   ;
 
 elvisExpression
@@ -102,7 +102,7 @@ postfixUnaryExpression
   : callableReference postfixUnaryOperation*
   ;
 
-// TODO: callSuffix is forbidden after callableReference, since parentheses will be used to provide parameter types
+// TODO: update this rule to include class literals and bound callable references
 callableReference
   : (userType "?"*)? "::" SimpleName typeArguments?
   ;
@@ -120,8 +120,8 @@ atomicExpression
   : objectLiteral
   : jump
   : loop
+  : collectionLiteral
   : SimpleName
-  : FieldName
   ;
 
 labelReference
@@ -158,21 +158,21 @@ longTemplate
   : "${" expression "}"
   ;
 
-isRHS
-  : type
-  ;
-
 declaration
   : function
   : property
   : class
-//  : typeAlias
+  : typeAlias
   : object
   ;
 
 statement
   : declaration
-  : expression
+  : blockLevelExpression
+  ;
+
+blockLevelExpression
+  : annotations ("\n")+ expression
   ;
 
 multiplicativeOperation
@@ -211,8 +211,8 @@ assignmentOperator
 prefixUnaryOperation
   : "-" : "+"
   : "++" : "--"
-  : "!"  // No ~
-  : annotations // mandatory
+  : "!"
+  : annotations
   : labelDefinition
   ;
 
@@ -251,10 +251,14 @@ jump
 // yield ?
   ;
 
-// one can use "it" as a parameter name
 functionLiteral
   : "{" statements "}"
-  : "{" (modifiers SimpleName (":" type)?){","} "->" statements "}"
+  : "{" lambdaParameter{","} "->" statements "}"
+  ;
+
+lambdaParameter
+  : variableDeclarationEntry
+  : multipleVariableDeclarations (":" type)?
   ;
 
 statements
@@ -270,21 +274,9 @@ arrayAccess
   ;
 
 objectLiteral
-  : "object" (":" delegationSpecifier{","})? classBody // Cannot make class body optional: foo(object : F, A)
+  : "object" (":" delegationSpecifier{","})? classBody
   ;
 
-/* Factory methods:
-
-objectLiteral
-  : "object" delegationSpecifier{","} ("{" objectLiteralMember{","} "}")?
+collectionLiteral
+  : "[" element{","}? "]"
   ;
-
-objectLiteralMember
-  : memberDeclaration
-  : factoryMethod
-  ;
-
-factoryMethod
-  : accessModifier? SimpleName typeParameters? functionParameters functionBody
-  ;
-*/

@@ -17,19 +17,24 @@
 package kotlin.reflect.jvm.internal
 
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import kotlin.LazyThreadSafetyMode.PUBLICATION
 import kotlin.reflect.KMutableProperty0
 import kotlin.reflect.KProperty0
 
-internal open class KProperty0Impl<out R> : DescriptorBasedProperty<R>, KProperty0<R>, KPropertyImpl<R> {
+internal open class KProperty0Impl<out R> : KProperty0<R>, KPropertyImpl<R> {
     constructor(container: KDeclarationContainerImpl, descriptor: PropertyDescriptor) : super(container, descriptor)
 
-    constructor(container: KDeclarationContainerImpl, name: String, signature: String) : super(container, name, signature)
+    constructor(container: KDeclarationContainerImpl, name: String, signature: String, boundReceiver: Any?) : super(container, name, signature, boundReceiver)
 
     private val getter_ = ReflectProperties.lazy { Getter(this) }
 
     override val getter: Getter<R> get() = getter_()
 
     override fun get(): R = getter.call()
+
+    private val delegateFieldValue = lazy(PUBLICATION) { getDelegate(computeDelegateField(), boundReceiver) }
+
+    override fun getDelegate(): Any? = delegateFieldValue.value
 
     override fun invoke(): R = get()
 
@@ -38,10 +43,10 @@ internal open class KProperty0Impl<out R> : DescriptorBasedProperty<R>, KPropert
     }
 }
 
-internal open class KMutableProperty0Impl<R> : KProperty0Impl<R>, KMutableProperty0<R>, KMutablePropertyImpl<R> {
+internal class KMutableProperty0Impl<R> : KProperty0Impl<R>, KMutableProperty0<R> {
     constructor(container: KDeclarationContainerImpl, descriptor: PropertyDescriptor) : super(container, descriptor)
 
-    constructor(container: KDeclarationContainerImpl, name: String, signature: String) : super(container, name, signature)
+    constructor(container: KDeclarationContainerImpl, name: String, signature: String, boundReceiver: Any?) : super(container, name, signature, boundReceiver)
 
     private val setter_ = ReflectProperties.lazy { Setter(this) }
 
@@ -49,7 +54,7 @@ internal open class KMutableProperty0Impl<R> : KProperty0Impl<R>, KMutableProper
 
     override fun set(value: R) = setter.call(value)
 
-    class Setter<R>(override val property: KMutableProperty0Impl<R>) : KMutablePropertyImpl.Setter<R>(), KMutableProperty0.Setter<R> {
+    class Setter<R>(override val property: KMutableProperty0Impl<R>) : KPropertyImpl.Setter<R>(), KMutableProperty0.Setter<R> {
         override fun invoke(value: R): Unit = property.set(value)
     }
 }

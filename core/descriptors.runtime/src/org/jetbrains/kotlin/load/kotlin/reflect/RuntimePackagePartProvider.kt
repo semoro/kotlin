@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.load.kotlin.reflect
 
 import org.jetbrains.kotlin.descriptors.PackagePartProvider
 import org.jetbrains.kotlin.load.kotlin.ModuleMapping
+import org.jetbrains.kotlin.serialization.deserialization.DeserializationConfiguration
 import java.util.concurrent.ConcurrentHashMap
 
 class RuntimePackagePartProvider(private val classLoader: ClassLoader) : PackagePartProvider {
@@ -25,8 +26,9 @@ class RuntimePackagePartProvider(private val classLoader: ClassLoader) : Package
 
     fun registerModule(moduleName: String) {
         val mapping = try {
-            classLoader.getResourceAsStream("META-INF/$moduleName.${ModuleMapping.MAPPING_FILE_EXT}")?.use { stream ->
-                ModuleMapping.create(stream.readBytes())
+            val resourcePath = "META-INF/$moduleName.${ModuleMapping.MAPPING_FILE_EXT}"
+            classLoader.getResourceAsStream(resourcePath)?.use { stream ->
+                ModuleMapping.create(stream.readBytes(), resourcePath, DeserializationConfiguration.Default)
             }
         }
         catch (e: Exception) {
@@ -39,4 +41,7 @@ class RuntimePackagePartProvider(private val classLoader: ClassLoader) : Package
     override fun findPackageParts(packageFqName: String): List<String> {
         return module2Mapping.values.mapNotNull { it.findPackageParts(packageFqName) }.flatMap { it.parts }.distinct()
     }
+
+    // TODO
+    override fun findMetadataPackageParts(packageFqName: String): List<String> = TODO()
 }

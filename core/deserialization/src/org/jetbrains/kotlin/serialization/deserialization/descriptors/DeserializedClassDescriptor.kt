@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.resolve.DescriptorFactory
 import org.jetbrains.kotlin.resolve.NonReportingOverrideStrategy
 import org.jetbrains.kotlin.resolve.OverridingUtil
 import org.jetbrains.kotlin.resolve.descriptorUtil.classId
+import org.jetbrains.kotlin.resolve.descriptorUtil.computeSealedSubclasses
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.resolve.scopes.StaticScopeForKotlinEnum
@@ -37,8 +38,6 @@ import org.jetbrains.kotlin.serialization.deserialization.*
 import org.jetbrains.kotlin.types.AbstractClassTypeConstructor
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeConstructor
-import org.jetbrains.kotlin.utils.singletonOrEmptyList
-import org.jetbrains.kotlin.utils.toReadOnlyList
 import java.util.*
 
 class DeserializedClassDescriptor(
@@ -46,10 +45,12 @@ class DeserializedClassDescriptor(
         val classProto: ProtoBuf.Class,
         nameResolver: NameResolver,
         private val sourceElement: SourceElement
-) : ClassDescriptor, AbstractClassDescriptor(
+) : AbstractClassDescriptor(
         outerContext.storageManager,
         nameResolver.getClassId(classProto.fqName).shortClassName
 ) {
+    private val classId = nameResolver.getClassId(classProto.fqName)
+
     private val modality = Deserialization.modality(Flags.MODALITY.get(classProto.flags))
     private val visibility = Deserialization.visibility(Flags.VISIBILITY.get(classProto.flags))
     private val kind = Deserialization.classKind(Flags.CLASS_KIND.get(classProto.flags))
@@ -59,26 +60,28 @@ class DeserializedClassDescriptor(
     private val staticScope = if (kind == ClassKind.ENUM_CLASS) StaticScopeForKotlinEnum(c.storageManager, this) else MemberScope.Empty
     private val typeConstructor = DeserializedClassTypeConstructor()
     private val memberScope = DeserializedClassMemberScope()
-    private val nestedClasses = if (classProto.nestedClassNameCount > 0) NestedClassDescriptors() else null
     private val enumEntries = if (kind == ClassKind.ENUM_CLASS) EnumEntryClassDescriptors() else null
 
     private val containingDeclaration = outerContext.containingDeclaration
     private val primaryConstructor = c.storageManager.createNullableLazyValue { computePrimaryConstructor() }
     private val constructors = c.storageManager.createLazyValue { computeConstructors() }
-    private val nestedTypeAliases = c.storageManager.createLazyValue { computeTypeAliases() }
     private val companionObjectDescriptor = c.storageManager.createNullableLazyValue { computeCompanionObjectDescriptor() }
+    private val sealedSubclasses = c.storageManager.createLazyValue { computeSubclassesForSealedClass() }
 
     internal val thisAsProtoContainer: ProtoContainer.Class = ProtoContainer.Class(
             classProto, c.nameResolver, c.typeTable, sourceElement,
             (containingDeclaration as? DeserializedClassDescriptor)?.thisAsProtoContainer
     )
 
+    val sinceKotlinInfo: SinceKotlinInfo?
+        get() = SinceKotlinInfo.create(classProto, c.nameResolver, c.sinceKotlinInfoTable)
+
     override val annotations =
             if (!Flags.HAS_ANNOTATIONS.get(classProto.flags)) {
                 Annotations.EMPTY
             }
-            else DeserializedAnnotations(c.storageManager) {
-                c.components.annotationAndConstantLoader.loadClassAnnotations(thisAsProtoContainer)
+            else NonEmptyDeserializedAnnotations(c.storageManager) {
+                c.components.annotationAndConstantLoader.loadClassAnnotations(thisAsProtoContainer).toList()
             }
 
     override fun getContainingDeclaration(): DeclarationDescriptor = containingDeclaration
@@ -95,13 +98,19 @@ class DeserializedClassDescriptor(
 
     override fun isData() = Flags.IS_DATA.get(classProto.flags)
 
+    override fun isExpect() = Flags.IS_EXPECT_CLASS.get(classProto.flags)
+
+    override fun isActual() = false
+
+    override fun isExternal() = Flags.IS_EXTERNAL_CLASS.get(classProto.flags)
+
     override fun getUnsubstitutedMemberScope(): MemberScope = memberScope
 
     override fun getStaticScope() = staticScope
 
     override fun isCompanionObject(): Boolean = Flags.CLASS_KIND.get(classProto.flags) == ProtoBuf.Class.Kind.COMPANION_OBJECT
 
-    private fun computePrimaryConstructor(): ConstructorDescriptor? {
+    private fun computePrimaryConstructor(): ClassConstructorDescriptor? {
         if (kind.isSingleton) {
             return DescriptorFactory.createPrimaryConstructorForObject(this, SourceElement.NO_SOURCE).apply {
                 returnType = getDefaultType()
@@ -113,20 +122,15 @@ class DeserializedClassDescriptor(
         }
     }
 
-    override fun getUnsubstitutedPrimaryConstructor(): ConstructorDescriptor? = primaryConstructor()
+    override fun getUnsubstitutedPrimaryConstructor(): ClassConstructorDescriptor? = primaryConstructor()
 
-    private fun computeConstructors(): Collection<ConstructorDescriptor> =
-            computeSecondaryConstructors() + unsubstitutedPrimaryConstructor.singletonOrEmptyList() +
+    private fun computeConstructors(): Collection<ClassConstructorDescriptor> =
+            computeSecondaryConstructors() + listOfNotNull(unsubstitutedPrimaryConstructor) +
             c.components.additionalClassPartsProvider.getConstructors(this)
 
-    private fun computeSecondaryConstructors(): List<ConstructorDescriptor> =
+    private fun computeSecondaryConstructors(): List<ClassConstructorDescriptor> =
             classProto.constructorList.filter { Flags.IS_SECONDARY.get(it.flags) }.map {
                 c.memberDeserializer.loadConstructor(it, false)
-            }
-
-    private fun computeTypeAliases(): List<TypeAliasDescriptor> =
-            classProto.typeAliasList.map {
-                c.memberDeserializer.loadTypeAlias(it)
             }
 
     override fun getConstructors() = constructors()
@@ -140,11 +144,26 @@ class DeserializedClassDescriptor(
 
     override fun getCompanionObjectDescriptor(): ClassDescriptor? = companionObjectDescriptor()
 
-    internal fun hasNestedClass(name: Name): Boolean {
-        return nestedClasses != null && name in nestedClasses.nestedClassNames
+    internal fun hasNestedClass(name: Name): Boolean =
+            name in memberScope.classNames
+
+    private fun computeSubclassesForSealedClass(): Collection<ClassDescriptor> {
+        if (modality != Modality.SEALED) return emptyList()
+
+        val fqNames = classProto.sealedSubclassFqNameList
+        if (fqNames.isNotEmpty()) {
+            return fqNames.mapNotNull { index ->
+                c.components.deserializeClass(c.nameResolver.getClassId(index))
+            }
+        }
+
+        // This is needed because classes compiled with Kotlin 1.0 did not contain the sealed_subclass_fq_name field
+        return computeSealedSubclasses(this)
     }
 
-    override fun toString() = "deserialized class ${getName().toString()}" // not using descriptor render to preserve laziness
+    override fun getSealedSubclasses() = sealedSubclasses()
+
+    override fun toString() = "deserialized class $name" // not using descriptor render to preserve laziness
 
     override fun getSource() = sourceElement
 
@@ -167,11 +186,11 @@ class DeserializedClassDescriptor(
             if (unresolved.isNotEmpty()) {
                 c.components.errorReporter.reportIncompleteHierarchy(
                         this@DeserializedClassDescriptor,
-                        unresolved.map { it.classId.asSingleFqName().asString() }
+                        unresolved.map { it.classId?.asSingleFqName()?.asString() ?: it.name.asString() }
                 )
             }
 
-            return result.toReadOnlyList()
+            return result.toList()
         }
 
         override fun getParameters() = parameters()
@@ -182,9 +201,7 @@ class DeserializedClassDescriptor(
 
         override fun getDeclarationDescriptor() = this@DeserializedClassDescriptor
 
-        override val annotations: Annotations get() = Annotations.EMPTY // TODO
-
-        override fun toString() = getName().toString()
+        override fun toString() = name.toString()
 
         override val supertypeLoopChecker: SupertypeLoopChecker
             // TODO: inject implementation
@@ -192,9 +209,11 @@ class DeserializedClassDescriptor(
     }
 
     private inner class DeserializedClassMemberScope : DeserializedMemberScope(
-            c, classProto.functionList, classProto.propertyList, classProto.typeAliasList
+            c, classProto.functionList, classProto.propertyList, classProto.typeAliasList,
+            classProto.nestedClassNameList.map(c.nameResolver::getName).let { { it } } // workaround KT-13454
     ) {
         private val classDescriptor: DeserializedClassDescriptor get() = this@DeserializedClassDescriptor
+
         private val allDescriptors = c.storageManager.createLazyValue {
             computeDescriptors(DescriptorKindFilter.ALL, MemberScope.ALL_NAME_FILTER, NoLookupLocation.WHEN_GET_ALL_DESCRIPTORS)
         }
@@ -251,61 +270,33 @@ class DeserializedClassDescriptor(
             })
         }
 
-        override fun getNonDeclaredFunctionNames(location: LookupLocation): Set<Name> {
+        override fun getNonDeclaredFunctionNames(): Set<Name> {
             return classDescriptor.typeConstructor.supertypes.flatMapTo(LinkedHashSet()) {
-                it.memberScope.getContributedDescriptors().filterIsInstance<SimpleFunctionDescriptor>().map { it.name }
-            } + c.components.additionalClassPartsProvider.getFunctionsNames(this@DeserializedClassDescriptor)
+                it.memberScope.getFunctionNames()
+            }.apply { addAll(c.components.additionalClassPartsProvider.getFunctionsNames(this@DeserializedClassDescriptor)) }
         }
 
-        override fun getNonDeclaredVariableNames(location: LookupLocation): Set<Name> {
+        override fun getNonDeclaredVariableNames(): Set<Name> {
             return classDescriptor.typeConstructor.supertypes.flatMapTo(LinkedHashSet()) {
-                it.memberScope.getContributedDescriptors().filterIsInstance<PropertyDescriptor>().map { it.name }
-            }
-        }
-
-        override fun getNonDeclaredTypeAliasNames(location: LookupLocation): Set<Name> {
-            return classDescriptor.typeConstructor.supertypes.flatMapTo(LinkedHashSet()) {
-                it.memberScope.getContributedDescriptors().filterIsInstance<TypeAliasDescriptor>().map { it.name }
+                it.memberScope.getVariableNames()
             }
         }
 
         override fun getContributedClassifier(name: Name, location: LookupLocation): ClassifierDescriptor? {
             recordLookup(name, location)
-            return classDescriptor.enumEntries?.findEnumEntry(name) ?: classDescriptor.nestedClasses?.findNestedClass(name)
+            classDescriptor.enumEntries?.findEnumEntry(name)?.let { return it }
+            return super.getContributedClassifier(name, location)
         }
 
-        override fun addClassifierDescriptors(result: MutableCollection<DeclarationDescriptor>, nameFilter: (Name) -> Boolean) {
-            result.addAll(classDescriptor.nestedClasses?.all().orEmpty())
-            result.addAll(classDescriptor.nestedTypeAliases())
-            // TODO non-declared type aliases
-        }
+        override fun createClassId(name: Name) = classId.createNestedClassId(name)
 
         override fun addEnumEntryDescriptors(result: MutableCollection<DeclarationDescriptor>, nameFilter: (Name) -> Boolean) {
             result.addAll(classDescriptor.enumEntries?.all().orEmpty())
         }
 
-        private fun recordLookup(name: Name, from: LookupLocation) {
-            c.components.lookupTracker.record(from, classDescriptor, name)
+        override fun recordLookup(name: Name, location: LookupLocation) {
+            c.components.lookupTracker.record(location, classDescriptor, name)
         }
-    }
-
-    private inner class NestedClassDescriptors {
-        private val classId = c.nameResolver.getClassId(classProto.fqName)
-
-        internal val nestedClassNames = classProto.nestedClassNameList.map { c.nameResolver.getName(it) }.toSet()
-
-        private val nestedClassByName = c.storageManager.createMemoizedFunctionWithNullableValues<Name, ClassDescriptor> {
-            name ->
-            if (name in nestedClassNames) {
-                c.components.deserializeClass(classId.createNestedClassId(name))
-            }
-            else null
-        }
-
-        fun findNestedClass(name: Name): ClassDescriptor? = nestedClassByName(name)
-
-        fun all(): Collection<ClassDescriptor> =
-                nestedClassNames.mapNotNull { name -> nestedClassByName(name) }
     }
 
     private inner class EnumEntryClassDescriptors {
@@ -318,7 +309,7 @@ class DeserializedClassDescriptor(
                 EnumEntrySyntheticClassDescriptor.create(
                         c.storageManager, this@DeserializedClassDescriptor, name, enumMemberNames,
                         DeserializedAnnotations(c.storageManager) {
-                            c.components.annotationAndConstantLoader.loadEnumEntryAnnotations(thisAsProtoContainer, proto)
+                            c.components.annotationAndConstantLoader.loadEnumEntryAnnotations(thisAsProtoContainer, proto).toList()
                         },
                         SourceElement.NO_SOURCE
                 )
@@ -329,7 +320,7 @@ class DeserializedClassDescriptor(
 
         fun findEnumEntry(name: Name): ClassDescriptor? = enumEntryByName(name)
 
-        private fun computeEnumMemberNames(): Collection<Name> {
+        private fun computeEnumMemberNames(): Set<Name> {
             // NOTE: order of enum entry members should be irrelevant
             // because enum entries are effectively invisible to user (as classes)
             val result = HashSet<Name>()

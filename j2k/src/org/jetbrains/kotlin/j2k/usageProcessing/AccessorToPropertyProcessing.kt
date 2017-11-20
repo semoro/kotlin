@@ -20,8 +20,8 @@ import com.intellij.psi.*
 import org.jetbrains.kotlin.j2k.AccessorKind
 import org.jetbrains.kotlin.j2k.CodeConverter
 import org.jetbrains.kotlin.j2k.ast.*
+import org.jetbrains.kotlin.j2k.dot
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.utils.addToStdlib.singletonList
 
 class AccessorToPropertyProcessing(val accessorMethod: PsiMethod, val accessorKind: AccessorKind, val propertyName: String) : UsageProcessing {
     override val targetElement: PsiElement get() = accessorMethod
@@ -34,10 +34,14 @@ class AccessorToPropertyProcessing(val accessorMethod: PsiMethod, val accessorKi
             val arguments = methodCall.argumentList.expressions
 
             val propertyName = Identifier.withNoPrototype(propertyName, isNullable)
-            val propertyAccess = QualifiedExpression(codeConverter.convertExpression(methodExpr.qualifierExpression), propertyName).assignNoPrototype()
+            val qualifier = methodExpr.qualifierExpression
+            val propertyAccess = if (qualifier != null)
+                QualifiedExpression(codeConverter.convertExpression(qualifier), propertyName, methodExpr.dot()).assignNoPrototype()
+            else
+                propertyName
 
             if (accessorKind == AccessorKind.GETTER) {
-                if (arguments.size != 0) return null // incorrect call
+                if (arguments.isNotEmpty()) return null // incorrect call
                 return propertyAccess
             }
             else {
@@ -54,7 +58,7 @@ class AccessorToPropertyProcessing(val accessorMethod: PsiMethod, val accessorKi
             if (accessorMethod.hasModifierProperty(PsiModifier.PRIVATE))
                 emptyList()
             else
-                AccessorToPropertyProcessor().singletonList()
+                listOf(AccessorToPropertyProcessor())
 
     inner class AccessorToPropertyProcessor: ExternalCodeProcessor {
         override fun processUsage(reference: PsiReference): Array<PsiReference>? {
@@ -76,16 +80,16 @@ class AccessorToPropertyProcessing(val accessorMethod: PsiMethod, val accessorKi
                 assignment.right!!.replace(value)
 
                 val qualifiedExpression = callExpr.parent as? KtQualifiedExpression
-                if (qualifiedExpression != null && qualifiedExpression.selectorExpression == callExpr) {
+                return if (qualifiedExpression != null && qualifiedExpression.selectorExpression == callExpr) {
                     callExpr.replace(propertyNameExpr)
                     assignment.left!!.replace(qualifiedExpression)
                     assignment = qualifiedExpression.replace(assignment) as KtBinaryExpression
-                    return (assignment.left as KtQualifiedExpression).selectorExpression!!.references
+                    (assignment.left as KtQualifiedExpression).selectorExpression!!.references
                 }
                 else {
                     assignment.left!!.replace(propertyNameExpr)
                     assignment = callExpr.replace(assignment) as KtBinaryExpression
-                    return assignment.left!!.references
+                    assignment.left!!.references
                 }
             }
 

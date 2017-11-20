@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,13 +25,19 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.codeStyle.CodeStyleManager
 import org.jetbrains.kotlin.idea.completion.KeywordLookupObject
 import org.jetbrains.kotlin.idea.core.moveCaret
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtBlockStringTemplateEntry
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.psiUtil.canPlaceAfterSimpleNameEntry
+import org.jetbrains.kotlin.psi.psiUtil.getNextSiblingIgnoringWhitespace
+import org.jetbrains.kotlin.psi.psiUtil.startOffset
 
-fun surroundWithBracesIfInStringTemplate(context: InsertionContext) {
+fun surroundWithBracesIfInStringTemplate(context: InsertionContext): Boolean {
     val startOffset = context.startOffset
     val document = context.document
     if (startOffset > 0 && document.charsSequence[startOffset - 1] == '$') {
@@ -47,6 +53,30 @@ fun surroundWithBracesIfInStringTemplate(context: InsertionContext) {
             val tailOffset = context.tailOffset
             document.insertString(tailOffset, "}")
             context.tailOffset = tailOffset
+            return true
+        }
+    }
+
+    return false
+}
+
+fun removeRedundantBracesInStringTemplate(context: InsertionContext) {
+    val document = context.document
+    val tailOffset = context.tailOffset
+    if (document.charsSequence[tailOffset] == '}') {
+        val psiDocumentManager = PsiDocumentManager.getInstance(context.project)
+        psiDocumentManager.commitAllDocuments()
+
+        val token = context.file.findElementAt(tailOffset)
+        if (token != null && token.node.elementType == KtTokens.LONG_TEMPLATE_ENTRY_END) {
+            val entry = token.parent as KtBlockStringTemplateEntry
+            val nameExpression = entry.expression as? KtNameReferenceExpression ?: return
+            if (canPlaceAfterSimpleNameEntry(entry.nextSibling)) {
+                context.tailOffset++ // place after '}' otherwise it gets invalidated
+                val name = nameExpression.getReferencedName()
+                val newEntry = KtPsiFactory(entry).createSimpleNameStringTemplateEntry(name)
+                entry.replace(newEntry)
+            }
         }
     }
 }
@@ -109,16 +139,32 @@ fun createKeywordConstructLookupElement(
     return LookupElementBuilder.create(KeywordLookupObject(), keyword)
             .bold()
             .withTailText(tailText)
-            .withInsertHandler { insertionContext, lookupElement ->
-                if (insertionContext.completionChar == Lookup.NORMAL_SELECT_CHAR || insertionContext.completionChar == Lookup.REPLACE_SELECT_CHAR) {
+            .withInsertHandler { insertionContext, _ ->
+                if (insertionContext.completionChar == Lookup.NORMAL_SELECT_CHAR ||
+                    insertionContext.completionChar == Lookup.REPLACE_SELECT_CHAR ||
+                    insertionContext.completionChar == Lookup.AUTO_INSERT_SELECT_CHAR) {
+
                     val offset = insertionContext.tailOffset
                     val newIndent = detectIndent(insertionContext.document.charsSequence, offset - keyword.length)
 
                     val beforeCaret = tailBeforeCaret.indentLinesAfterFirst(newIndent)
                     val afterCaret = tailAfterCaret.indentLinesAfterFirst(newIndent)
 
-                    insertionContext.document.insertString(offset, beforeCaret + afterCaret)
-                    insertionContext.editor.moveCaret(offset + beforeCaret.length)
+                    val element = insertionContext.file.findElementAt(offset)
+
+                    val sibling = when {
+                        element !is PsiWhiteSpace -> element
+                        element.textContains('\n') -> null
+                        else -> element.getNextSiblingIgnoringWhitespace(true)
+                    }
+
+                    if (sibling != null && beforeCaret.trimStart().startsWith(insertionContext.document.getText(TextRange.from(sibling.startOffset, 1)))) {
+                        insertionContext.editor.moveCaret(sibling.startOffset + 1)
+                    }
+                    else {
+                        insertionContext.document.insertString(offset, beforeCaret + afterCaret)
+                        insertionContext.editor.moveCaret(offset + beforeCaret.length)
+                    }
                 }
             }
 }
@@ -126,7 +172,7 @@ fun createKeywordConstructLookupElement(
 private fun detectIndent(text: CharSequence, offset: Int): String {
     return text.substring(0, offset)
             .substringAfterLast('\n')
-            .takeWhile { it.isWhitespace() }
+            .takeWhile(Char::isWhitespace)
 }
 
 private fun String.indentLinesAfterFirst(indent: String): String {

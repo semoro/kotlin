@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.jetbrains.kotlin.resolve.calls
 
 import com.google.common.collect.Lists
-import com.google.common.collect.Sets
 import org.jetbrains.kotlin.builtins.ReflectionTypes
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Errors.*
@@ -34,6 +34,7 @@ import org.jetbrains.kotlin.resolve.calls.callResolverUtil.getErasedReceiverType
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isInvokeCallOnExpressionWithBothReceivers
 import org.jetbrains.kotlin.resolve.calls.callUtil.isExplicitSafeCall
 import org.jetbrains.kotlin.resolve.calls.callUtil.isSafeCall
+import org.jetbrains.kotlin.resolve.calls.checkers.AdditionalTypeChecker
 import org.jetbrains.kotlin.resolve.calls.context.*
 import org.jetbrains.kotlin.resolve.calls.inference.SubstitutionFilteringInternalResolveAnnotations
 import org.jetbrains.kotlin.resolve.calls.model.ArgumentMatchStatus
@@ -52,12 +53,15 @@ import org.jetbrains.kotlin.types.TypeUtils.noExpectedType
 import org.jetbrains.kotlin.types.checker.ErrorTypesAreEqualToAnything
 import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.expressions.DoubleColonExpressionResolver
+import org.jetbrains.kotlin.types.typeUtil.containsTypeProjectionsInTopLevelArguments
+import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import java.util.*
 
 class CandidateResolver(
         private val argumentTypeResolver: ArgumentTypeResolver,
         private val genericCandidateResolver: GenericCandidateResolver,
         private val reflectionTypes: ReflectionTypes,
+        private val additionalTypeCheckers: Iterable<AdditionalTypeChecker>,
         private val smartCastManager: SmartCastManager
 ) {
     fun <D : CallableDescriptor> performResolutionForCandidateCall(
@@ -95,6 +99,7 @@ class CandidateResolver(
         checkValueArguments()
 
         checkAbstractAndSuper()
+        checkConstructedExpandedType()
     }
 
     private fun CallCandidateResolutionContext<*>.checkValueArguments() = checkAndReport {
@@ -114,7 +119,7 @@ class CandidateResolver(
         if (candidateCall.knownTypeParametersSubstitutor != null) {
             candidateCall.setResultingSubstitutor(candidateCall.knownTypeParametersSubstitutor!!)
         }
-        else if (ktTypeArguments.isNotEmpty() || candidateDescriptor is TypeAliasConstructorDescriptor) {
+        else if (ktTypeArguments.isNotEmpty()) {
             // Explicit type arguments passed
 
             val typeArguments = ArrayList<KotlinType>()
@@ -134,7 +139,7 @@ class CandidateResolver(
             val substitutor = TypeSubstitutor.create(SubstitutionFilteringInternalResolveAnnotations(substitution))
 
             if (expectedTypeArgumentCount != ktTypeArguments.size) {
-                candidateCall.addStatus(OTHER_ERROR)
+                candidateCall.addStatus(WRONG_NUMBER_OF_TYPE_ARGUMENTS_ERROR)
                 tracing.wrongNumberOfTypeArguments(trace, expectedTypeArgumentCount, candidateDescriptor)
             }
             else {
@@ -148,7 +153,7 @@ class CandidateResolver(
     private fun <D : CallableDescriptor> CallCandidateResolutionContext<D>.mapArguments()
             = check {
                 val argumentMappingStatus = ValueArgumentsToParametersMapper.mapValueArgumentsToParameters(
-                        call, tracing, candidateCall, Sets.newLinkedHashSet<ValueArgument>())
+                        call, tracing, candidateCall)
                 if (!argumentMappingStatus.isSuccess) {
                     candidateCall.addStatus(ARGUMENTS_MAPPING_ERROR)
                 }
@@ -194,7 +199,7 @@ class CandidateResolver(
                 getReceiverValueWithSmartCast(receiverArgument, smartCastType), candidateDescriptor, scope.ownerDescriptor)
         return if (invisibleMember != null) {
             tracing.invisibleMember(trace, invisibleMember)
-            OTHER_ERROR
+            INVISIBLE_MEMBER_ERROR
         } else {
             SUCCESS
         }
@@ -240,13 +245,13 @@ class CandidateResolver(
         val dispatchReceiver = candidateCall.dispatchReceiver
         if (dispatchReceiver != null) {
             var nestedClass: ClassDescriptor? = null
-            if (candidateDescriptor is ConstructorDescriptor
+            if (candidateDescriptor is ClassConstructorDescriptor
                 && DescriptorUtils.isStaticNestedClass(candidateDescriptor.containingDeclaration)
             ) {
                 nestedClass = candidateDescriptor.containingDeclaration
             }
             else if (candidateDescriptor is FakeCallableDescriptorForObject) {
-                nestedClass = candidateDescriptor.getReferencedDescriptor()
+                nestedClass = candidateDescriptor.getReferencedObject()
             }
             if (nestedClass != null) {
                 tracing.nestedClassAccessViaInstanceReference(trace, nestedClass, candidateCall.explicitReceiverKind)
@@ -263,7 +268,7 @@ class CandidateResolver(
 
     private fun checkOuterClassMemberIsAccessible(context: CallCandidateResolutionContext<*>): Boolean {
 
-        fun KtElement.insideScript() = (containingFile as? KtFile)?.isScript ?: false
+        fun KtElement.insideScript() = (containingFile as? KtFile)?.isScript() ?: false
 
         // context.scope doesn't contains outer class implicit receiver if we inside nested class
         // Outer scope for some class in script file is scopeForInitializerResolution see: DeclarationScopeProviderImpl.getResolutionScopeForDeclaration
@@ -285,7 +290,7 @@ class CandidateResolver(
         if (expression is KtSimpleNameExpression) {
             // 'B' in 'class A: B()' is JetConstructorCalleeExpression
             if (descriptor is ConstructorDescriptor) {
-                val modality = descriptor.containingDeclaration.modality
+                val modality = descriptor.constructedClass.modality
                 if (modality == Modality.ABSTRACT) {
                     tracing.instantiationOfAbstractClass(trace)
                 }
@@ -306,6 +311,17 @@ class CandidateResolver(
         if (superExtensionReceiver != null) {
             trace.report(SUPER_CANT_BE_EXTENSION_RECEIVER.on(superExtensionReceiver, superExtensionReceiver.text))
             candidateCall.addStatus(OTHER_ERROR)
+        }
+    }
+
+    private fun CallCandidateResolutionContext<*>.checkConstructedExpandedType() = check {
+        val descriptor = candidateDescriptor
+
+        if (descriptor is TypeAliasConstructorDescriptor) {
+            if (descriptor.returnType.containsTypeProjectionsInTopLevelArguments()) {
+                trace.report(EXPANDED_TYPE_CANNOT_BE_CONSTRUCTED.on(call.callElement, descriptor.returnType))
+                candidateCall.addStatus(OTHER_ERROR)
+            }
         }
     }
 
@@ -347,7 +363,7 @@ class CandidateResolver(
             for (argument in resolvedArgument.arguments) {
                 val expression = argument.getArgumentExpression() ?: continue
 
-                val expectedType = getEffectiveExpectedType(parameterDescriptor, argument)
+                val expectedType = getEffectiveExpectedType(parameterDescriptor, argument, context)
 
                 val newContext = context.replaceDataFlowInfo(infoForArguments.getInfo(argument)).replaceExpectedType(expectedType)
                 val typeInfoForCall = argumentTypeResolver.getArgumentTypeInfo(expression, newContext, resolveFunctionArgumentBodies)
@@ -363,7 +379,7 @@ class CandidateResolver(
                     if (!ArgumentTypeResolver.isSubtypeOfForArgumentType(type, expectedType)) {
                         val smartCast = smartCastValueArgumentTypeIfPossible(expression, newContext.expectedType, type, newContext)
                         if (smartCast == null) {
-                            resultStatus = OTHER_ERROR
+                            resultStatus = tryNotNullableArgument(type, expectedType) ?: OTHER_ERROR
                             matchStatus = ArgumentMatchStatus.TYPE_MISMATCH
                         }
                         else {
@@ -402,6 +418,14 @@ class CandidateResolver(
         return variants.firstOrNull { possibleType ->
             KotlinTypeChecker.DEFAULT.isSubtypeOf(possibleType, expectedType)
         }
+    }
+
+    private fun tryNotNullableArgument(argumentType: KotlinType, parameterType: KotlinType): ResolutionStatus? {
+        if (!argumentType.isMarkedNullable || parameterType.isMarkedNullable) return null
+
+        val notNullableArgumentType = argumentType.makeNotNullable()
+        val isApplicable = ArgumentTypeResolver.isSubtypeOfForArgumentType(notNullableArgumentType, parameterType)
+        return if (isApplicable) NULLABLE_ARGUMENT_TYPE_MISMATCH else null
     }
 
     private fun CallCandidateResolutionContext<*>.checkReceiverTypeError(): Unit = check {
@@ -544,9 +568,12 @@ class CandidateResolver(
                 if (isDispatchReceiver) {
                     candidateCall.setSmartCastDispatchReceiverType(smartCastResult.resultType)
                 }
+                else {
+                    candidateCall.updateExtensionReceiverWithSmartCastIfNeeded(smartCastResult.resultType)
+                }
                 if (!smartCastResult.isCorrect) {
                     // Error about unstable smart cast reported within checkAndRecordPossibleCast
-                    return OTHER_ERROR
+                    return UNSTABLE_SMARTCAST_FOR_RECEIVER_ERROR
                 }
             }
         }
@@ -555,6 +582,8 @@ class CandidateResolver(
             tracing.unsafeCall(trace, receiverArgumentType, implicitInvokeCheck)
             return UNSAFE_CALL_ERROR
         }
+
+        additionalTypeCheckers.forEach { it.checkReceiver(receiverParameter, receiverArgument, safeAccess, this) }
 
         return SUCCESS
     }
@@ -597,15 +626,19 @@ class CandidateResolver(
         private val argumentsMapping = typeAlias.declaredTypeParameters.zip(ktTypeArguments).toMap()
 
         override fun wrongNumberOfTypeArguments(typeAlias: TypeAliasDescriptor, numberOfParameters: Int) {
-            // TODO
+            // can't happen in single-step expansion
         }
 
         override fun conflictingProjection(typeAlias: TypeAliasDescriptor, typeParameter: TypeParameterDescriptor?, substitutedArgument: KotlinType) {
-            // TODO
+            // can't happen in single-step expansion
         }
 
         override fun recursiveTypeAlias(typeAlias: TypeAliasDescriptor) {
-            // can't happen in non-error type
+            // can't happen in single-step expansion
+        }
+
+        override fun repeatedAnnotation(annotation: AnnotationDescriptor) {
+            // can't happen in single-step expansion
         }
 
         override fun boundsViolationInSubstitution(bound: KotlinType, unsubstitutedArgument: KotlinType, argument: KotlinType, typeParameter: TypeParameterDescriptor) {
@@ -630,7 +663,7 @@ class CandidateResolver(
         val substitutedType = typeAliasParametersSubstitutor.substitute(typeAliasConstructorDescriptor.returnType, Variance.INVARIANT)!!
         val boundsSubstitutor = TypeSubstitutor.create(substitutedType)
 
-        val typeAliasDescriptor = typeAliasConstructorDescriptor.typeAliasDescriptor
+        val typeAliasDescriptor = typeAliasConstructorDescriptor.containingDeclaration
 
         val unsubstitutedType = typeAliasDescriptor.expandedType
         if (unsubstitutedType.isError) return

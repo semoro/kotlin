@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ public interface KtNodeTypes {
     IElementType IMPORT_LIST                        = KtStubElementTypes.IMPORT_LIST;
     IElementType FILE_ANNOTATION_LIST               = KtStubElementTypes.FILE_ANNOTATION_LIST;
     IElementType IMPORT_DIRECTIVE                   = KtStubElementTypes.IMPORT_DIRECTIVE;
+    IElementType IMPORT_ALIAS                       = KtStubElementTypes.IMPORT_ALIAS;
     IElementType MODIFIER_LIST                      = KtStubElementTypes.MODIFIER_LIST;
     IElementType ANNOTATION                         = KtStubElementTypes.ANNOTATION;
     IElementType ANNOTATION_ENTRY                   = KtStubElementTypes.ANNOTATION_ENTRY;
@@ -104,8 +105,8 @@ public interface KtNodeTypes {
     KtNodeType BREAK                     = new KtNodeType("BREAK", KtBreakExpression.class);
     KtNodeType IF                        = new KtNodeType("IF", KtIfExpression.class);
     KtNodeType CONDITION                 = new KtNodeType("CONDITION", KtContainerNode.class);
-    KtNodeType THEN                      = new KtNodeType("THEN", KtContainerNode.class);
-    KtNodeType ELSE                      = new KtNodeType("ELSE", KtContainerNode.class);
+    KtNodeType THEN                      = new KtNodeType("THEN", KtContainerNodeForControlStructureBody.class);
+    KtNodeType ELSE                      = new KtNodeType("ELSE", KtContainerNodeForControlStructureBody.class);
     KtNodeType TRY                       = new KtNodeType("TRY", KtTryExpression.class);
     KtNodeType CATCH                     = new KtNodeType("CATCH", KtCatchClause.class);
     KtNodeType FINALLY                   = new KtNodeType("FINALLY", KtFinallySection.class);
@@ -113,9 +114,11 @@ public interface KtNodeTypes {
     KtNodeType WHILE                     = new KtNodeType("WHILE", KtWhileExpression.class);
     KtNodeType DO_WHILE                  = new KtNodeType("DO_WHILE", KtDoWhileExpression.class);
     KtNodeType LOOP_RANGE                = new KtNodeType("LOOP_RANGE", KtContainerNode.class);
-    KtNodeType BODY                      = new KtNodeType("BODY", KtContainerNode.class);
+    KtNodeType BODY                      = new KtNodeType("BODY", KtContainerNodeForControlStructureBody.class);
     KtNodeType BLOCK                     = new KtNodeType("BLOCK", KtBlockExpression.class);
-    KtNodeType LAMBDA_EXPRESSION         = new KtNodeType("LAMBDA_EXPRESSION", KtLambdaExpression.class);
+
+    IElementType LAMBDA_EXPRESSION       = new LambdaExpressionElementType();
+
     KtNodeType FUNCTION_LITERAL          = new KtNodeType("FUNCTION_LITERAL", KtFunctionLiteral.class);
     KtNodeType ANNOTATED_EXPRESSION      = new KtNodeType("ANNOTATED_EXPRESSION", KtAnnotatedExpression.class);
 
@@ -150,6 +153,8 @@ public interface KtNodeTypes {
     KtNodeType WHEN_CONDITION_IN_RANGE   = new KtNodeType("WHEN_CONDITION_IN_RANGE", KtWhenConditionInRange.class);
     KtNodeType WHEN_CONDITION_IS_PATTERN = new KtNodeType("WHEN_CONDITION_IS_PATTERN", KtWhenConditionIsPattern.class);
     KtNodeType WHEN_CONDITION_EXPRESSION = new KtNodeType("WHEN_CONDITION_WITH_EXPRESSION", KtWhenConditionWithExpression.class);
+
+    KtNodeType COLLECTION_LITERAL_EXPRESSION = new KtNodeType("COLLECTION_LITERAL_EXPRESSION", KtCollectionLiteralExpression.class);
 
     IElementType PACKAGE_DIRECTIVE = KtStubElementTypes.PACKAGE_DIRECTIVE;
 

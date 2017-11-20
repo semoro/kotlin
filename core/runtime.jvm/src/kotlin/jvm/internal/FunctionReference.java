@@ -16,21 +16,20 @@
 
 package kotlin.jvm.internal;
 
-import kotlin.jvm.KotlinReflectionNotSupportedError;
-import kotlin.reflect.*;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import kotlin.SinceKotlin;
+import kotlin.reflect.KCallable;
+import kotlin.reflect.KFunction;
 
-import java.lang.annotation.Annotation;
-import java.util.List;
-import java.util.Map;
-
-@SuppressWarnings({"unchecked", "NullableProblems"})
-public class FunctionReference extends FunctionImpl implements KFunction {
+public class FunctionReference extends CallableReference implements FunctionBase, KFunction {
     private final int arity;
-    private KFunction reflected;
 
     public FunctionReference(int arity) {
+        this.arity = arity;
+    }
+
+    @SinceKotlin(version = "1.1")
+    public FunctionReference(int arity, Object receiver) {
+        super(receiver);
         this.arity = arity;
     }
 
@@ -39,99 +38,44 @@ public class FunctionReference extends FunctionImpl implements KFunction {
         return arity;
     }
 
-    // Most of the following methods are copies from CallableReference, since this class cannot inherit from it
-
-    public KDeclarationContainer getOwner() {
-        throw new AbstractMethodError();
+    @Override
+    @SinceKotlin(version = "1.1")
+    protected KFunction getReflected() {
+        return (KFunction) super.getReflected();
     }
 
     @Override
-    public String getName() {
-        throw new AbstractMethodError();
-    }
-
-    public String getSignature() {
-        throw new AbstractMethodError();
+    @SinceKotlin(version = "1.1")
+    protected KCallable computeReflected() {
+        return Reflection.function(this);
     }
 
     @Override
-    public List<KParameter> getParameters() {
-        return getReflected().getParameters();
-    }
-
-    @Override
-    public KType getReturnType() {
-        return getReflected().getReturnType();
-    }
-
-    @Override
-    public List<Annotation> getAnnotations() {
-        return getReflected().getAnnotations();
-    }
-
-    @NotNull
-    @Override
-    public List<KTypeParameter> getTypeParameters() {
-        return getReflected().getTypeParameters();
-    }
-
-    @Override
-    public Object call(@NotNull Object... args) {
-        return getReflected().call(args);
-    }
-
-    @Override
-    public Object callBy(@NotNull Map args) {
-        return getReflected().callBy(args);
-    }
-
-    @Nullable
-    @Override
-    public KVisibility getVisibility() {
-        return getReflected().getVisibility();
-    }
-
-    @Override
-    public boolean isFinal() {
-        return getReflected().isFinal();
-    }
-
-    @Override
-    public boolean isOpen() {
-        return getReflected().isOpen();
-    }
-
-    @Override
-    public boolean isAbstract() {
-        return getReflected().isAbstract();
-    }
-
-    @Override
+    @SinceKotlin(version = "1.1")
     public boolean isInline() {
         return getReflected().isInline();
     }
 
     @Override
+    @SinceKotlin(version = "1.1")
     public boolean isExternal() {
         return getReflected().isExternal();
     }
 
     @Override
+    @SinceKotlin(version = "1.1")
     public boolean isOperator() {
         return getReflected().isOperator();
     }
 
     @Override
+    @SinceKotlin(version = "1.1")
     public boolean isInfix() {
         return getReflected().isInfix();
     }
 
     @Override
-    public boolean isTailrec() {
-        return getReflected().isTailrec();
-    }
-
-    @Override
+    @SinceKotlin(version = "1.1")
     public boolean isSuspend() {
         return getReflected().isSuspend();
     }
@@ -141,25 +85,26 @@ public class FunctionReference extends FunctionImpl implements KFunction {
         if (obj == this) return true;
         if (obj instanceof FunctionReference) {
             FunctionReference other = (FunctionReference) obj;
-            return getOwner().equals(other.getOwner()) &&
+
+            return (getOwner() == null ? other.getOwner() == null : getOwner().equals(other.getOwner())) &&
                    getName().equals(other.getName()) &&
-                   getSignature().equals(other.getSignature());
+                   getSignature().equals(other.getSignature()) &&
+                   Intrinsics.areEqual(getBoundReceiver(), other.getBoundReceiver());
         }
         if (obj instanceof KFunction) {
-            compute();
-            return obj.equals(reflected);
+            return obj.equals(compute());
         }
         return false;
     }
 
     @Override
     public int hashCode() {
-        return (getOwner().hashCode() * 31 + getName().hashCode()) * 31 + getSignature().hashCode();
+        return ((getOwner() == null ? 0 : getOwner().hashCode() * 31) + getName().hashCode()) * 31 + getSignature().hashCode();
     }
 
     @Override
     public String toString() {
-        compute();
+        KCallable reflected = compute();
         if (reflected != this) {
             return reflected.toString();
         }
@@ -168,20 +113,5 @@ public class FunctionReference extends FunctionImpl implements KFunction {
         return "<init>".equals(getName())
                ? "constructor" + Reflection.REFLECTION_NOT_AVAILABLE
                : "function " + getName() + Reflection.REFLECTION_NOT_AVAILABLE;
-    }
-
-    public KFunction compute() {
-        if (reflected == null) {
-            reflected = Reflection.function(this);
-        }
-        return reflected;
-    }
-
-    private KFunction getReflected() {
-        compute();
-        if (reflected == this) {
-            throw new KotlinReflectionNotSupportedError();
-        }
-        return reflected;
     }
 }

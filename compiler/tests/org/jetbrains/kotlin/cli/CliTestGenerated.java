@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.cli;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.TargetBackend;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.runner.RunWith;
 
@@ -34,7 +35,49 @@ public class CliTestGenerated extends AbstractCliTest {
     @RunWith(JUnit3RunnerWithInners.class)
     public static class Jvm extends AbstractCliTest {
         public void testAllFilesPresentInJvm() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/jvm"), Pattern.compile("^(.+)\\.args$"), false);
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/jvm"), Pattern.compile("^(.+)\\.args$"), TargetBackend.ANY, false);
+        }
+
+        @TestMetadata("apiVersion.args")
+        public void testApiVersion() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersion.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("apiVersion1.0.args")
+        public void testApiVersion1_0() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersion1.0.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("apiVersionAndSinceNewerKotlin.args")
+        public void testApiVersionAndSinceNewerKotlin() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersionAndSinceNewerKotlin.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("apiVersionGreaterThanLanguage.args")
+        public void testApiVersionGreaterThanLanguage() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersionGreaterThanLanguage.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("apiVersionInvalid.args")
+        public void testApiVersionInvalid() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersionInvalid.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("apiVersionLessThanLanguage.args")
+        public void testApiVersionLessThanLanguage() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/apiVersionLessThanLanguage.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("argumentPassedMultipleTimes.args")
+        public void testArgumentPassedMultipleTimes() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/argumentPassedMultipleTimes.args");
+            doJvmTest(fileName);
         }
 
         @TestMetadata("classAndFileClassClash.args")
@@ -73,15 +116,27 @@ public class CliTestGenerated extends AbstractCliTest {
             doJvmTest(fileName);
         }
 
-        @TestMetadata("conflictingRuntimeVersion.args")
-        public void testConflictingRuntimeVersion() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/conflictingRuntimeVersion.args");
+        @TestMetadata("coroutinesEnable.args")
+        public void testCoroutinesEnable() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/coroutinesEnable.args");
             doJvmTest(fileName);
         }
 
-        @TestMetadata("conflictingRuntimeVersionNoError.args")
-        public void testConflictingRuntimeVersionNoError() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/conflictingRuntimeVersionNoError.args");
+        @TestMetadata("coroutinesError.args")
+        public void testCoroutinesError() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/coroutinesError.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("coroutinesErrorAndEnable.args")
+        public void testCoroutinesErrorAndEnable() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/coroutinesErrorAndEnable.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("coroutinesWarn.args")
+        public void testCoroutinesWarn() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/coroutinesWarn.args");
             doJvmTest(fileName);
         }
 
@@ -106,6 +161,12 @@ public class CliTestGenerated extends AbstractCliTest {
         @TestMetadata("emptySources.args")
         public void testEmptySources() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/emptySources.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("extraArgumentPassedInObsoleteForm.args")
+        public void testExtraArgumentPassedInObsoleteForm() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/extraArgumentPassedInObsoleteForm.args");
             doJvmTest(fileName);
         }
 
@@ -142,6 +203,120 @@ public class CliTestGenerated extends AbstractCliTest {
         @TestMetadata("inlineCycle.args")
         public void testInlineCycle() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/inlineCycle.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("javaSrcWrongPackage.args")
+        public void testJavaSrcWrongPackage() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/javaSrcWrongPackage.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jdkPathDoesNotExist.args")
+        public void testJdkPathDoesNotExist() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jdkPathDoesNotExist.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305AllIgnore.args")
+        public void testJsr305AllIgnore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305AllIgnore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305DefaultMigration.args")
+        public void testJsr305DefaultMigration() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305DefaultMigration.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305DeprecatedEnable.args")
+        public void testJsr305DeprecatedEnable() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305DeprecatedEnable.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305DeprecatedIgnore.args")
+        public void testJsr305DeprecatedIgnore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305DeprecatedIgnore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305DeprecatedWarn.args")
+        public void testJsr305DeprecatedWarn() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305DeprecatedWarn.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305FqNameIgnore.args")
+        public void testJsr305FqNameIgnore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305FqNameIgnore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305FqNameStrict.args")
+        public void testJsr305FqNameStrict() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305FqNameStrict.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305Ignore.args")
+        public void testJsr305Ignore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305Ignore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305MigrationDefault.args")
+        public void testJsr305MigrationDefault() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305MigrationDefault.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305MigrationFqNameIgnore.args")
+        public void testJsr305MigrationFqNameIgnore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305MigrationFqNameIgnore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305MigrationIgnore.args")
+        public void testJsr305MigrationIgnore() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305MigrationIgnore.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305MigrationWarn.args")
+        public void testJsr305MigrationWarn() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305MigrationWarn.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305NoFlag.args")
+        public void testJsr305NoFlag() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305NoFlag.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305Strict.args")
+        public void testJsr305Strict() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305Strict.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jsr305Warn.args")
+        public void testJsr305Warn() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jsr305Warn.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("jvm8Target.args")
+        public void testJvm8Target() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/jvm8Target.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("kotlinHomeWithoutStdlib.args")
+        public void testKotlinHomeWithoutStdlib() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/kotlinHomeWithoutStdlib.args");
             doJvmTest(fileName);
         }
 
@@ -223,6 +398,12 @@ public class CliTestGenerated extends AbstractCliTest {
             doJvmTest(fileName);
         }
 
+        @TestMetadata("returnAsWhenKey.args")
+        public void testReturnAsWhenKey() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/returnAsWhenKey.args");
+            doJvmTest(fileName);
+        }
+
         @TestMetadata("sanitized-name.clash.args")
         public void testSanitized_name_clash() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/sanitized-name.clash.args");
@@ -238,6 +419,12 @@ public class CliTestGenerated extends AbstractCliTest {
         @TestMetadata("simple.args")
         public void testSimple() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/simple.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("singleJavaFileRoots.args")
+        public void testSingleJavaFileRoots() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/singleJavaFileRoots.args");
             doJvmTest(fileName);
         }
 
@@ -271,9 +458,9 @@ public class CliTestGenerated extends AbstractCliTest {
             doJvmTest(fileName);
         }
 
-        @TestMetadata("version.args")
-        public void testVersion() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/version.args");
+        @TestMetadata("unsupportedTypeAlias.args")
+        public void testUnsupportedTypeAlias() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/unsupportedTypeAlias.args");
             doJvmTest(fileName);
         }
 
@@ -319,9 +506,27 @@ public class CliTestGenerated extends AbstractCliTest {
             doJvmTest(fileName);
         }
 
+        @TestMetadata("wrongScriptWithDirectory.args")
+        public void testWrongScriptWithDirectory() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/wrongScriptWithDirectory.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("wrongScriptWithKtSource.args")
+        public void testWrongScriptWithKtSource() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/wrongScriptWithKtSource.args");
+            doJvmTest(fileName);
+        }
+
         @TestMetadata("wrongScriptWithNoSource.args")
         public void testWrongScriptWithNoSource() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/wrongScriptWithNoSource.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("wrongXjsr305.args")
+        public void testWrongXjsr305() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/jvm/wrongXjsr305.args");
             doJvmTest(fileName);
         }
     }
@@ -331,30 +536,12 @@ public class CliTestGenerated extends AbstractCliTest {
     @RunWith(JUnit3RunnerWithInners.class)
     public static class Js extends AbstractCliTest {
         public void testAllFilesPresentInJs() throws Exception {
-            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/js"), Pattern.compile("^(.+)\\.args$"), false);
-        }
-
-        @TestMetadata("createKjsm.args")
-        public void testCreateKjsm() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/createKjsm.args");
-            doJsTest(fileName);
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/js"), Pattern.compile("^(.+)\\.args$"), TargetBackend.ANY, false);
         }
 
         @TestMetadata("createMetadata.args")
         public void testCreateMetadata() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/createMetadata.args");
-            doJsTest(fileName);
-        }
-
-        @TestMetadata("diagnosticForClassLiteral.args")
-        public void testDiagnosticForClassLiteral() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/diagnosticForClassLiteral.args");
-            doJsTest(fileName);
-        }
-
-        @TestMetadata("diagnosticWhenReferenceToBuiltinsMember.args")
-        public void testDiagnosticWhenReferenceToBuiltinsMember() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/diagnosticWhenReferenceToBuiltinsMember.args");
             doJsTest(fileName);
         }
 
@@ -382,6 +569,18 @@ public class CliTestGenerated extends AbstractCliTest {
             doJsTest(fileName);
         }
 
+        @TestMetadata("kotlinHomeWithoutStdlib.args")
+        public void testKotlinHomeWithoutStdlib() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/kotlinHomeWithoutStdlib.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("kotlinPackage.args")
+        public void testKotlinPackage() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/kotlinPackage.args");
+            doJsTest(fileName);
+        }
+
         @TestMetadata("languageVersion.args")
         public void testLanguageVersion() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/languageVersion.args");
@@ -391,6 +590,12 @@ public class CliTestGenerated extends AbstractCliTest {
         @TestMetadata("libraryDirNotFound.args")
         public void testLibraryDirNotFound() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/libraryDirNotFound.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("nonExistingKotlinHome.args")
+        public void testNonExistingKotlinHome() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/nonExistingKotlinHome.args");
             doJsTest(fileName);
         }
 
@@ -430,15 +635,69 @@ public class CliTestGenerated extends AbstractCliTest {
             doJsTest(fileName);
         }
 
-        @TestMetadata("suppressAllWarningsJS.args")
-        public void testSuppressAllWarningsJS() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/suppressAllWarningsJS.args");
+        @TestMetadata("sourceMap.args")
+        public void testSourceMap() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMap.args");
             doJsTest(fileName);
         }
 
-        @TestMetadata("version.args")
-        public void testVersion() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/version.args");
+        @TestMetadata("sourceMapCharEscape.args")
+        public void testSourceMapCharEscape() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapCharEscape.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapDuplicateRelativePaths.args")
+        public void testSourceMapDuplicateRelativePaths() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapDuplicateRelativePaths.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapEmbedSources.args")
+        public void testSourceMapEmbedSources() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapEmbedSources.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapPrefix.args")
+        public void testSourceMapPrefix() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapPrefix.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapRelativeRoot.args")
+        public void testSourceMapRelativeRoot() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapRelativeRoot.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapRootAuto.args")
+        public void testSourceMapRootAuto() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapRootAuto.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapRootManual.args")
+        public void testSourceMapRootManual() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapRootManual.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapRootMissing.args")
+        public void testSourceMapRootMissing() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapRootMissing.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("sourceMapRootMultiple.args")
+        public void testSourceMapRootMultiple() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/sourceMapRootMultiple.args");
+            doJsTest(fileName);
+        }
+
+        @TestMetadata("suppressAllWarningsJS.args")
+        public void testSuppressAllWarningsJS() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/suppressAllWarningsJS.args");
             doJsTest(fileName);
         }
 
@@ -458,6 +717,87 @@ public class CliTestGenerated extends AbstractCliTest {
         public void testWrongAbiVersion() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js/wrongAbiVersion.args");
             doJsTest(fileName);
+        }
+    }
+
+    @TestMetadata("compiler/testData/cli/js-dce")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Js_dce extends AbstractCliTest {
+        public void testAllFilesPresentInJs_dce() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/js-dce"), Pattern.compile("^(.+)\\.args$"), TargetBackend.ANY, false);
+        }
+
+        @TestMetadata("dceHelp.args")
+        public void testDceHelp() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/dceHelp.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("emptySources.args")
+        public void testEmptySources() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/emptySources.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("includeDeclarations.args")
+        public void testIncludeDeclarations() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/includeDeclarations.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("jsExtraHelp.args")
+        public void testJsExtraHelp() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/jsExtraHelp.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("nonExistingSourcePath.args")
+        public void testNonExistingSourcePath() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/nonExistingSourcePath.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("notFile.args")
+        public void testNotFile() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/notFile.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("outputIsDirectory.args")
+        public void testOutputIsDirectory() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/outputIsDirectory.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("overrideOutputName.args")
+        public void testOverrideOutputName() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/overrideOutputName.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("parseError.args")
+        public void testParseError() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/parseError.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("printReachability.args")
+        public void testPrintReachability() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/printReachability.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("simple.args")
+        public void testSimple() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/simple.args");
+            doJsDceTest(fileName);
+        }
+
+        @TestMetadata("withSourceMap.args")
+        public void testWithSourceMap() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/cli/js-dce/withSourceMap.args");
+            doJsDceTest(fileName);
         }
     }
 }

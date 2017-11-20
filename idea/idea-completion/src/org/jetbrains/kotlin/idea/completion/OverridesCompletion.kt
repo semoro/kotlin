@@ -48,6 +48,7 @@ class OverridesCompletion(
 ) {
     private val PRESENTATION_RENDERER = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.withOptions {
         modifiers = emptySet()
+        includeAdditionalModifiers = false
     }
 
     fun complete(position: PsiElement, declaration: KtCallableDeclaration?) {
@@ -118,7 +119,7 @@ class OverridesCompletion(
                     // keep original modifiers
                     val modifierList = KtPsiFactory(context.project).createModifierList(dummyMember.modifierList!!.text)
 
-                    val prototype = memberObject.generateMember(context.project, false)
+                    val prototype = memberObject.generateMember(classOrObject, false)
                     prototype.modifierList!!.replace(modifierList)
                     val insertedMember = dummyMember.replaced(prototype)
 
@@ -153,11 +154,11 @@ class OverridesCompletion(
 
             is KtValVarKeywordOwner -> {
                 if (descriptorToOverride !is PropertyDescriptor) return false
-                if (declaration.valOrVarKeyword?.node?.elementType == KtTokens.VAL_KEYWORD) {
-                    return !descriptorToOverride.isVar
+                return if (declaration.valOrVarKeyword?.node?.elementType == KtTokens.VAL_KEYWORD) {
+                    !descriptorToOverride.isVar
                 }
                 else {
-                    return true // var can override either var or val
+                    true // var can override either var or val
                 }
             }
 

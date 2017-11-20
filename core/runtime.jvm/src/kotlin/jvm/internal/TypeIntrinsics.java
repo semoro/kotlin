@@ -22,7 +22,7 @@ import kotlin.jvm.internal.markers.*;
 
 import java.util.*;
 
-@SuppressWarnings("unused")
+@SuppressWarnings({"unused", "WeakerAccess"})
 public class TypeIntrinsics {
     private static <T extends Throwable> T sanitizeStackTrace(T throwable) {
         return Intrinsics.sanitizeStackTrace(throwable, TypeIntrinsics.class.getName());
@@ -266,8 +266,8 @@ public class TypeIntrinsics {
     }
 
     public static int getFunctionArity(Object obj) {
-        if (obj instanceof FunctionImpl) {
-            return ((FunctionImpl) obj).getArity();
+        if (obj instanceof FunctionBase) {
+            return ((FunctionBase) obj).getArity();
         }
         else if (obj instanceof Function0) {
             return 0;

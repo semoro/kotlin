@@ -22,7 +22,6 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import kotlin.Pair;
 import kotlin.collections.CollectionsKt;
-import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
@@ -37,13 +36,9 @@ import org.jetbrains.org.objectweb.asm.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static org.jetbrains.kotlin.codegen.CodegenTestUtil.generateFiles;
 
 public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
     private static final String LINE_NUMBER_FUN = "lineNumber";
@@ -87,9 +82,7 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
             throw ExceptionUtilsKt.rethrow(e);
         }
 
-        return new Pair<KtFile, KotlinCoreEnvironment>(
-                KotlinTestUtils.createFile(file.getName(), text, environment.getProject()), environment
-        );
+        return new Pair<>(KotlinTestUtils.createFile(file.getName(), text, environment.getProject()), environment);
     }
 
     private void doTest(@NotNull String filename, boolean custom) {
@@ -101,14 +94,14 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
 
         try {
             if (custom) {
-                List<Integer> actualLineNumbers = extractActualLineNumbersFromBytecode(classFileFactory, false);
+                List<String> actualLineNumbers = extractActualLineNumbersFromBytecode(classFileFactory, false);
                 String text = psiFile.getText();
                 String newFileText = text.substring(0, text.indexOf("// ")) + getActualLineNumbersAsString(actualLineNumbers);
                 KotlinTestUtils.assertEqualsToFile(new File(filename), newFileText);
             }
             else {
-                List<Integer> expectedLineNumbers = extractSelectedLineNumbersFromSource(psiFile);
-                List<Integer> actualLineNumbers = extractActualLineNumbersFromBytecode(classFileFactory, true);
+                List<String> expectedLineNumbers = extractSelectedLineNumbersFromSource(psiFile);
+                List<String> actualLineNumbers = extractActualLineNumbersFromBytecode(classFileFactory, true);
                 assertSameElements(actualLineNumbers, expectedLineNumbers);
             }
         } catch (Throwable e) {
@@ -118,22 +111,17 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
 
     }
 
-    private static String getActualLineNumbersAsString(List<Integer> list) {
-        return CollectionsKt.joinToString(list, " ", "// ", "", -1, "...", new Function1<Integer, CharSequence>() {
-            @Override
-            public CharSequence invoke(Integer integer) {
-                return integer.toString();
-            }
-        });
+    private static String getActualLineNumbersAsString(List<String> lines) {
+        return CollectionsKt.joinToString(lines, " ", "// ", "", -1, "...", lineNumber -> lineNumber);
     }
 
     @NotNull
-    private static List<Integer> extractActualLineNumbersFromBytecode(@NotNull ClassFileFactory factory, boolean testFunInvoke) {
-        List<Integer> actualLineNumbers = Lists.newArrayList();
+    private static List<String> extractActualLineNumbersFromBytecode(@NotNull ClassFileFactory factory, boolean testFunInvoke) {
+        List<String> actualLineNumbers = Lists.newArrayList();
         for (OutputFile outputFile : ClassFileUtilsKt.getClassFiles(factory)) {
             ClassReader cr = new ClassReader(outputFile.asByteArray());
             try {
-                List<Integer> lineNumbers = testFunInvoke ? readTestFunLineNumbers(cr) : readAllLineNumbers(cr);
+                List<String> lineNumbers = testFunInvoke ? readTestFunLineNumbers(cr) : readAllLineNumbers(cr);
                 actualLineNumbers.addAll(lineNumbers);
             }
             catch (Throwable e) {
@@ -154,15 +142,15 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    private static List<Integer> extractSelectedLineNumbersFromSource(@NotNull KtFile file) {
+    private static List<String> extractSelectedLineNumbersFromSource(@NotNull KtFile file) {
         String fileContent = file.getText();
-        List<Integer> lineNumbers = Lists.newArrayList();
+        List<String> lineNumbers = Lists.newArrayList();
         String[] lines = StringUtil.convertLineSeparators(fileContent).split("\n");
 
         for (int i = 0; i < lines.length; i++) {
             Matcher matcher = TEST_LINE_NUMBER_PATTERN.matcher(lines[i]);
             if (matcher.matches()) {
-                lineNumbers.add(i + 1);
+                lineNumbers.add(Integer.toString(i + 1));
             }
         }
 
@@ -170,9 +158,9 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    private static List<Integer> readTestFunLineNumbers(@NotNull ClassReader cr) {
-        final List<Label> labels = Lists.newArrayList();
-        final Map<Label, Integer> labels2LineNumbers = Maps.newHashMap();
+    private static List<String> readTestFunLineNumbers(@NotNull ClassReader cr) {
+        List<Label> labels = Lists.newArrayList();
+        Map<Label, String> labels2LineNumbers = Maps.newHashMap();
 
         ClassVisitor visitor = new ClassVisitor(Opcodes.ASM5) {
             @Override
@@ -196,7 +184,7 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
 
                     @Override
                     public void visitLineNumber(int line, @NotNull Label start) {
-                        labels2LineNumbers.put(start, line);
+                        labels2LineNumbers.put(start, Integer.toString(line));
                     }
                 };
             }
@@ -204,9 +192,9 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
 
         cr.accept(visitor, ClassReader.SKIP_FRAMES);
 
-        List<Integer> lineNumbers = Lists.newArrayList();
+        List<String> lineNumbers = Lists.newArrayList();
         for (Label label : labels) {
-            Integer lineNumber = labels2LineNumbers.get(label);
+            String lineNumber = labels2LineNumbers.get(label);
             assert lineNumber != null : "No line number found for a label";
             lineNumbers.add(lineNumber);
         }
@@ -215,15 +203,19 @@ public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    private static List<Integer> readAllLineNumbers(@NotNull ClassReader reader) {
-        final List<Integer> result = new ArrayList<Integer>();
+    private static List<String> readAllLineNumbers(@NotNull ClassReader reader) {
+        List<String> result = new ArrayList<>();
+        Set<String> visitedLabels = new HashSet<>();
+
         reader.accept(new ClassVisitor(Opcodes.ASM5) {
             @Override
             public MethodVisitor visitMethod(int access, @NotNull String name, @NotNull String desc, String signature, String[] exceptions) {
                 return new MethodVisitor(Opcodes.ASM5) {
                     @Override
                     public void visitLineNumber(int line, @NotNull Label label) {
-                        result.add(line);
+                        boolean overrides = !visitedLabels.add(label.toString());
+
+                        result.add((overrides ? "+" : "") + line);
                     }
                 };
             }

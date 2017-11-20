@@ -23,12 +23,11 @@ import org.jetbrains.kotlin.resolve.scopes.MemberScope;
 import org.jetbrains.kotlin.types.SimpleType;
 import org.jetbrains.kotlin.types.TypeProjection;
 import org.jetbrains.kotlin.types.TypeSubstitution;
-import org.jetbrains.kotlin.types.TypeSubstitutor;
 
 import java.util.Collection;
 import java.util.List;
 
-public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters, MemberDescriptor, ClassOrPackageFragmentDescriptor {
+public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters, ClassOrPackageFragmentDescriptor {
     @NotNull
     MemberScope getMemberScope(@NotNull List<? extends TypeProjection> typeArguments);
 
@@ -46,7 +45,7 @@ public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters,
 
     @NotNull
     @ReadOnly
-    Collection<ConstructorDescriptor> getConstructors();
+    Collection<ClassConstructorDescriptor> getConstructors();
 
     @Override
     @NotNull
@@ -58,10 +57,6 @@ public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters,
     @NotNull
     @Override
     SimpleType getDefaultType();
-
-    @NotNull
-    @Override
-    ClassDescriptor substitute(@NotNull TypeSubstitutor substitutor);
 
     /**
      * @return nested object declared as 'companion' if one is present.
@@ -88,7 +83,7 @@ public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters,
     ReceiverParameterDescriptor getThisAsReceiverParameter();
 
     @Nullable
-    ConstructorDescriptor getUnsubstitutedPrimaryConstructor();
+    ClassConstructorDescriptor getUnsubstitutedPrimaryConstructor();
 
     /**
      * It may differ from 'typeConstructor.parameters' in current class is inner, 'typeConstructor.parameters' contains
@@ -99,6 +94,13 @@ public interface ClassDescriptor extends ClassifierDescriptorWithTypeParameters,
     @ReadOnly
     @NotNull
     List<TypeParameterDescriptor> getDeclaredTypeParameters();
+
+    /**
+     * @return direct subclasses of this class if it's a sealed class, empty list otherwise
+     */
+    @ReadOnly
+    @NotNull
+    Collection<ClassDescriptor> getSealedSubclasses();
 
     @NotNull
     @Override

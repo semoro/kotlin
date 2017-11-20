@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,24 @@ package org.jetbrains.kotlin.test;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ArrayUtil;
 import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 import org.junit.Assert;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
 
 public final class InTextDirectivesUtils {
+
+    private static final String DIRECTIVES_FILE_NAME = "directives.txt";
 
     private InTextDirectivesUtils() {
     }
@@ -64,7 +69,7 @@ public final class InTextDirectivesUtils {
 
     @NotNull
     public static List<String> findListWithPrefixes(@NotNull String fileText, @NotNull String... prefixes) {
-        List<String> result = new ArrayList<String>();
+        List<String> result = new ArrayList<>();
 
         for (String line : findLinesWithPrefixesRemoved(fileText, prefixes)) {
             String unquoted = StringUtil.unquoteString(line);
@@ -110,7 +115,7 @@ public final class InTextDirectivesUtils {
 
     @NotNull
     public static List<String> findLinesWithPrefixesRemoved(String fileText, boolean trim, String... prefixes) {
-        List<String> result = new ArrayList<String>();
+        List<String> result = new ArrayList<>();
         List<String> cleanedPrefixes = cleanDirectivesFromComments(Arrays.asList(prefixes));
 
         for (String line : fileNonEmptyCommentedLines(fileText)) {
@@ -178,11 +183,10 @@ public final class InTextDirectivesUtils {
 
     @NotNull
     private static List<String> fileNonEmptyCommentedLines(String fileText) {
-        List<String> result = new ArrayList<String>();
+        List<String> result = new ArrayList<>();
 
         try {
-            BufferedReader reader = new BufferedReader(new StringReader(fileText));
-            try {
+            try (BufferedReader reader = new BufferedReader(new StringReader(fileText))) {
                 String line;
 
                 while ((line = reader.readLine()) != null) {
@@ -194,13 +198,57 @@ public final class InTextDirectivesUtils {
                         }
                     }
                 }
-            } finally {
-                reader.close();
             }
-        } catch(IOException e) {
-            throw new AssertionError(e);
+        }
+        catch (IOException e) {
+            throw ExceptionUtilsKt.rethrow(e);
         }
 
         return result;
+    }
+
+    private static String textWithDirectives(File file) {
+        try {
+            String fileText;
+            if (file.isDirectory()) {
+                File directivesFile = new File(file, DIRECTIVES_FILE_NAME);
+                if (!directivesFile.exists()) return "";
+
+                fileText = FileUtil.loadFile(directivesFile);
+            }
+            else {
+                fileText = FileUtil.loadFile(file);
+            }
+            return fileText;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static boolean isCompatibleTarget(TargetBackend targetBackend, File file) {
+        if (targetBackend == TargetBackend.ANY) return true;
+
+        List<String> backends = findLinesWithPrefixesRemoved(textWithDirectives(file), "// TARGET_BACKEND: ");
+        return backends.isEmpty() || backends.contains(targetBackend.name());
+    }
+
+    private static boolean isIgnoredTargetByPrefix(TargetBackend targetBackend, File file, String prefix) {
+        if (targetBackend == TargetBackend.ANY) return false;
+
+        List<String> ignoredBackends = findListWithPrefixes(textWithDirectives(file), prefix);
+        return ignoredBackends.contains(targetBackend.name());
+    }
+
+    public static boolean isIgnoredTarget(TargetBackend targetBackend, File file) {
+        return isIgnoredTargetByPrefix(targetBackend, file, "// IGNORE_BACKEND: ");
+    }
+
+    public static boolean isIgnoredTargetWithoutCheck(TargetBackend targetBackend, File file) {
+        return isIgnoredTargetByPrefix(targetBackend, file, "// IGNORE_BACKEND_WITHOUT_CHECK: ");
+    }
+
+    // Whether the target test is supposed to pass successfully on targetBackend
+    public static boolean isPassingTarget(TargetBackend targetBackend, File file) {
+        return isCompatibleTarget(targetBackend, file) && !isIgnoredTarget(targetBackend, file) && !isIgnoredTargetWithoutCheck(targetBackend, file);
     }
 }

@@ -17,14 +17,16 @@
 package org.jetbrains.kotlin.idea.refactoring.pushDown
 
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiNamedElement
 import com.intellij.refactoring.JavaRefactoringSettings
 import com.intellij.refactoring.RefactoringBundle
-import com.intellij.refactoring.classMembers.AbstractMemberInfoModel
-import com.intellij.refactoring.classMembers.MemberInfoChange
+import com.intellij.refactoring.classMembers.*
 import com.intellij.refactoring.ui.RefactoringDialog
 import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinMemberInfo
 import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinMemberSelectionPanel
+import org.jetbrains.kotlin.idea.refactoring.memberInfo.KotlinUsesDependencyMemberInfoModel
 import org.jetbrains.kotlin.idea.refactoring.memberInfo.qualifiedClassNameForRendering
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -47,12 +49,12 @@ class KotlinPushDownDialog(
         init()
     }
 
-    private var memberInfoModel: AbstractMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>? = null
+    private var memberInfoModel: MemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>? = null
 
-    val selectedMemberInfos: List<KotlinMemberInfo>
+    private val selectedMemberInfos: List<KotlinMemberInfo>
         get() = memberInfos.filter { it.isChecked && memberInfoModel?.isMemberEnabled(it) ?: false }
 
-    override fun getDimensionServiceKey() = "#" + javaClass.name
+    override fun getDimensionServiceKey() = "#" + this::class.java.name
 
     override fun createNorthPanel(): JComponent? {
         val gbConstraints = GridBagConstraints()
@@ -79,11 +81,18 @@ class KotlinPushDownDialog(
                 RefactoringBundle.message("keep.abstract.column.header"))
         panel.add(memberSelectionPanel, BorderLayout.CENTER)
 
-        memberInfoModel = object : AbstractMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>() {
+        memberInfoModel = object : DelegatingMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>(
+                ANDCombinedMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>(
+                        KotlinUsesDependencyMemberInfoModel<KtNamedDeclaration, KotlinMemberInfo>(sourceClass, null, false),
+                        UsedByDependencyMemberInfoModel<KtNamedDeclaration, PsiNamedElement, KotlinMemberInfo>(sourceClass))
+        ) {
             override fun isFixedAbstract(member: KotlinMemberInfo?) = null
 
             override fun isAbstractEnabled(memberInfo: KotlinMemberInfo): Boolean {
                 val member = memberInfo.member
+                if (member.hasModifier(KtTokens.INLINE_KEYWORD) ||
+                    member.hasModifier(KtTokens.EXTERNAL_KEYWORD) ||
+                    member.hasModifier(KtTokens.LATEINIT_KEYWORD)) return false
                 return member is KtNamedFunction || member is KtProperty
             }
         }

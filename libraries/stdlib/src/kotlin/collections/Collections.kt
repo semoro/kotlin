@@ -19,8 +19,6 @@
 
 package kotlin.collections
 
-import java.io.Serializable
-import java.util.*
 import kotlin.comparisons.compareValues
 
 internal object EmptyIterator : ListIterator<Nothing> {
@@ -90,7 +88,17 @@ public inline fun <T> listOf(): List<T> = emptyList()
  * The returned list is serializable.
  */
 @JvmVersion
-public fun <T> listOf(element: T): List<T> = Collections.singletonList(element)
+public fun <T> listOf(element: T): List<T> = java.util.Collections.singletonList(element)
+
+/** Returns an empty new [MutableList]. */
+@SinceKotlin("1.1")
+@kotlin.internal.InlineOnly
+public inline fun <T> mutableListOf(): MutableList<T> = ArrayList()
+
+/** Returns an empty new [ArrayList]. */
+@SinceKotlin("1.1")
+@kotlin.internal.InlineOnly
+public inline fun <T> arrayListOf(): ArrayList<T> = ArrayList()
 
 /** Returns a new [MutableList] with the given elements. */
 public fun <T> mutableListOf(vararg elements: T): MutableList<T>
@@ -107,6 +115,26 @@ public fun <T : Any> listOfNotNull(element: T?): List<T> = if (element != null) 
 public fun <T : Any> listOfNotNull(vararg elements: T?): List<T> = elements.filterNotNull()
 
 /**
+ * Creates a new read-only list with the specified [size], where each element is calculated by calling the specified
+ * [init] function. The [init] function returns a list element given its index.
+ */
+@SinceKotlin("1.1")
+@kotlin.internal.InlineOnly
+public inline fun <T> List(size: Int, init: (index: Int) -> T): List<T> = MutableList(size, init)
+
+/**
+ * Creates a new mutable list with the specified [size], where each element is calculated by calling the specified
+ * [init] function. The [init] function returns a list element given its index.
+ */
+@SinceKotlin("1.1")
+@kotlin.internal.InlineOnly
+public inline fun <T> MutableList(size: Int, init: (index: Int) -> T): MutableList<T> {
+    val list = ArrayList<T>(size)
+    repeat(size) { index -> list.add(init(index)) }
+    return list
+}
+
+/**
  * Returns an [IntRange] of the valid indices for this collection.
  */
 public val Collection<*>.indices: IntRange
@@ -115,7 +143,7 @@ public val Collection<*>.indices: IntRange
 /**
  * Returns the index of the last item in the list or -1 if the list is empty.
  *
- * @sample test.collections.ListSpecificTest.lastIndex
+ * @sample samples.collections.Collections.Lists.lastIndexOfList
  */
 public val <T> List<T>.lastIndex: Int
     get() = this.size - 1
@@ -138,13 +166,14 @@ public inline fun <T> List<T>?.orEmpty(): List<T> = this ?: emptyList()
  */
 @JvmVersion
 @kotlin.internal.InlineOnly
-public inline fun <T> Enumeration<T>.toList(): List<T> = Collections.list(this)
+public inline fun <T> java.util.Enumeration<T>.toList(): List<T> = java.util.Collections.list(this)
 
 /**
  * Checks if all elements in the specified collection are contained in this collection.
  *
  * Allows to overcome type-safety restriction of `containsAll` that requires to pass a collection of type `Collection<E>`.
  */
+@Suppress("EXTENSION_SHADOWED_BY_MEMBER") // false warning, extension takes precedence in some cases
 @kotlin.internal.InlineOnly
 public inline fun <@kotlin.internal.OnlyInputTypes T> Collection<T>.containsAll(elements: Collection<T>): Boolean = this.containsAll(elements)
 
@@ -154,6 +183,16 @@ internal fun <T> List<T>.optimizeReadOnlyList() = when (size) {
     else -> this
 }
 
+@JvmVersion
+@kotlin.internal.InlineOnly
+internal inline fun copyToArrayImpl(collection: Collection<*>): Array<Any?> =
+        kotlin.jvm.internal.CollectionToArray.toArray(collection)
+
+@JvmVersion
+@kotlin.internal.InlineOnly
+internal inline fun <T> copyToArrayImpl(collection: Collection<*>, array: Array<T>): Array<T> =
+        kotlin.jvm.internal.CollectionToArray.toArray(collection, array)
+
 // copies typed varargs array to array of objects
 @JvmVersion
 private fun <T> Array<out T>.copyToArrayOfAny(isVarargs: Boolean): Array<Any?> =
@@ -161,7 +200,7 @@ private fun <T> Array<out T>.copyToArrayOfAny(isVarargs: Boolean): Array<Any?> =
             // if the array came from varargs and already is array of Any, copying isn't required
             @Suppress("UNCHECKED_CAST") (this as Array<Any?>)
         else
-            Arrays.copyOf(this, this.size, Array<Any?>::class.java)
+            java.util.Arrays.copyOf(this, this.size, Array<Any?>::class.java)
 
 /**
  * Searches this list or its range for the provided [element] using the binary search algorithm.

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,34 +18,39 @@ package org.jetbrains.kotlin.resolve.calls.callResolverUtil
 
 import com.google.common.collect.Lists
 import com.intellij.util.containers.ContainerUtil
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.ReflectionTypes
-import org.jetbrains.kotlin.builtins.getReceiverTypeFromFunctionType
-import org.jetbrains.kotlin.builtins.isExtensionFunctionType
-import org.jetbrains.kotlin.coroutines.getExpectedTypeForCoroutineControllerHandleResult
+import org.jetbrains.kotlin.builtins.isSuspendFunctionType
+import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.incremental.KotlinLookupLocation
+import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
+import org.jetbrains.kotlin.lexer.KtToken
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.calls.CallTransformer
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.callUtil.getValueArgumentForExpression
+import org.jetbrains.kotlin.resolve.calls.components.isVararg
+import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystem
 import org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPositionKind.EXPECTED_TYPE_POSITION
 import org.jetbrains.kotlin.resolve.calls.inference.getNestedTypeVariables
 import org.jetbrains.kotlin.resolve.calls.model.ArgumentMatch
 import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.calls.tasks.ResolutionCandidate
-import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
+import org.jetbrains.kotlin.resolve.scopes.SyntheticScopes
+import org.jetbrains.kotlin.resolve.scopes.collectSyntheticConstructors
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.resolve.scopes.utils.getImplicitReceiversHierarchy
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.TypeUtils.DONT_CARE
 import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
-import org.jetbrains.kotlin.types.typeUtil.asTypeProjection
+import org.jetbrains.kotlin.types.expressions.OperatorConventions
 import org.jetbrains.kotlin.types.typeUtil.contains
-import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 enum class ResolveArgumentsMode {
     RESOLVE_FUNCTION_ARGUMENTS,
@@ -54,19 +59,19 @@ enum class ResolveArgumentsMode {
 
 
 fun hasUnknownFunctionParameter(type: KotlinType): Boolean {
-    assert(ReflectionTypes.isCallableType(type)) { "type $type is not a function or property" }
+    assert(ReflectionTypes.isCallableType(type) || type.isSuspendFunctionType) { "type $type is not a function or property" }
     return getParameterArgumentsOfCallableType(type).any {
         it.type.contains { TypeUtils.isDontCarePlaceholder(it) } || ErrorUtils.containsUninferredParameter(it.type)
     }
 }
 
 fun hasUnknownReturnType(type: KotlinType): Boolean {
-    assert(ReflectionTypes.isCallableType(type)) { "type $type is not a function or property" }
+    assert(ReflectionTypes.isCallableType(type) || type.isSuspendFunctionType) { "type $type is not a function or property" }
     return ErrorUtils.containsErrorType(getReturnTypeForCallable(type))
 }
 
 fun replaceReturnTypeForCallable(type: KotlinType, given: KotlinType): KotlinType {
-    assert(ReflectionTypes.isCallableType(type)) { "type $type is not a function or property" }
+    assert(ReflectionTypes.isCallableType(type) || type.isSuspendFunctionType) { "type $type is not a function or property" }
     val newArguments = Lists.newArrayList<TypeProjection>()
     newArguments.addAll(getParameterArgumentsOfCallableType(type))
     newArguments.add(TypeProjectionImpl(Variance.INVARIANT, given))
@@ -109,7 +114,19 @@ fun getErasedReceiverType(receiverParameterDescriptor: ReceiverParameterDescript
     for (typeProjection in receiverType.arguments) {
         fakeTypeArguments.add(TypeProjectionImpl(typeProjection.projectionKind, DONT_CARE))
     }
-    return KotlinTypeFactory.simpleType(receiverType.annotations, receiverType.constructor, fakeTypeArguments,
+
+    val receiverTypeConstructor = if (receiverType.constructor is IntersectionTypeConstructor) {
+        val superTypesWithFakeArguments = receiverType.constructor.supertypes.map { supertype ->
+            val fakeArguments = supertype.arguments.map { TypeProjectionImpl(it.projectionKind, DONT_CARE) }
+            supertype.replace(fakeArguments)
+        }
+
+        IntersectionTypeConstructor(superTypesWithFakeArguments)
+    } else {
+        receiverType.constructor
+    }
+
+    return KotlinTypeFactory.simpleType(receiverType.annotations, receiverTypeConstructor, fakeTypeArguments,
                                         receiverType.isMarkedNullable, ErrorUtils.createErrorScope("Error scope for erased receiver type", /*throwExceptions=*/true))
 }
 
@@ -118,27 +135,36 @@ fun isOrOverridesSynthesized(descriptor: CallableMemberDescriptor): Boolean {
         return true
     }
     if (descriptor.kind == CallableMemberDescriptor.Kind.FAKE_OVERRIDE) {
-        return descriptor.overriddenDescriptors.all {
-            isOrOverridesSynthesized(it)
-        }
+        return descriptor.overriddenDescriptors.all(::isOrOverridesSynthesized)
     }
     return false
 }
 
+fun isBinaryRemOperator(call: Call): Boolean {
+    val callElement = call.callElement as? KtBinaryExpression ?: return false
+    val operator = callElement.operationToken
+    if (operator !is KtToken) return false
+
+    val name = OperatorConventions.getNameForOperationSymbol(operator, true, true)
+    return name in OperatorConventions.REM_TO_MOD_OPERATION_NAMES.keys
+}
 
 fun isConventionCall(call: Call): Boolean {
     if (call is CallTransformer.CallForImplicitInvoke) return true
     val callElement = call.callElement
     if (callElement is KtArrayAccessExpression || callElement is KtDestructuringDeclarationEntry) return true
     val calleeExpression = call.calleeExpression as? KtOperationReferenceExpression ?: return false
-    return calleeExpression.getNameForConventionalOperation() != null
+    return calleeExpression.isConventionOperator()
 }
 
 fun isInfixCall(call: Call): Boolean {
     val operationRefExpression = call.calleeExpression as? KtOperationReferenceExpression ?: return false
     val binaryExpression = operationRefExpression.parent as? KtBinaryExpression ?: return false
-    return binaryExpression.operationReference === operationRefExpression && !operationRefExpression.isPredefinedOperator()
+    return binaryExpression.operationReference === operationRefExpression && operationRefExpression.operationSignTokenType == null
 }
+
+fun isSuperOrDelegatingConstructorCall(call: Call): Boolean =
+        call.calleeExpression.let { it is KtConstructorCalleeExpression  || it is KtConstructorDelegationReferenceExpression }
 
 fun isInvokeCallOnVariable(call: Call): Boolean {
     if (call.callType !== Call.CallType.INVOKE) return false
@@ -157,8 +183,12 @@ fun getSuperCallExpression(call: Call): KtSuperExpression? {
     return (call.explicitReceiver as? ExpressionReceiver)?.expression as? KtSuperExpression
 }
 
-fun getEffectiveExpectedType(parameterDescriptor: ValueParameterDescriptor, argument: ValueArgument): KotlinType {
-    if (argument.getSpreadElement() != null) {
+fun getEffectiveExpectedType(
+        parameterDescriptor: ValueParameterDescriptor,
+        argument: ValueArgument,
+        context: ResolutionContext<*>
+): KotlinType {
+    if (argument.getSpreadElement() != null || shouldCheckAsArray(parameterDescriptor, argument, context)) {
         if (parameterDescriptor.varargElementType == null) {
             // Spread argument passed to a non-vararg parameter, an error is already reported by ValueArgumentsToParametersMapper
             return DONT_CARE
@@ -170,40 +200,58 @@ fun getEffectiveExpectedType(parameterDescriptor: ValueParameterDescriptor, argu
         return varargElementType
     }
 
-    if (parameterDescriptor.isCoroutine &&
-            argument.getArgumentExpression() is KtLambdaExpression &&
-            parameterDescriptor.type.isExtensionFunctionType
-    ) {
-        val receiverType = getReceiverTypeFromFunctionType(parameterDescriptor.type)!!
-
-        val newExpectedLambdaReturnType =
-                receiverType.memberScope
-                        .getContributedFunctions(
-                                OperatorNameConventions.COROUTINE_HANDLE_RESULT, KotlinLookupLocation(argument.asElement())
-                        ).mapNotNull {
-                                it.getExpectedTypeForCoroutineControllerHandleResult()
-                        }.singleOrNull()
-                // If no handleResult function found, then expected return type for lambda is Unit
-                ?: parameterDescriptor.module.builtIns.unitType
-
-        // replace return type for lambda with the one we got from single 'handleResult'
-        val newFunctionTypeArguments = parameterDescriptor.type.arguments.toMutableList()
-        newFunctionTypeArguments[newFunctionTypeArguments.lastIndex] = newExpectedLambdaReturnType.asTypeProjection()
-
-        return parameterDescriptor.type.replace(
-                newArguments = newFunctionTypeArguments)
-    }
-
     return parameterDescriptor.type
+}
+
+private fun shouldCheckAsArray(
+        parameterDescriptor: ValueParameterDescriptor,
+        argument: ValueArgument,
+        context: ResolutionContext<*>
+): Boolean {
+    if (!context.languageVersionSettings.supportsFeature(LanguageFeature.AssigningArraysToVarargsInNamedFormInAnnotations)) return false
+
+    if (!isParameterOfAnnotation(parameterDescriptor)) return false
+
+    return argument.isNamed() && parameterDescriptor.isVararg && isArrayOrArrayLiteral(argument, context)
+}
+
+fun isParameterOfAnnotation(parameterDescriptor: ValueParameterDescriptor): Boolean {
+    val constructedClass = parameterDescriptor.containingDeclaration.safeAs<ConstructorDescriptor>()?.constructedClass
+    return DescriptorUtils.isAnnotationClass(constructedClass)
+}
+
+fun isArrayOrArrayLiteral(argument: ValueArgument, context: ResolutionContext<*>): Boolean {
+    val argumentExpression = argument.getArgumentExpression() ?: return false
+    if (argumentExpression is KtCollectionLiteralExpression) return true
+
+    val type = context.trace.getType(argumentExpression) ?: return false
+    return KotlinBuiltIns.isArrayOrPrimitiveArray(type)
 }
 
 fun createResolutionCandidatesForConstructors(
         lexicalScope: LexicalScope,
         call: Call,
-        classWithConstructors: ClassDescriptor,
-        knownSubstitutor: TypeSubstitutor? = null
-): Collection<ResolutionCandidate<ConstructorDescriptor>> {
-    val constructors = classWithConstructors.constructors
+        typeWithConstructors: KotlinType,
+        useKnownTypeSubstitutor: Boolean,
+        syntheticScopes: SyntheticScopes
+): List<ResolutionCandidate<ConstructorDescriptor>> {
+    val classWithConstructors = typeWithConstructors.constructor.declarationDescriptor as ClassDescriptor
+
+    val unwrappedType = typeWithConstructors.unwrap()
+    val knownSubstitutor =
+            if (useKnownTypeSubstitutor)
+                TypeSubstitutor.create(
+                        (unwrappedType as? AbbreviatedType)?.abbreviation ?: unwrappedType
+                )
+            else null
+
+    val typeAliasDescriptor =
+            if (unwrappedType is AbbreviatedType)
+                unwrappedType.abbreviation.constructor.declarationDescriptor as? TypeAliasDescriptor
+            else
+                null
+
+    val constructors = typeAliasDescriptor?.constructors?.mapNotNull(TypeAliasConstructorDescriptor::withDispatchReceiver) ?: classWithConstructors.constructors
 
     if (constructors.isEmpty()) return emptyList()
 
@@ -212,7 +260,7 @@ fun createResolutionCandidatesForConstructors(
 
     if (classWithConstructors.isInner) {
         val outerClassType = (classWithConstructors.containingDeclaration as? ClassDescriptor)?.defaultType ?: return emptyList()
-        val substitutedOuterClassType = knownSubstitutor?.let { it.substitute(outerClassType, Variance.INVARIANT) } ?: outerClassType
+        val substitutedOuterClassType = knownSubstitutor?.substitute(outerClassType, Variance.INVARIANT) ?: outerClassType
 
         val receiver = lexicalScope.getImplicitReceiversHierarchy().firstOrNull {
             KotlinTypeChecker.DEFAULT.isSubtypeOf(it.type, substitutedOuterClassType)
@@ -226,7 +274,11 @@ fun createResolutionCandidatesForConstructors(
         dispatchReceiver = null
     }
 
-    return constructors.map { ResolutionCandidate.create(call, it, dispatchReceiver, receiverKind, knownSubstitutor) }
+    val syntheticConstructors = constructors.flatMap { syntheticScopes.collectSyntheticConstructors(it) }
+
+    return (constructors + syntheticConstructors).map {
+        ResolutionCandidate.create(call, it, dispatchReceiver, receiverKind, knownSubstitutor)
+    }
 }
 
 fun KtLambdaExpression.getCorrespondingParameterForFunctionArgument(

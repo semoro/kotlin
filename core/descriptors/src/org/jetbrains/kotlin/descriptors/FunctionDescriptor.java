@@ -19,7 +19,6 @@ package org.jetbrains.kotlin.descriptors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
-import org.jetbrains.kotlin.descriptors.impl.FunctionDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeSubstitution;
@@ -37,7 +36,7 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
     @Override
     FunctionDescriptor getOriginal();
 
-    @NotNull
+    @Nullable
     @Override
     FunctionDescriptor substitute(@NotNull TypeSubstitutor substitutor);
 
@@ -76,8 +75,6 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
 
     boolean isTailrec();
 
-    boolean isExternal();
-
     boolean isHiddenForResolutionEverywhereBesideSupercalls();
 
     boolean isSuspend();
@@ -89,24 +86,31 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
     <V> V getUserData(UserDataKey<V> key);
 
     @NotNull
+    @Override
     CopyBuilder<? extends FunctionDescriptor> newCopyBuilder();
 
-    interface CopyBuilder<D extends FunctionDescriptor> {
+    interface CopyBuilder<D extends FunctionDescriptor> extends CallableMemberDescriptor.CopyBuilder<D> {
         @NotNull
+        @Override
         CopyBuilder<D> setOwner(@NotNull DeclarationDescriptor owner);
 
         @NotNull
+        @Override
         CopyBuilder<D> setModality(@NotNull Modality modality);
 
         @NotNull
+        @Override
         CopyBuilder<D> setVisibility(@NotNull Visibility visibility);
 
         @NotNull
+        @Override
         CopyBuilder<D> setKind(@NotNull Kind kind);
 
         @NotNull
+        @Override
         CopyBuilder<D> setCopyOverrides(boolean copyOverrides);
 
+        @Override
         @NotNull
         CopyBuilder<D> setName(@NotNull Name name);
 
@@ -114,6 +118,7 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         CopyBuilder<D> setValueParameters(@NotNull List<ValueParameterDescriptor> parameters);
 
         @NotNull
+        @Override
         CopyBuilder<D> setTypeParameters(@NotNull List<TypeParameterDescriptor> parameters);
 
         @NotNull
@@ -123,19 +128,18 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         CopyBuilder<D> setExtensionReceiverType(@Nullable KotlinType type);
 
         @NotNull
+        @Override
         CopyBuilder<D> setDispatchReceiverParameter(@Nullable ReceiverParameterDescriptor dispatchReceiverParameter);
 
         @NotNull
-        CopyBuilder<D> setOriginal(@Nullable FunctionDescriptor original);
+        @Override
+        CopyBuilder<D> setOriginal(@Nullable CallableMemberDescriptor original);
 
         @NotNull
         CopyBuilder<D> setSignatureChange();
 
         @NotNull
         CopyBuilder<D> setPreserveSourceElement();
-
-        @NotNull
-        CopyBuilder<D> setSource(@NotNull SourceElement source);
 
         @NotNull
         CopyBuilder<D> setDropOriginalInContainingParts();
@@ -150,12 +154,14 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         CopyBuilder<D> setAdditionalAnnotations(@NotNull Annotations additionalAnnotations);
 
         @NotNull
+        @Override
         CopyBuilder<D> setSubstitution(@NotNull TypeSubstitution substitution);
 
         @NotNull
         <V> CopyBuilder<D> putUserData(@NotNull UserDataKey<V> userDataKey, V value);
 
         @Nullable
+        @Override
         D build();
     }
 }

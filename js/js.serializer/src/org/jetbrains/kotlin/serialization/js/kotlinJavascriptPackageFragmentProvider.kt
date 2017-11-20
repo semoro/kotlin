@@ -17,43 +17,49 @@
 package org.jetbrains.kotlin.serialization.js
 
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
+import org.jetbrains.kotlin.descriptors.NotFoundClasses
 import org.jetbrains.kotlin.descriptors.PackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.PackageFragmentProviderImpl
+import org.jetbrains.kotlin.descriptors.deserialization.PlatformDependentDeclarationFilter
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.serialization.ProtoBuf
 import org.jetbrains.kotlin.serialization.deserialization.*
 import org.jetbrains.kotlin.storage.StorageManager
-import java.io.InputStream
 
 fun createKotlinJavascriptPackageFragmentProvider(
         storageManager: StorageManager,
         module: ModuleDescriptor,
-        packageFqNames: Set<FqName>,
-        loadResource: (String) -> InputStream?
+        header: JsProtoBuf.Header,
+        packageFragmentProtos: List<ProtoBuf.PackageFragment>,
+        configuration: DeserializationConfiguration,
+        lookupTracker: LookupTracker
 ): PackageFragmentProvider {
-    val packageFragments = packageFqNames.map { fqName ->
-        KotlinJavascriptPackageFragment(fqName, storageManager, module, loadResource)
+    val packageFragments = packageFragmentProtos.mapNotNull { proto ->
+        proto.fqName?.let { fqName ->
+            KotlinJavascriptPackageFragment(fqName, storageManager, module, proto, header, configuration)
+        }
     }
+
     val provider = PackageFragmentProviderImpl(packageFragments)
 
     val notFoundClasses = NotFoundClasses(storageManager, module)
-    val localClassResolver = LocalClassifierResolverImpl()
 
     val components = DeserializationComponents(
             storageManager,
             module,
+            configuration,
             DeserializedClassDataFinder(provider),
             AnnotationAndConstantLoaderImpl(module, notFoundClasses, JsSerializerProtocol),
             provider,
-            localClassResolver,
+            LocalClassifierTypeSettings.Default,
             ErrorReporter.DO_NOTHING,
-            LookupTracker.DO_NOTHING,
+            lookupTracker,
             DynamicTypeDeserializer,
-            ClassDescriptorFactory.EMPTY,
-            notFoundClasses
+            emptyList(),
+            notFoundClasses,
+            platformDependentDeclarationFilter = PlatformDependentDeclarationFilter.NoPlatformDependent
     )
-
-    localClassResolver.setDeserializationComponents(components)
 
     for (packageFragment in packageFragments) {
         packageFragment.components = components
@@ -61,3 +67,13 @@ fun createKotlinJavascriptPackageFragmentProvider(
 
     return provider
 }
+
+private val ProtoBuf.PackageFragment.fqName: FqName?
+    get() {
+        val nameResolver = NameResolverImpl(strings, qualifiedNames)
+        return when {
+            hasPackage() -> nameResolver.getPackageFqName(`package`.getExtension(JsProtoBuf.packageFqName))
+            class_Count > 0 -> nameResolver.getClassId(class_OrBuilderList.first().fqName).packageFqName
+            else -> null
+        }
+    }

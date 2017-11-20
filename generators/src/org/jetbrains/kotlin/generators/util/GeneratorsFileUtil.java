@@ -19,9 +19,13 @@ package org.jetbrains.kotlin.generators.util;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import org.jetbrains.kotlin.test.KotlinTestUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 public class GeneratorsFileUtil {
     @SuppressWarnings("UseOfSystemOutOrSystemErr")
@@ -50,14 +54,12 @@ public class GeneratorsFileUtil {
 
         boolean useTempFile = !SystemInfo.isWindows;
 
-        File tempFile = useTempFile ? new File(file.getName() + ".tmp") : file;
+        File tempFile = useTempFile ? new File(KotlinTestUtils.tmpDir(file.getName()), file.getName() + ".tmp") : file;
 
         FileUtil.writeToFile(tempFile, newText);
         System.out.println("File written: " + tempFile.getAbsolutePath());
         if (useTempFile) {
-            if (!tempFile.renameTo(file)) {
-                throw new RuntimeException("failed to rename " + tempFile + " to " + file);
-            }
+            Files.move(tempFile.toPath(), file.toPath(), REPLACE_EXISTING);
             System.out.println("Renamed " + tempFile + " to " + file);
         }
         System.out.println();

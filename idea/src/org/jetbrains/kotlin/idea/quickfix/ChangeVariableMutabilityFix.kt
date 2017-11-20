@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.diagnostics.DiagnosticFactory1
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 
 class ChangeVariableMutabilityFix(element: KtValVarKeywordOwner, private val makeVar: Boolean) : KotlinQuickFixAction<KtValVarKeywordOwner>(element) {
@@ -35,11 +36,13 @@ class ChangeVariableMutabilityFix(element: KtValVarKeywordOwner, private val mak
     override fun getFamilyName(): String = text
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
+        val element = element ?: return false
         val valOrVar = element.valOrVarKeyword?.node?.elementType ?: return false
         return (valOrVar == KtTokens.VAR_KEYWORD) != makeVar
     }
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
+        val element = element ?: return
         val factory = KtPsiFactory(project)
         val newKeyword = if (makeVar) factory.createVarKeyword() else factory.createValKeyword()
         element.valOrVarKeyword!!.replace(newKeyword)
@@ -65,6 +68,8 @@ class ChangeVariableMutabilityFix(element: KtValVarKeywordOwner, private val mak
 
         val CAPTURED_VAL_INITIALIZATION_FACTORY = ReassignmentActionFactory(Errors.CAPTURED_VAL_INITIALIZATION)
 
+        val CAPTURED_MEMBER_VAL_INITIALIZATION_FACTORY = ReassignmentActionFactory(Errors.CAPTURED_MEMBER_VAL_INITIALIZATION)
+
         val VAR_OVERRIDDEN_BY_VAL_FACTORY: KotlinSingleIntentionActionFactory = object: KotlinSingleIntentionActionFactory() {
             override fun createAction(diagnostic: Diagnostic): IntentionAction? {
                 val element = diagnostic.psiElement
@@ -79,6 +84,15 @@ class ChangeVariableMutabilityFix(element: KtValVarKeywordOwner, private val mak
             override fun createAction(diagnostic: Diagnostic): IntentionAction? {
                 val element = diagnostic.psiElement as KtParameter
                 return ChangeVariableMutabilityFix(element, false)
+            }
+        }
+
+        val LATEINIT_VAL_FACTORY = object: KotlinSingleIntentionActionFactory() {
+            override fun createAction(diagnostic: Diagnostic): IntentionAction? {
+                val lateinitElement = Errors.INAPPLICABLE_LATEINIT_MODIFIER.cast(diagnostic).psiElement
+                val property = lateinitElement.getStrictParentOfType<KtProperty>() ?: return null
+                if (property.valOrVarKeyword.text != "val") return null
+                return ChangeVariableMutabilityFix(property, makeVar = true)
             }
         }
     }

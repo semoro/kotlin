@@ -24,14 +24,16 @@ import com.intellij.psi.PsiLiteral
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.ClassifierDescriptorWithTypeParameters
 import org.jetbrains.kotlin.idea.core.KotlinIndicesHelper
 import org.jetbrains.kotlin.idea.core.isJavaClassNotToBeUsedInKotlin
-import org.jetbrains.kotlin.idea.project.ProjectStructureUtil
+import org.jetbrains.kotlin.idea.project.TargetPlatformDetector
 import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames
 import org.jetbrains.kotlin.load.kotlin.header.KotlinClassHeader
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.resolve.scopes.getDescriptorsFiltered
@@ -41,25 +43,32 @@ class AllClassesCompletion(private val parameters: CompletionParameters,
                            private val prefixMatcher: PrefixMatcher,
                            private val resolutionFacade: ResolutionFacade,
                            private val kindFilter: (ClassKind) -> Boolean,
+                           private val includeTypeAliases: Boolean,
                            private val includeJavaClassesNotToBeUsed: Boolean
 ) {
-    fun collect(classDescriptorCollector: (ClassDescriptor) -> Unit, javaClassCollector: (PsiClass) -> Unit) {
+    fun collect(classifierDescriptorCollector: (ClassifierDescriptorWithTypeParameters) -> Unit, javaClassCollector: (PsiClass) -> Unit) {
 
         //TODO: this is a temporary solution until we have built-ins in indices
         // we need only nested classes because top-level built-ins are all added through default imports
-        for (builtinPackage in resolutionFacade.moduleDescriptor.builtIns.builtInsPackageFragments) {
+        for (builtinPackage in resolutionFacade.moduleDescriptor.builtIns.builtInsPackageFragmentsImportedByDefault) {
             collectClassesFromScope(builtinPackage.getMemberScope()) {
                 if (it.containingDeclaration is ClassDescriptor) {
-                    classDescriptorCollector(it)
+                    classifierDescriptorCollector(it)
                 }
             }
         }
 
         kotlinIndicesHelper
-                .getKotlinClasses({ prefixMatcher.prefixMatches(it) }, kindFilter)
-                .forEach { classDescriptorCollector(it) }
+                .getKotlinClasses({ prefixMatcher.prefixMatches(it) }, kindFilter = kindFilter)
+                .forEach { classifierDescriptorCollector(it) }
 
-        if (!ProjectStructureUtil.isJsKotlinModule(parameters.originalFile as KtFile)) {
+        if (includeTypeAliases) {
+            kotlinIndicesHelper
+                    .getTopLevelTypeAliases(prefixMatcher.asStringNameFilter())
+                    .forEach { classifierDescriptorCollector(it) }
+        }
+
+        if (TargetPlatformDetector.getPlatform(parameters.originalFile as KtFile) == JvmPlatform) {
             addAdaptedJavaCompletion(javaClassCollector)
         }
     }

@@ -20,36 +20,29 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import junit.framework.ComparisonFailure;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.kotlin.analyzer.AnalysisResult;
 import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
-import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
+import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM;
 import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
 import org.jetbrains.kotlin.config.ContentRootsKt;
 import org.jetbrains.kotlin.config.JVMConfigurationKeys;
-import org.jetbrains.kotlin.context.ModuleContext;
 import org.jetbrains.kotlin.descriptors.ClassDescriptor;
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor;
 import org.jetbrains.kotlin.descriptors.PackageViewDescriptor;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.BindingContext;
-import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
-import org.jetbrains.kotlin.resolve.jvm.TopDownAnalyzerFacadeForJVM;
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedClassDescriptor;
-import org.jetbrains.kotlin.test.ConfigurationKind;
-import org.jetbrains.kotlin.test.KotlinTestUtils;
-import org.jetbrains.kotlin.test.TestCaseWithTmpdir;
-import org.jetbrains.kotlin.test.TestJdkKind;
+import org.jetbrains.kotlin.test.*;
 import org.jetbrains.kotlin.test.util.DescriptorValidator;
-import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator;
 import org.junit.Assert;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
@@ -67,8 +60,11 @@ import static org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.*;
     The generated test compares package descriptors loaded from kotlin sources and read from compiled java.
 */
 public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
+    // There are two modules in each test case (sources and dependencies), so we should render declarations from both of them
+    public static final Configuration COMPARATOR_CONFIGURATION = DONT_INCLUDE_METHODS_OF_OBJECT.renderDeclarationsFromOtherModules(true);
+
     protected void doTestCompiledJava(@NotNull String javaFileName) throws Exception {
-        doTestCompiledJava(javaFileName, DONT_INCLUDE_METHODS_OF_OBJECT);
+        doTestCompiledJava(javaFileName, COMPARATOR_CONFIGURATION);
     }
 
     // Java-Kotlin dependencies are not supported in this method for simplicity
@@ -76,9 +72,13 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
         File expectedFile = new File(expectedFileName);
         File sourcesDir = new File(expectedFileName.replaceFirst("\\.txt$", ""));
 
+        if (useJavacWrapper()) return;
+
         List<File> kotlinSources = FileUtil.findFilesByMask(Pattern.compile(".+\\.kt"), sourcesDir);
         KotlinCoreEnvironment environment =
                 KotlinTestUtils.createEnvironmentWithMockJdkAndIdeaAnnotations(myTestRootDisposable, ConfigurationKind.JDK_ONLY);
+        registerJavacIfNeeded(environment);
+
         compileKotlinToDirAndGetModule(kotlinSources, tmpdir, environment);
 
         List<File> javaSources = FileUtil.findFilesByMask(Pattern.compile(".+\\.java"), sourcesDir);
@@ -86,11 +86,16 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
                 javaSources, tmpdir, ConfigurationKind.JDK_ONLY
         );
 
-        checkJavaPackage(expectedFile, binaryPackageAndContext.first, binaryPackageAndContext.second, DONT_INCLUDE_METHODS_OF_OBJECT);
+        checkJavaPackage(expectedFile, binaryPackageAndContext.first, binaryPackageAndContext.second, COMPARATOR_CONFIGURATION);
+    }
+
+    @NotNull
+    protected File getExpectedFile(@NotNull String expectedFileName) {
+        return new File(expectedFileName);
     }
 
     protected void doTestCompiledJavaIncludeObjectMethods(@NotNull String javaFileName) throws Exception {
-        doTestCompiledJava(javaFileName, RECURSIVE);
+        doTestCompiledJava(javaFileName, RECURSIVE.renderDeclarationsFromOtherModules(true));
     }
 
     protected void doTestCompiledKotlin(@NotNull String ktFileName) throws Exception {
@@ -109,7 +114,7 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
             @NotNull String ktFileName, @NotNull ConfigurationKind configurationKind, boolean useTypeTableInSerializer
     ) throws Exception {
         File ktFile = new File(ktFileName);
-        File txtFile = new File(ktFileName.replaceFirst("\\.kt$", ".txt"));
+        File txtFile = getTxtFileFromKtFile(ktFileName);
 
         CompilerConfiguration configuration = newConfiguration(configurationKind, TestJdkKind.MOCK_JDK, getAnnotationsJar());
         if (useTypeTableInSerializer) {
@@ -117,13 +122,14 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
         }
         KotlinCoreEnvironment environment =
                 KotlinCoreEnvironment.createForTests(getTestRootDisposable(), configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES);
+        registerJavacIfNeeded(environment);
         ModuleDescriptor module = compileKotlinToDirAndGetModule(Collections.singletonList(ktFile), tmpdir, environment);
 
         PackageViewDescriptor packageFromSource = module.getPackage(TEST_PACKAGE_FQNAME);
         Assert.assertEquals("test", packageFromSource.getName().asString());
 
         PackageViewDescriptor packageFromBinary = LoadDescriptorUtil.loadTestPackageAndBindingContextFromJavaRoot(
-                tmpdir, getTestRootDisposable(), getJdkKind(), configurationKind, true
+                tmpdir, getTestRootDisposable(), getJdkKind(), configurationKind, true, false, useJavacWrapper()
         ).first;
 
         for (DeclarationDescriptor descriptor : DescriptorUtils.getAllDescriptors(packageFromBinary.getMemberScope())) {
@@ -134,40 +140,39 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
 
         DescriptorValidator.validate(errorTypesForbidden(), packageFromSource);
         DescriptorValidator.validate(new DeserializedScopeValidationVisitor(), packageFromBinary);
-        Configuration comparatorConfiguration = RecursiveDescriptorComparator.DONT_INCLUDE_METHODS_OF_OBJECT
-                .checkPrimaryConstructors(true)
-                .checkPropertyAccessors(true);
+        Configuration comparatorConfiguration = COMPARATOR_CONFIGURATION.checkPrimaryConstructors(true).checkPropertyAccessors(true);
         compareDescriptors(packageFromSource, packageFromBinary, comparatorConfiguration, txtFile);
     }
+
+    protected boolean useFastClassFilesReading() {
+        return false;
+    }
+
+    protected boolean useJavacWrapper() { return false; }
+
+    protected void registerJavacIfNeeded(KotlinCoreEnvironment environment) {}
 
     protected void doTestJavaAgainstKotlin(String expectedFileName) throws Exception {
         File expectedFile = new File(expectedFileName);
         File sourcesDir = new File(expectedFileName.replaceFirst("\\.txt$", ""));
 
-        FileUtil.copyDir(sourcesDir, new File(tmpdir, "test"), new FileFilter() {
-            @Override
-            public boolean accept(@NotNull File pathname) {
-                return pathname.getName().endsWith(".java");
-            }
-        });
+        FileUtil.copyDir(sourcesDir, new File(tmpdir, "test"), pathname -> pathname.getName().endsWith(".java"));
 
         CompilerConfiguration configuration = KotlinTestUtils.newConfiguration(ConfigurationKind.JDK_ONLY, getJdkKind());
         ContentRootsKt.addKotlinSourceRoot(configuration, sourcesDir.getAbsolutePath());
         JvmContentRootsKt.addJavaSourceRoot(configuration, new File("compiler/testData/loadJava/include"));
         JvmContentRootsKt.addJavaSourceRoot(configuration, tmpdir);
-        
+
         KotlinCoreEnvironment environment =
                 KotlinCoreEnvironment.createForTests(getTestRootDisposable(), configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES);
-
-        BindingTrace trace = new CliLightClassGenerationSupport.NoScopeRecordCliBindingTrace();
-        ModuleContext moduleContext = TopDownAnalyzerFacadeForJVM.createContextWithSealedModule(environment.getProject(), configuration);
-
-        TopDownAnalyzerFacadeForJVM.analyzeFilesWithJavaIntegration(
-                moduleContext, environment.getSourceFiles(), trace, configuration, new JvmPackagePartProvider(environment)
+        registerJavacIfNeeded(environment);
+        AnalysisResult result = TopDownAnalyzerFacadeForJVM.analyzeFilesWithJavaIntegration(
+                environment.getProject(), environment.getSourceFiles(), new CliLightClassGenerationSupport.NoScopeRecordCliBindingTrace(),
+                configuration, environment::createPackagePartProvider
         );
 
-        PackageViewDescriptor packageView = moduleContext.getModule().getPackage(TEST_PACKAGE_FQNAME);
-        checkJavaPackage(expectedFile, packageView, trace.getBindingContext(), DONT_INCLUDE_METHODS_OF_OBJECT);
+        PackageViewDescriptor packageView = result.getModuleDescriptor().getPackage(TEST_PACKAGE_FQNAME);
+        checkJavaPackage(expectedFile, packageView, result.getBindingContext(), COMPARATOR_CONFIGURATION);
     }
 
     // TODO: add more tests on inherited parameter names, but currently impossible because of KT-4509
@@ -190,14 +195,14 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
                 newConfiguration(ConfigurationKind.JDK_ONLY, getJdkKind(), getAnnotationsJar(), libraryOut),
                 EnvironmentConfigFiles.JVM_CONFIG_FILES
         );
-
+        registerJavacIfNeeded(environment);
         KtFile ktFile = KotlinTestUtils.createFile(kotlinSrc.getPath(), FileUtil.loadFile(kotlinSrc, true), environment.getProject());
 
         ModuleDescriptor module = JvmResolveUtil.analyzeAndCheckForErrors(Collections.singleton(ktFile), environment).getModuleDescriptor();
         PackageViewDescriptor packageView = module.getPackage(TEST_PACKAGE_FQNAME);
         assertFalse(packageView.isEmpty());
 
-        validateAndCompareDescriptorWithFile(packageView, DONT_INCLUDE_METHODS_OF_OBJECT.withValidationStrategy(
+        validateAndCompareDescriptorWithFile(packageView, COMPARATOR_CONFIGURATION.withValidationStrategy(
                 new DeserializedScopeValidationVisitor()
         ), expectedFile);
     }
@@ -216,15 +221,17 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
         FileUtil.copy(originalJavaFile, new File(testPackageDir, originalJavaFile.getName()));
 
         Pair<PackageViewDescriptor, BindingContext> javaPackageAndContext = loadTestPackageAndBindingContextFromJavaRoot(
-                tmpdir, getTestRootDisposable(), getJdkKind(), ConfigurationKind.JDK_ONLY, false
-        );
+                tmpdir, getTestRootDisposable(), getJdkKind(), ConfigurationKind.JDK_ONLY, false,
+                false, useJavacWrapper());
 
-        checkJavaPackage(expectedFile, javaPackageAndContext.first, javaPackageAndContext.second,
-                         DONT_INCLUDE_METHODS_OF_OBJECT.withValidationStrategy(errorTypesAllowed()));
+        checkJavaPackage(
+                expectedFile, javaPackageAndContext.first, javaPackageAndContext.second,
+                COMPARATOR_CONFIGURATION.withValidationStrategy(errorTypesAllowed())
+        );
     }
 
     private void doTestCompiledJava(@NotNull String javaFileName, Configuration configuration) throws Exception {
-        final File srcDir = new File(tmpdir, "src");
+        File srcDir = new File(tmpdir, "src");
         File compiledDir = new File(tmpdir, "compiled");
         assertTrue(srcDir.mkdir());
         assertTrue(compiledDir.mkdir());
@@ -249,8 +256,7 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
         Pair<PackageViewDescriptor, BindingContext> javaPackageAndContext = compileJavaAndLoadTestPackageAndBindingContextFromBinary(
                 srcFiles, compiledDir, ConfigurationKind.ALL
         );
-
-        checkJavaPackage(getTxtFile(javaFileName), javaPackageAndContext.first, javaPackageAndContext.second, configuration);
+        checkJavaPackage(getExpectedFile(javaFileName.replaceFirst("\\.java$", ".txt")), javaPackageAndContext.first, javaPackageAndContext.second, configuration);
     }
 
     @NotNull
@@ -260,7 +266,8 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
             @NotNull ConfigurationKind configurationKind
     ) throws IOException {
         compileJavaWithAnnotationsJar(javaFiles, outDir);
-        return loadTestPackageAndBindingContextFromJavaRoot(outDir, myTestRootDisposable, getJdkKind(), configurationKind, true);
+        return loadTestPackageAndBindingContextFromJavaRoot(outDir, myTestRootDisposable, getJdkKind(), configurationKind, true,
+                                                            useFastClassFilesReading(), useJavacWrapper());
     }
 
     private static void checkJavaPackage(
@@ -292,7 +299,30 @@ public abstract class AbstractLoadJavaTest extends TestCaseWithTmpdir {
         }
     }
 
-    private static File getTxtFile(String javaFileName) {
-        return new File(javaFileName.replaceFirst("\\.java$", ".txt"));
+    private File getTxtFile(String javaFileName) {
+        try {
+            String fileText = FileUtil.loadFile(new File(javaFileName));
+            if (useJavacWrapper() && InTextDirectivesUtils.isDirectiveDefined(fileText, "// JAVAC_EXPECTED_FILE")) {
+                return new File(javaFileName.replaceFirst("\\.java$", ".javac.txt"));
+            }
+            else return new File(javaFileName.replaceFirst("\\.java$", ".txt"));
+        }
+        catch (IOException e) {
+            return new File(javaFileName.replaceFirst("\\.java$", ".txt"));
+        }
     }
+
+    private File getTxtFileFromKtFile(String ktFileName) {
+        try {
+            String fileText = FileUtil.loadFile(new File(ktFileName));
+            if (useJavacWrapper() && InTextDirectivesUtils.isDirectiveDefined(fileText, "// JAVAC_EXPECTED_FILE")) {
+                return new File(ktFileName.replaceFirst("\\.kt$", ".javac.txt"));
+            }
+            else return new File(ktFileName.replaceFirst("\\.kt$", ".txt"));
+        }
+        catch (IOException e) {
+            return new File(ktFileName.replaceFirst("\\.kt$", ".txt"));
+        }
+    }
+
 }

@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.j2k.ast
 
 import com.intellij.psi.JavaTokenType
+import com.intellij.psi.PsiElement
 import com.intellij.psi.tree.IElementType
 import org.jetbrains.kotlin.j2k.CodeBuilder
 import org.jetbrains.kotlin.j2k.append
@@ -30,9 +31,22 @@ class ArrayAccessExpression(val expression: Expression, val index: Expression, v
     }
 }
 
-class AssignmentExpression(val left: Expression, val right: Expression, val op: Operator) : Expression() {
-    override fun generateCode(builder: CodeBuilder) {
+open class AssignmentExpression(val left: Expression, val right: Expression, val op: Operator) : Expression() {
+
+    fun isMultiAssignment() = right is AssignmentExpression
+
+    fun appendAssignment(builder: CodeBuilder, left: Expression, right: Expression) {
         builder.appendOperand(this, left).append(" ").append(op).append(" ").appendOperand(this, right)
+    }
+
+    override fun generateCode(builder: CodeBuilder) {
+        if (right !is AssignmentExpression)
+            appendAssignment(builder, left, right)
+        else {
+            right.generateCode(builder)
+            builder.append("\n")
+            appendAssignment(builder, left, right.left)
+        }
     }
 }
 
@@ -72,9 +86,15 @@ class TypeCastExpression(val type: Type, val expression: Expression) : Expressio
         get() = type.isNullable
 }
 
-class LiteralExpression(val literalText: String) : Expression() {
+open class LiteralExpression(val literalText: String) : Expression() {
+
     override fun generateCode(builder: CodeBuilder) {
         builder.append(literalText)
+    }
+
+    object NullLiteral : LiteralExpression("null"){
+        override val isNullable: Boolean
+            get() = true
     }
 }
 
@@ -111,29 +131,24 @@ class SuperExpression(val identifier: Identifier) : Expression() {
     }
 }
 
-class QualifiedExpression(val qualifier: Expression, val identifier: Expression) : Expression() {
+class QualifiedExpression(val qualifier: Expression, val identifier: Expression, dotPrototype: PsiElement?) : Expression() {
+    private val dot = Dot().assignPrototype(dotPrototype, CommentsAndSpacesInheritance.LINE_BREAKS)
+
     override val isNullable: Boolean
         get() = identifier.isNullable
 
     override fun generateCode(builder: CodeBuilder) {
         if (!qualifier.isEmpty) {
-            builder.appendOperand(this, qualifier).append(if (qualifier.isNullable) "!!." else ".")
+            builder.appendOperand(this, qualifier).append(if (qualifier.isNullable) "!!" else "")
+            builder.append(dot)
         }
 
         builder.append(identifier)
     }
-}
 
-class PolyadicExpression(val expressions: List<Expression>, val operators: List<Operator>) : Expression() {
-    override fun generateCode(builder: CodeBuilder) {
-        assert(expressions.size == operators.size + 1)
-        for ((i, expression) in expressions.withIndex()) {
-            builder.append(expression)
-            if (i < operators.size) {
-                builder.append(" ")
-                builder.append(operators[i])
-                builder.append(" ")
-            }
+    private class Dot : Element() {
+        override fun generateCode(builder: CodeBuilder) {
+            builder.append(".")
         }
     }
 }
@@ -155,8 +170,21 @@ open class Operator(val operatorType: IElementType): Expression() {
         }
     }
 
+    val precedence: Int
+        get() = when (this.operatorType) {
+            JavaTokenType.ASTERISK, JavaTokenType.DIV, JavaTokenType.PERC -> 3
+            JavaTokenType.PLUS, JavaTokenType.MINUS -> 4
+            KtTokens.ELVIS -> 7
+            JavaTokenType.GT, JavaTokenType.LT, JavaTokenType.GE, JavaTokenType.LE -> 9
+            JavaTokenType.EQEQ, JavaTokenType.NE, KtTokens.EQEQEQ, KtTokens.EXCLEQEQEQ -> 10
+            JavaTokenType.ANDAND -> 11
+            JavaTokenType.OROR -> 12
+            JavaTokenType.GTGTGT, JavaTokenType.GTGT, JavaTokenType.LTLT -> 7
+            else -> 6 /* simple name */
+        }
+
     private fun asString(tokenType: IElementType): String {
-        return when(tokenType) {
+        return when (tokenType) {
             JavaTokenType.EQ -> "="
             JavaTokenType.EQEQ -> "=="
             JavaTokenType.NE -> "!="
@@ -237,6 +265,12 @@ class RangeExpression(val start: Expression, val end: Expression): Expression() 
     }
 }
 
+class UntilExpression(val start: Expression, val end: Expression): Expression() {
+    override fun generateCode(builder: CodeBuilder) {
+        builder.appendOperand(this, start).append(" until ").appendOperand(this, end)
+    }
+}
+
 class DownToExpression(val start: Expression, val end: Expression): Expression() {
     override fun generateCode(builder: CodeBuilder) {
         builder.appendOperand(this, start).append(" downTo ").appendOperand(this, end)
@@ -251,11 +285,10 @@ class ClassLiteralExpression(val type: Type): Expression() {
 
 fun createArrayInitializerExpression(arrayType: ArrayType, initializers: List<Expression>, needExplicitType: Boolean = true) : MethodCallExpression {
     val elementType = arrayType.elementType
-    val createArrayFunction = if (elementType is PrimitiveType)
-            (elementType.toNotNullType().canonicalCode() + "ArrayOf").decapitalize()
-        else if (needExplicitType)
-            "arrayOf<" + arrayType.elementType.canonicalCode() + ">"
-        else
-            "arrayOf"
+    val createArrayFunction = when {
+        elementType is PrimitiveType -> (elementType.toNotNullType().canonicalCode() + "ArrayOf").decapitalize()
+        needExplicitType -> "arrayOf<" + arrayType.elementType.canonicalCode() + ">"
+        else -> "arrayOf"
+    }
     return MethodCallExpression.buildNonNull(null, createArrayFunction, ArgumentList.withNoPrototype(initializers))
 }

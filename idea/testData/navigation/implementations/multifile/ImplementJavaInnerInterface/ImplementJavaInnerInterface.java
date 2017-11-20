@@ -1,6 +1,6 @@
 public class ImplementJavaInnerInterface {
     interface Test {
-        void foo();
+        void <caret>foo();
     }
 
     void test() {
@@ -12,10 +12,18 @@ public class ImplementJavaInnerInterface {
         };
     }
 
+    public static class OtherJava implements Test {
+        @Override
+        public void foo() {
+
+        }
+    }
+
     void usage(Test test) {
-        test.<caret>foo();
+        test.foo();
     }
 }
 
+// REF: (in ImplementJavaInnerInterface.OtherJava).foo()
 // REF: (in KotlinTest).foo()
 // REF: <anonymous>.foo()

@@ -25,24 +25,24 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
-import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider
-import org.jetbrains.kotlin.load.java.descriptors.SamAdapterDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.getParentJavaStaticClassScope
-import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache
+import org.jetbrains.kotlin.load.java.sam.SamAdapterDescriptor
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
+import org.jetbrains.kotlin.resolve.descriptorUtil.overriddenTreeUniqueAsSequence
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.*
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.utils.addIfNotNull
 import java.util.*
 
 private val EXTERNAL_SOURCES_KINDS = arrayOf(
-        JvmDeclarationOriginKind.DELEGATION_TO_DEFAULT_IMPLS,
+        JvmDeclarationOriginKind.CLASS_MEMBER_DELEGATION_TO_DEFAULT_IMPL,
         JvmDeclarationOriginKind.DELEGATION,
         JvmDeclarationOriginKind.BRIDGE
 )
 
 private val PREDEFINED_SIGNATURES = listOf(
+        "getClass()Ljava/lang/Class;",
         "notify()V",
         "notifyAll()V",
         "wait()V",
@@ -56,14 +56,14 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
         builderFactory: ClassBuilderFactory,
         bindingContext: BindingContext,
         private val diagnostics: DiagnosticSink,
-        fileClassesProvider: JvmFileClassesProvider,
-        incrementalCache: IncrementalCache?,
-        moduleName: String
-) : SignatureCollectingClassBuilderFactory(builderFactory) {
+        moduleName: String,
+        shouldGenerate: (JvmDeclarationOrigin) -> Boolean
+) : SignatureCollectingClassBuilderFactory(builderFactory, shouldGenerate) {
 
     // Avoid errors when some classes are not loaded for some reason
-    private val typeMapper = KotlinTypeMapper(bindingContext, ClassBuilderMode.LIGHT_CLASSES, fileClassesProvider, incrementalCache,
-                                           IncompatibleClassTracker.DoNothing, moduleName)
+    private val typeMapper = KotlinTypeMapper(
+            bindingContext, ClassBuilderMode.LIGHT_CLASSES, IncompatibleClassTracker.DoNothing, moduleName, false, false
+    )
     private val reportDiagnosticsTasks = ArrayList<() -> Unit>()
 
     fun reportDiagnostics() {
@@ -219,7 +219,10 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
             else if (member is FunctionDescriptor) {
                 val signatures =
                         if (member.kind == FAKE_OVERRIDE)
-                            member.overriddenDescriptors.mapTo(HashSet()) { it.original.asRawSignature() }
+                            member.overriddenTreeUniqueAsSequence(useOriginal = true)
+                                    // drop the root (itself)
+                                    .drop(1)
+                                    .mapTo(HashSet()) { it.asRawSignature() }
                         else
                             setOf(member.asRawSignature())
 

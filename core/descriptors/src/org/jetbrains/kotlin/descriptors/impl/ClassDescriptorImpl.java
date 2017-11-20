@@ -38,8 +38,8 @@ public class ClassDescriptorImpl extends ClassDescriptorBase {
     private final TypeConstructor typeConstructor;
 
     private MemberScope unsubstitutedMemberScope;
-    private Set<ConstructorDescriptor> constructors;
-    private ConstructorDescriptor primaryConstructor;
+    private Set<ClassConstructorDescriptor> constructors;
+    private ClassConstructorDescriptor primaryConstructor;
 
     public ClassDescriptorImpl(
             @NotNull DeclarationDescriptor containingDeclaration,
@@ -47,21 +47,21 @@ public class ClassDescriptorImpl extends ClassDescriptorBase {
             @NotNull Modality modality,
             @NotNull ClassKind kind,
             @NotNull Collection<KotlinType> supertypes,
-            @NotNull SourceElement source
+            @NotNull SourceElement source,
+            boolean isExternal
     ) {
-        super(LockBasedStorageManager.NO_LOCKS, containingDeclaration, name, source);
+        super(LockBasedStorageManager.NO_LOCKS, containingDeclaration, name, source, isExternal);
+        assert modality != Modality.SEALED : "Implement getSealedSubclasses() for this class: " + getClass();
         this.modality = modality;
         this.kind = kind;
 
-        this.typeConstructor = new ClassTypeConstructorImpl(
-                this, Annotations.Companion.getEMPTY(), false, Collections.<TypeParameterDescriptor>emptyList(), supertypes
-        );
+        this.typeConstructor = new ClassTypeConstructorImpl(this, false, Collections.<TypeParameterDescriptor>emptyList(), supertypes);
     }
 
     public final void initialize(
             @NotNull MemberScope unsubstitutedMemberScope,
-            @NotNull Set<ConstructorDescriptor> constructors,
-            @Nullable ConstructorDescriptor primaryConstructor
+            @NotNull Set<ClassConstructorDescriptor> constructors,
+            @Nullable ClassConstructorDescriptor primaryConstructor
     ) {
         this.unsubstitutedMemberScope = unsubstitutedMemberScope;
         this.constructors = constructors;
@@ -82,7 +82,7 @@ public class ClassDescriptorImpl extends ClassDescriptorBase {
 
     @NotNull
     @Override
-    public Collection<ConstructorDescriptor> getConstructors() {
+    public Collection<ClassConstructorDescriptor> getConstructors() {
         return constructors;
     }
 
@@ -116,7 +116,17 @@ public class ClassDescriptorImpl extends ClassDescriptorBase {
     }
 
     @Override
-    public ConstructorDescriptor getUnsubstitutedPrimaryConstructor() {
+    public boolean isExpect() {
+        return false;
+    }
+
+    @Override
+    public boolean isActual() {
+        return false;
+    }
+
+    @Override
+    public ClassConstructorDescriptor getUnsubstitutedPrimaryConstructor() {
         return primaryConstructor;
     }
 
@@ -150,6 +160,12 @@ public class ClassDescriptorImpl extends ClassDescriptorBase {
     @NotNull
     @Override
     public List<TypeParameterDescriptor> getDeclaredTypeParameters() {
+        return Collections.emptyList();
+    }
+
+    @NotNull
+    @Override
+    public Collection<ClassDescriptor> getSealedSubclasses() {
         return Collections.emptyList();
     }
 }

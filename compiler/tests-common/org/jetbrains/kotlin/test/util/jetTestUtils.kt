@@ -22,6 +22,7 @@ import com.intellij.util.SmartFMap
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtPackageDirective
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
+import java.io.File
 
 fun String.trimTrailingWhitespacesAndAddNewlineAtEOF(): String =
         this.split('\n').map { it.trimEnd() }.joinToString(separator = "\n").let {
@@ -46,7 +47,7 @@ fun PsiFile.findElementsByCommentPrefix(prefix: String): Map<PsiElement, String>
                                     comment,
                                     PsiWhiteSpace::class.java, PsiComment::class.java, KtPackageDirective::class.java
                             )
-                        } as? PsiElement ?: return
+                        } ?: return
 
                         result = result.plus(elementToAdd, commentText.substring(prefix.length).trim())
                     }
@@ -54,4 +55,8 @@ fun PsiFile.findElementsByCommentPrefix(prefix: String): Map<PsiElement, String>
             }
     )
     return result
+}
+
+fun findLastModifiedFile(dir: File, skipFile: (File) -> Boolean): File {
+    return dir.walk().filterNot(skipFile).maxBy { it.lastModified() }!!
 }

@@ -19,29 +19,34 @@ package org.jetbrains.kotlin.serialization.deserialization
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget
+import org.jetbrains.kotlin.descriptors.deserialization.AdditionalClassPartsProvider
+import org.jetbrains.kotlin.descriptors.deserialization.ClassDescriptorFactory
+import org.jetbrains.kotlin.descriptors.deserialization.PlatformDependentDeclarationFilter
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.resolve.constants.ConstantValue
 import org.jetbrains.kotlin.serialization.ProtoBuf
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedContainerSource
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.SinceKotlinInfoTable
 import org.jetbrains.kotlin.storage.StorageManager
 
 class DeserializationComponents(
         val storageManager: StorageManager,
         val moduleDescriptor: ModuleDescriptor,
+        val configuration: DeserializationConfiguration,
         val classDataFinder: ClassDataFinder,
         val annotationAndConstantLoader: AnnotationAndConstantLoader<AnnotationDescriptor, ConstantValue<*>, AnnotationWithTarget>,
         val packageFragmentProvider: PackageFragmentProvider,
-        val localClassifierResolver: LocalClassifierResolver,
+        val localClassifierTypeSettings: LocalClassifierTypeSettings,
         val errorReporter: ErrorReporter,
         val lookupTracker: LookupTracker,
         val flexibleTypeDeserializer: FlexibleTypeDeserializer,
-        val fictitiousClassDescriptorFactory: ClassDescriptorFactory,
+        val fictitiousClassDescriptorFactories: Iterable<ClassDescriptorFactory>,
         val notFoundClasses: NotFoundClasses,
         val additionalClassPartsProvider: AdditionalClassPartsProvider = AdditionalClassPartsProvider.None,
         val platformDependentDeclarationFilter: PlatformDependentDeclarationFilter = PlatformDependentDeclarationFilter.All
 ) {
     val classDeserializer: ClassDeserializer = ClassDeserializer(this)
-    val typeAliasDeserializer: TypeAliasDeserializer = TypeAliasDeserializer(this)
 
     fun deserializeClass(classId: ClassId): ClassDescriptor? = classDeserializer.deserializeClass(classId)
 
@@ -49,12 +54,11 @@ class DeserializationComponents(
             descriptor: PackageFragmentDescriptor,
             nameResolver: NameResolver,
             typeTable: TypeTable,
-            containerSource: SourceElement?
+            sinceKotlinInfoTable: SinceKotlinInfoTable,
+            containerSource: DeserializedContainerSource?
     ): DeserializationContext =
-            DeserializationContext(this, nameResolver, descriptor, typeTable, containerSource,
+            DeserializationContext(this, nameResolver, descriptor, typeTable, sinceKotlinInfoTable, containerSource,
                                    parentTypeDeserializer = null, typeParameters = listOf())
-
-    fun deserializeTypeAlias(typeAliasId: ClassId): TypeAliasDescriptor? = typeAliasDeserializer.deserializeTypeAlias(typeAliasId)
 }
 
 
@@ -63,7 +67,8 @@ class DeserializationContext(
         val nameResolver: NameResolver,
         val containingDeclaration: DeclarationDescriptor,
         val typeTable: TypeTable,
-        val containerSource: SourceElement?,
+        val sinceKotlinInfoTable: SinceKotlinInfoTable,
+        val containerSource: DeserializedContainerSource?,
         parentTypeDeserializer: TypeDeserializer?,
         typeParameters: List<ProtoBuf.TypeParameter>
 ) {
@@ -80,7 +85,7 @@ class DeserializationContext(
             nameResolver: NameResolver = this.nameResolver,
             typeTable: TypeTable = this.typeTable
     ) = DeserializationContext(
-            components, nameResolver, descriptor, typeTable, this.containerSource,
+            components, nameResolver, descriptor, typeTable, sinceKotlinInfoTable, this.containerSource,
             parentTypeDeserializer = this.typeDeserializer, typeParameters = typeParameterProtos
     )
 }

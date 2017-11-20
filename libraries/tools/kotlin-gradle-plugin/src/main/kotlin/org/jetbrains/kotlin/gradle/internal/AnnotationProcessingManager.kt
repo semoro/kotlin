@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2016 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,18 @@ package org.jetbrains.kotlin.gradle.internal
 import com.android.build.gradle.BaseExtension
 import org.gradle.api.Project
 import org.gradle.api.UnknownDomainObjectException
+import org.gradle.api.file.FileCollection
 import org.gradle.api.tasks.compile.AbstractCompile
 import org.gradle.api.tasks.compile.JavaCompile
-import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
-import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
-import org.jetbrains.kotlin.com.intellij.lang.Language
-import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
-import org.jetbrains.kotlin.com.intellij.psi.PsiFileFactory
-import org.jetbrains.kotlin.com.intellij.psi.PsiJavaFile
-import org.jetbrains.kotlin.com.intellij.psi.impl.PsiFileFactoryImpl
-import org.jetbrains.kotlin.config.CompilerConfiguration
+//import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
+//import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+//import com.intellij.lang.Language
+//import com.intellij.openapi.util.Disposer
+//import com.intellij.psi.PsiFileFactory
+//import com.intellij.psi.PsiJavaFile
+//import com.intellij.psi.impl.PsiFileFactoryImpl
+//import org.jetbrains.kotlin.config.CompilerConfiguration
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptionsImpl
 import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
@@ -36,20 +38,28 @@ import org.jetbrains.kotlin.gradle.tasks.kapt.generateAnnotationProcessorWrapper
 import org.jetbrains.kotlin.gradle.tasks.kapt.generateKotlinAptAnnotation
 import java.io.File
 import java.io.IOException
-import java.util.*
 import java.util.zip.ZipFile
 
-fun Project.initKapt(
+internal fun Project.initKapt(
         kotlinTask: KotlinCompile,
-        javaTask: AbstractCompile,
+        javaTask: JavaCompile,
         kaptManager: AnnotationProcessingManager,
         variantName: String,
-        kotlinOptions: Any?,
+        kotlinOptions: KotlinJvmOptionsImpl?,
         subpluginEnvironment: SubpluginEnvironment,
-        tasksProvider: KotlinTasksProvider
+        tasksProvider: KotlinTasksProvider,
+        androidProjectHandler: AbstractAndroidProjectHandler<*>?
 ): KotlinCompile? {
     val kaptExtension = extensions.getByType(KaptExtension::class.java)
     val kotlinAfterJavaTask: KotlinCompile?
+
+    fun warnUnsupportedKapt1Option(optionName: String) {
+        kotlinTask.logger.kotlinWarn("'$optionName' option is not supported by this kapt implementation. " +
+                "Please add the \"apply plugin: 'kotlin-kapt\" line to your build script to enable it.")
+    }
+
+    if (kaptExtension.processors.isNotEmpty()) warnUnsupportedKapt1Option("processors")
+    if (kaptExtension.correctErrorTypes) warnUnsupportedKapt1Option("correctErrorTypes")
 
     if (kaptExtension.generateStubs) {
         kotlinAfterJavaTask = createKotlinAfterJavaTask(javaTask, kotlinTask, kotlinOptions, tasksProvider)
@@ -63,11 +73,11 @@ fun Project.initKapt(
 
         kotlinAfterJavaTask.source(kaptManager.generatedKotlinSourceDir)
         kotlinAfterJavaTask.source(kaptManager.aptOutputDir)
-        subpluginEnvironment.addSubpluginArguments(this, kotlinAfterJavaTask, javaTask, null, null)
+        subpluginEnvironment.addSubpluginOptions(this, kotlinAfterJavaTask, javaTask, null, androidProjectHandler, null)
 
-        javaTask.doLast {
-            moveGeneratedJavaFilesToCorrespondingDirectories(kaptManager.aptOutputDir)
-        }
+//        javaTask.doLast {
+//            moveGeneratedJavaFilesToCorrespondingDirectories(kaptManager.aptOutputDir)
+//        }
     } else {
         kotlinAfterJavaTask = null
         kotlinTask.logger.kotlinDebug("kapt: Class file stubs are not used")
@@ -82,16 +92,13 @@ fun Project.initKapt(
         kaptManager.generateJavaHackFile()
     }
 
-    var originalJavaCompilerArgs: List<String>? = null
     javaTask.doFirst {
-        originalJavaCompilerArgs = (javaTask as JavaCompile).options.compilerArgs
         kaptManager.setupKapt()
         kaptManager.generateJavaHackFile()
         kotlinAfterJavaTask?.source(kaptManager.generatedKotlinSourceDir)
     }
 
     javaTask.doLast {
-        (javaTask as JavaCompile).options.compilerArgs = originalJavaCompilerArgs
         kaptManager.afterJavaCompile()
     }
 
@@ -102,27 +109,22 @@ fun Project.initKapt(
 private fun Project.createKotlinAfterJavaTask(
         javaTask: AbstractCompile,
         kotlinTask: KotlinCompile,
-        kotlinOptions: Any?,
+        kotlinOptions: KotlinJvmOptionsImpl?,
         tasksProvider: KotlinTasksProvider
 ): KotlinCompile {
-    val kotlinAfterJavaTask = with (tasksProvider.createKotlinJVMTask(this, kotlinTask.name + KOTLIN_AFTER_JAVA_TASK_SUFFIX)) {
+    val kotlinAfterJavaTask = with (tasksProvider.createKotlinJVMTask(this, kotlinTask.name + KOTLIN_AFTER_JAVA_TASK_SUFFIX, kotlinTask.sourceSetName)) {
         mapClasspath { kotlinTask.classpath }
         this
     }
 
     kotlinAfterJavaTask.dependsOn(javaTask)
     javaTask.finalizedByIfNotFailed(kotlinAfterJavaTask)
-
-    kotlinAfterJavaTask.extensions.extraProperties.set("defaultModuleName", "${project.name}-${kotlinTask.name}")
-    if (kotlinOptions != null) {
-        kotlinAfterJavaTask.setProperty("kotlinOptions", kotlinOptions)
-    }
-
+    kotlinAfterJavaTask.parentKotlinOptionsImpl = kotlinOptions
     return kotlinAfterJavaTask
 }
 
 class AnnotationProcessingManager(
-        private val task: AbstractCompile,
+        task: AbstractCompile,
         private val javaTask: JavaCompile,
         private val taskQualifier: String,
         private val aptFiles: Set<File>,
@@ -131,9 +133,11 @@ class AnnotationProcessingManager(
         private val androidVariant: Any? = null) {
 
     private val project = task.project
-    private val random = Random()
     val wrappersDirectory = File(aptWorkingDir, "wrappers")
     val hackAnnotationDir = File(aptWorkingDir, "java_src")
+
+    private var originalJavaCompilerArgs: List<String>? = null
+    private var originalProcessorPath: FileCollection? = null
 
     private companion object {
         val JAVA_FQNAME_PATTERN = "^([\\p{L}_$][\\p{L}\\p{N}_$]*\\.)*[\\p{L}_$][\\p{L}\\p{N}_$]*$".toRegex()
@@ -154,8 +158,15 @@ class AnnotationProcessingManager(
             return kotlinGeneratedDir
         }
 
+    val kaptProcessorPath get() = setOf(wrappersDirectory) + aptFiles + javaTask.classpath
+
     fun setupKapt() {
+        originalJavaCompilerArgs = javaTask.options.compilerArgs
+
         if (aptFiles.isEmpty()) return
+
+        project.logger.warn("${project.name}: " +
+                "Original kapt is deprecated. Please add \"apply plugin: 'kotlin-kapt'\" to your build.gradle.")
 
         if (project.plugins.findPlugin(ANDROID_APT_PLUGIN_ID) != null) {
             project.logger.warn("Please do not use `$ANDROID_APT_PLUGIN_ID` with kapt.")
@@ -165,8 +176,7 @@ class AnnotationProcessingManager(
 
         generateAnnotationProcessorStubs(javaTask, annotationProcessorFqNames, wrappersDirectory)
 
-        val processorPath = setOf(wrappersDirectory) + aptFiles
-        setProcessorPath(javaTask, (processorPath + javaTask.classpath).joinToString(File.pathSeparator))
+        setProcessorPathInJavaTask()
 
         if (aptOutputDir.exists()) {
             aptOutputDir.deleteRecursively()
@@ -184,6 +194,8 @@ class AnnotationProcessingManager(
         } else {
             project.logger.kotlinDebug("kapt: Java file stub was not found at $generatedFile")
         }
+        javaTask.options.compilerArgs = originalJavaCompilerArgs
+        tryRevertProcessorPathProperty()
     }
 
     fun generateJavaHackFile() {
@@ -206,7 +218,7 @@ class AnnotationProcessingManager(
 
     private fun appendAdditionalComplerArgs() {
         val kaptExtension = project.extensions.getByType(KaptExtension::class.java)
-        val args = kaptExtension.getAdditionalArguments(project, androidVariant, getAndroidExtension())
+        val args = kaptExtension.getAdditionalArgumentsForJavac(project, androidVariant, getAndroidExtension())
         if (args.isEmpty()) return
 
         javaTask.modifyCompilerArguments { list ->
@@ -263,11 +275,46 @@ class AnnotationProcessingManager(
         }
     }
 
-    private fun setProcessorPath(javaTask: JavaCompile, path: String) {
-        javaTask.addCompilerArgument("-processorpath") { prevValue ->
-            if (prevValue != null)
-                javaTask.logger.warn("Processor path was modified by kapt. Previous value = $prevValue")
-            path
+    private fun setProcessorPathInJavaTask() {
+        val path = kaptProcessorPath
+
+        // If processor path property is supported, set it, otherwise set compiler argument:
+        val couldSetProperty = tryAppendProcessorPathProperty(path)
+
+        if (!couldSetProperty) {
+            javaTask.addCompilerArgument("-processorpath") { prevValue ->
+                if (prevValue != null)
+                    javaTask.logger.warn("Processor path was modified by kapt. Previous value = $prevValue")
+                path.joinToString(postfix = prevValue?.let { File.pathSeparator + it }.orEmpty(),
+                                  separator = File.pathSeparator)
+            }
+        }
+    }
+
+    private fun tryAppendProcessorPathProperty(path: Iterable<File>): Boolean = try {
+        val optionsClass = javaTask.options.javaClass
+        val getPath = optionsClass.getMethod("getAnnotationProcessorPath")
+        val setPath = optionsClass.getMethod("setAnnotationProcessorPath", FileCollection::class.java)
+
+        originalProcessorPath = getPath(javaTask.options) as? FileCollection
+
+        if (originalProcessorPath != null)
+            javaTask.logger.warn("Processor path was modified by kapt. Previous value = $originalProcessorPath")
+
+        val newPath = javaTask.project.files(path + (originalProcessorPath ?: emptyList()))
+        setPath(javaTask.options, newPath)
+        true
+    } catch (_: NoSuchMethodException) {
+        false
+    }
+
+    private fun tryRevertProcessorPathProperty() {
+        try {
+            val optionsClass = javaTask.options.javaClass
+            val setPath = optionsClass.getMethod("setAnnotationProcessorPath", FileCollection::class.java)
+
+            setPath(javaTask.options, originalProcessorPath)
+        } catch (_: NoSuchMethodException) {
         }
     }
 
@@ -345,27 +392,27 @@ class AnnotationProcessingManager(
 // Previously this worked because generated files were added to classpath.
 // However in that case incremental compilation worked unreliable with generated files.
 // The solution is to post-process generated java files and move them to corresponding packages
-fun moveGeneratedJavaFilesToCorrespondingDirectories(generatedJavaSourceRoot: File) {
-    val javaFiles = generatedJavaSourceRoot.walk().filter { it.extension.equals("java", ignoreCase = true) }.toList()
-
-    if (javaFiles.isEmpty()) return
-
-    val rootDisposable = Disposer.newDisposable()
-    val configuration = CompilerConfiguration()
-    val environment = KotlinCoreEnvironment.createForProduction(rootDisposable, configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES)
-    val project = environment.project
-    val psiFileFactory = PsiFileFactory.getInstance(project) as PsiFileFactoryImpl
-
-    for (javaFile in javaFiles) {
-        val psiFile = psiFileFactory.createFileFromText(javaFile.nameWithoutExtension, Language.findLanguageByID("JAVA")!!, javaFile.readText())
-        val packageName = (psiFile as? PsiJavaFile)?.packageName ?: continue
-        val expectedDir = File(generatedJavaSourceRoot, packageName.replace('.', '/'))
-        val expectedFile = File(expectedDir, javaFile.name)
-
-        if (javaFile != expectedFile) {
-            expectedFile.parentFile.mkdirs()
-            javaFile.copyTo(expectedFile, overwrite = true)
-            javaFile.delete()
-        }
-    }
-}
+//fun moveGeneratedJavaFilesToCorrespondingDirectories(generatedJavaSourceRoot: File) {
+//    val javaFiles = generatedJavaSourceRoot.walk().filter { it.extension.equals("java", ignoreCase = true) }.toList()
+//
+//    if (javaFiles.isEmpty()) return
+//
+//    val rootDisposable = Disposer.newDisposable()
+//    val configuration = CompilerConfiguration()
+//    val environment = KotlinCoreEnvironment.createForProduction(rootDisposable, configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES)
+//    val project = environment.project
+//    val psiFileFactory = PsiFileFactory.getInstance(project) as PsiFileFactoryImpl
+//
+//    for (javaFile in javaFiles) {
+//        val psiFile = psiFileFactory.createFileFromText(javaFile.nameWithoutExtension, Language.findLanguageByID("JAVA")!!, javaFile.readText())
+//        val packageName = (psiFile as? PsiJavaFile)?.packageName ?: continue
+//        val expectedDir = File(generatedJavaSourceRoot, packageName.replace('.', '/'))
+//        val expectedFile = File(expectedDir, javaFile.name)
+//
+//        if (javaFile != expectedFile) {
+//            expectedFile.parentFile.mkdirs()
+//            javaFile.copyTo(expectedFile, overwrite = true)
+//            javaFile.delete()
+//        }
+//    }
+//}

@@ -30,7 +30,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil;
 import com.intellij.openapi.fileTypes.FileTypeFactory;
 import com.intellij.openapi.fileTypes.FileTypeManager;
-import com.intellij.openapi.options.SchemesManagerFactory;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.impl.CoreProgressManager;
@@ -104,7 +103,6 @@ public abstract class KtParsingTestCase extends KtPlatformLiteFixture {
         myFileFactory = new PsiFileFactoryImpl(myPsiManager);
         MutablePicoContainer appContainer = getApplication().getPicoContainer();
         registerComponentInstance(appContainer, MessageBus.class, MessageBusFactory.newMessageBus(getApplication()));
-        registerComponentInstance(appContainer, SchemesManagerFactory.class, new MockSchemesManagerFactory());
         final MockEditorFactory editorFactory = new MockEditorFactory();
         registerComponentInstance(appContainer, EditorFactory.class, editorFactory);
         registerComponentInstance(appContainer, FileDocumentManager.class, new MockFileDocumentManagerImpl(new Function<CharSequence, Document>() {
@@ -124,6 +122,7 @@ public abstract class KtParsingTestCase extends KtPlatformLiteFixture {
         myProject.registerService(PsiManager.class, myPsiManager);
 
         this.registerExtensionPoint(FileTypeFactory.FILE_TYPE_FACTORY_EP, FileTypeFactory.class);
+        registerExtensionPoint(MetaLanguage.EP_NAME, MetaLanguage.class);
 
         for (ParserDefinition definition : myDefinitions) {
             addExplicitExtension(LanguageParserDefinitions.INSTANCE, definition.getFileNodeType().getLanguage(), definition);
@@ -332,7 +331,8 @@ public abstract class KtParsingTestCase extends KtPlatformLiteFixture {
     public static void ensureCorrectReparse(@NotNull PsiFile file) {
         String psiToStringDefault = DebugUtil.psiToString(file, false, false);
         String fileText = file.getText();
-        DiffLog diffLog = (new BlockSupportImpl(file.getProject())).reparseRange(file, TextRange.allOf(fileText), fileText, new EmptyProgressIndicator(), fileText);
+        DiffLog diffLog = (new BlockSupportImpl(file.getProject())).reparseRange(
+                file, file.getNode(), TextRange.allOf(fileText), fileText, new EmptyProgressIndicator(), fileText);
         diffLog.performActualPsiChange(file);
 
         TestCase.assertEquals(psiToStringDefault, DebugUtil.psiToString(file, false, false));

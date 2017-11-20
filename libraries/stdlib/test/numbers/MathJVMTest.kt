@@ -1,13 +1,14 @@
+@file:kotlin.jvm.JvmVersion
 package test.numbers
 
 import java.math.BigInteger
 import java.math.BigDecimal
 
 import kotlin.test.*
-import org.junit.Test as test
+import org.junit.Test
 
 class MathTest {
-    @test fun testBigInteger() {
+    @Test fun testBigInteger() {
         val a = BigInteger("2")
         val b = BigInteger("3")
 
@@ -16,11 +17,12 @@ class MathTest {
         assertEquals(BigInteger("6"), a * b)
         assertEquals(BigInteger("0"), a / b)
         assertEquals(BigInteger("-2"), -a)
-        assertEquals(BigInteger("1"), -a % b)
+        assertEquals(BigInteger("-2"), -a % b)
+        assertEquals(BigInteger("1"), (-a).mod(b))
         assertEquals(BigInteger("-2"), (-a).remainder(b))
     }
 
-    @test fun testBigDecimal() {
+    @Test fun testBigDecimal() {
         val a = BigDecimal("2")
         val b = BigDecimal("3")
 
@@ -30,6 +32,8 @@ class MathTest {
         assertEquals(BigDecimal("2"), BigDecimal("4") / a)
         assertEquals(BigDecimal("-2"), -a)
         assertEquals(BigDecimal("-2"), -a % b)
+        assertEquals(BigDecimal("-2"), (-a).mod(b))
+        assertEquals(BigDecimal("-2"), (-a).rem(b))
     }
 }
 

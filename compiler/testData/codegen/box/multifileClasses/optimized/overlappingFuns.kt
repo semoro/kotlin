@@ -1,3 +1,5 @@
+// TARGET_BACKEND: JVM
+// IGNORE_LIGHT_ANALYSIS
 // WITH_RUNTIME
 // KOTLIN_CONFIGURATION_FLAGS: +JVM.INHERIT_MULTIFILE_PARTS
 // FILE: box.kt
@@ -16,7 +18,7 @@ private fun overlapping() = "oops #1"
 @file:[JvmName("MultifileClass") JvmMultifileClass]
 package a
 
-fun overlapping() = "OK"
+private fun overlapping() = "OK"
 
 fun ok() = overlapping()
 

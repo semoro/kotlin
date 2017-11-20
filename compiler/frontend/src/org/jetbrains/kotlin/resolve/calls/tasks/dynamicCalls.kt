@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.resolve.calls.tasks
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.createFunctionType
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.impl.*
@@ -25,10 +26,11 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.DescriptorFactory
-import org.jetbrains.kotlin.resolve.calls.util.createFunctionType
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.scopes.MemberScopeImpl
 import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver
+import org.jetbrains.kotlin.storage.StorageManager
+import org.jetbrains.kotlin.storage.getValue
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.createDynamicType
@@ -37,13 +39,15 @@ import org.jetbrains.kotlin.types.isDynamic
 import org.jetbrains.kotlin.utils.Printer
 import java.util.*
 
-class DynamicCallableDescriptors(builtIns: KotlinBuiltIns) {
+class DynamicCallableDescriptors(storageManager: StorageManager, builtIns: KotlinBuiltIns) {
 
-    val dynamicType = createDynamicType(builtIns)
+    val dynamicType by storageManager.createLazyValue {
+        createDynamicType(builtIns)
+    }
 
     fun createDynamicDescriptorScope(call: Call, owner: DeclarationDescriptor) = object : MemberScopeImpl() {
         override fun printScopeStructure(p: Printer) {
-            p.println(javaClass.simpleName, ": dynamic candidates for " + call)
+            p.println(this::class.java.simpleName, ": dynamic candidates for " + call)
         }
 
         override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<SimpleFunctionDescriptor> {
@@ -93,7 +97,11 @@ class DynamicCallableDescriptors(builtIns: KotlinBuiltIns) {
                 CallableMemberDescriptor.Kind.DECLARATION,
                 SourceElement.NO_SOURCE,
                 /* lateInit = */ false,
-                /* isConst = */ false
+                /* isConst = */ false,
+                /* isExpect = */ false,
+                /* isActual = */ false,
+                /* isExternal = */ false,
+                /* isDelegated = */ false
         )
         propertyDescriptor.setType(
                 dynamicType,
@@ -164,7 +172,6 @@ class DynamicCallableDescriptors(builtIns: KotlinBuiltIns) {
                     /* declaresDefaultValue = */ false,
                     /* isCrossinline = */ false,
                     /* isNoinline = */ false,
-                    /* isCoroutine = */ false,
                     varargElementType,
                     SourceElement.NO_SOURCE
             ))
@@ -176,7 +183,7 @@ class DynamicCallableDescriptors(builtIns: KotlinBuiltIns) {
             val receiverType = funLiteral.receiverTypeReference?.let { dynamicType }
             val parameterTypes = funLiteral.valueParameters.map { dynamicType }
 
-            return createFunctionType(owner.builtIns, Annotations.EMPTY, receiverType, parameterTypes, dynamicType)
+            return createFunctionType(owner.builtIns, Annotations.EMPTY, receiverType, parameterTypes, null, dynamicType)
         }
 
         for (arg in call.valueArguments) {
@@ -224,4 +231,3 @@ fun DeclarationDescriptor.isDynamic(): Boolean {
     val dispatchReceiverParameter = dispatchReceiverParameter
     return dispatchReceiverParameter != null && dispatchReceiverParameter.type.isDynamic()
 }
-

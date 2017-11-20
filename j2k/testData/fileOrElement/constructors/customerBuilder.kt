@@ -7,11 +7,8 @@ internal class Customer(val firstName: String, val lastName: String) {
         doSmthAfter()
     }
 
-    private fun doSmthBefore() {
-    }
-
-    private fun doSmthAfter() {
-    }
+    private fun doSmthBefore() {}
+    private fun doSmthAfter() {}
 }
 
 internal class CustomerBuilder {
@@ -35,7 +32,10 @@ internal class CustomerBuilder {
 
 object User {
     fun main() {
-        val customer = CustomerBuilder().WithFirstName("Homer").WithLastName("Simpson").Build()
+        val customer = CustomerBuilder()
+                .WithFirstName("Homer")
+                .WithLastName("Simpson")
+                .Build()
         println(customer.firstName)
         println(customer.lastName)
     }

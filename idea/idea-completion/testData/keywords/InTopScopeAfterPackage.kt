@@ -18,7 +18,7 @@ package Test
 // EXIST:  var
 // EXIST:  operator
 // EXIST:  infix
-// EXIST:  sealed
+// EXIST:  sealed class
 // EXIST:  data
 // EXIST:  inline
 // EXIST:  tailrec
@@ -27,4 +27,6 @@ package Test
 // EXIST:  const
 // EXIST:  suspend
 // EXIST:  typealias
+// EXIST:  expect
+// EXIST:  actual
 // NOTHING_ELSE

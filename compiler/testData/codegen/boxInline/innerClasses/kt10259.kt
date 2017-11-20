@@ -1,5 +1,7 @@
-// FILE: 1.kt
+// IGNORE_BACKEND: NATIVE
+// NO_CHECK_LAMBDA_INLINING
 // WITH_RUNTIME
+// FILE: 1.kt
 package test
 
 inline fun test(s: () -> Unit) {

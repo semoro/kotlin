@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2016 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.gradle.plugin
 
 import groovy.lang.Closure
 import org.gradle.api.Project
+import java.util.*
 
 open class KaptExtension {
 
@@ -25,32 +26,59 @@ open class KaptExtension {
 
     open var inheritedAnnotations: Boolean = true
 
-    private var closure: Closure<*>? = null
+    open var useLightAnalysis: Boolean = true
+
+    open var correctErrorTypes: Boolean = false
+
+    open var processors: String = ""
+
+    private var apOptionsClosure: Closure<*>? = null
+    private var javacOptionsClosure: Closure<*>? = null
 
     open fun arguments(closure: Closure<*>) {
-        this.closure = closure
+        this.apOptionsClosure = closure
     }
 
-    fun getAdditionalArguments(project: Project, variant: Any?, android: Any?): List<String> {
-        val closureToExecute = closure ?: return emptyList()
+    open fun javacOptions(closure: Closure<*>) {
+        this.javacOptionsClosure = closure
+    }
 
-        val executor = KaptAdditionalArgumentsDelegate(project, variant, android)
+    fun getJavacOptions(): Map<String, String> {
+        val closureToExecute = javacOptionsClosure ?: return emptyMap()
+        val executor = KaptJavacOptionsDelegate().apply { execute(closureToExecute) }
+        return executor.options
+    }
+
+    fun getAdditionalArguments(project: Project, variantData: Any?, androidExtension: Any?): Map<String, String> {
+        val closureToExecute = apOptionsClosure ?: return emptyMap()
+
+        val executor = KaptAnnotationProcessorOptions(project, variantData, androidExtension)
         executor.execute(closureToExecute)
-        return executor.additionalCompilerArgs
+        return executor.options
+    }
+
+    fun getAdditionalArgumentsForJavac(project: Project, variantData: Any?, androidExtension: Any?): List<String> {
+        val javacArgs = mutableListOf<String>()
+        for ((key, value) in getAdditionalArguments(project, variantData, androidExtension)) {
+            javacArgs += "-A" + key + (if (value.isNotEmpty()) "=$value" else "")
+        }
+        return javacArgs
     }
 }
 
-open class KaptAdditionalArgumentsDelegate(
-        open val project: Project,
-        open val variant: Any?,
-        open val android: Any?
+/**
+ * [project], [variant] and [android] properties are intended to be used inside the closure.
+ */
+open class KaptAnnotationProcessorOptions(
+        @Suppress("unused") open val project: Project,
+        @Suppress("unused") open val variant: Any?,
+        @Suppress("unused") open val android: Any?
 ) {
+    internal val options = LinkedHashMap<String, String>()
 
-    val additionalCompilerArgs = arrayListOf<String>()
-
+    @Suppress("unused")
     open fun arg(name: Any, vararg values: Any) {
-        val valuesString = if (values.isNotEmpty()) values.joinToString(" ", prefix = "=") else ""
-        additionalCompilerArgs.add("-A$name$valuesString")
+        options.put(name.toString(), values.joinToString(" "))
     }
 
     fun execute(closure: Closure<*>) {
@@ -59,4 +87,22 @@ open class KaptAdditionalArgumentsDelegate(
         closure.call()
     }
 
+}
+
+open class KaptJavacOptionsDelegate {
+    internal val options = LinkedHashMap<String, String>()
+
+    open fun option(name: Any, value: Any) {
+        options.put(name.toString(), value.toString())
+    }
+
+    open fun option(name: Any) {
+        options.put(name.toString(), "")
+    }
+
+    fun execute(closure: Closure<*>) {
+        closure.resolveStrategy = Closure.DELEGATE_FIRST
+        closure.delegate = this
+        closure.call()
+    }
 }

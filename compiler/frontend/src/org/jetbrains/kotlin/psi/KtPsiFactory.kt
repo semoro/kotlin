@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,12 +28,17 @@ import com.intellij.util.LocalTimeCounter
 import org.jetbrains.kotlin.analyzer.ModuleInfo
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.ImportPath
+import org.jetbrains.kotlin.resolve.TargetPlatform
 
-fun KtPsiFactory(project: Project?): KtPsiFactory = KtPsiFactory(project!!)
-fun KtPsiFactory(elementForProject: PsiElement): KtPsiFactory = KtPsiFactory(elementForProject.project)
+@JvmOverloads
+fun KtPsiFactory(project: Project?, markGenerated: Boolean = true): KtPsiFactory = KtPsiFactory(project!!, markGenerated)
+
+@JvmOverloads
+fun KtPsiFactory(elementForProject: PsiElement, markGenerated: Boolean = true): KtPsiFactory = KtPsiFactory(elementForProject.project, markGenerated)
 
 private val DO_NOT_ANALYZE_NOTIFICATION = "This file was created by KtPsiFactory and should not be analyzed\n" +
                                           "Use createAnalyzableFile to create file that can be analyzed\n"
@@ -41,31 +46,36 @@ private val DO_NOT_ANALYZE_NOTIFICATION = "This file was created by KtPsiFactory
 var KtFile.doNotAnalyze: String? by UserDataProperty(Key.create("DO_NOT_ANALYZE"))
 var KtFile.analysisContext: PsiElement? by UserDataProperty(Key.create("ANALYSIS_CONTEXT"))
 var PsiFile.moduleInfo: ModuleInfo? by UserDataProperty(Key.create("MODULE_INFO"))
+var KtFile.targetPlatform: TargetPlatform? by UserDataProperty(Key.create("TARGET_PLATFORM"))
 
-class KtPsiFactory(private val project: Project) {
+/**
+ * @param markGenerated This needs to be set to true if the `KtPsiFactory` is going to be used for creating elements that are going
+ * to be inserted in the user source code (this ensures that the elements will be formatted correctly). In other cases, `markGenerated`
+ * should be false, which saves time and memory.
+ */
+class KtPsiFactory @JvmOverloads constructor(private val project: Project, val markGenerated: Boolean = true) {
 
     fun createValKeyword(): PsiElement {
         val property = createProperty("val x = 1")
-        return property.getValOrVarKeyword()
+        return property.valOrVarKeyword
     }
 
     fun createVarKeyword(): PsiElement {
         val property = createProperty("var x = 1")
-        return property.getValOrVarKeyword()
+        return property.valOrVarKeyword
     }
 
     fun createSafeCallNode(): ASTNode {
         return (createExpression("a?.b") as KtSafeQualifiedExpression).operationTokenNode
     }
 
-    private fun doCreateExpression(text: String): KtExpression {
-        //TODO: '\n' below if important - some strange code indenting problems appear without it
-        val expression = createProperty("val x =\n$text").getInitializer() ?: error("Failed to create expression from text: '$text'")
-        return expression
+    private fun doCreateExpression(text: String): KtExpression? {
+        //NOTE: '\n' below is important - some strange code indenting problems appear without it
+        return createProperty("val x =\n$text").initializer
     }
 
     fun createExpression(text: String): KtExpression {
-        val expression = doCreateExpression(text)
+        val expression = doCreateExpression(text) ?: error("Failed to create expression from text: '$text'")
         assert(expression.text == text) {
             "Failed to create expression from text: '$text', resulting expression's text was: '${expression.text}'"
         }
@@ -73,21 +83,21 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createExpressionIfPossible(text: String): KtExpression? {
-        val expression = doCreateExpression(text)
+        val expression = doCreateExpression(text) ?: return null
         return if (expression.text == text) expression else null
     }
 
-    fun createClassLiteral(className: String): KtClassLiteralExpression =
-            createExpression("$className::class") as KtClassLiteralExpression
+    fun createThisExpression() =
+                (createExpression("this.x") as KtQualifiedExpression).receiverExpression as KtThisExpression
 
     fun createCallArguments(text: String): KtValueArgumentList {
         val property = createProperty("val x = foo $text")
-        return (property.getInitializer() as KtCallExpression).valueArgumentList!!
+        return (property.initializer as KtCallExpression).valueArgumentList!!
     }
 
     fun createTypeArguments(text: String): KtTypeArgumentList {
         val property = createProperty("val x = foo$text()")
-        return (property.getInitializer() as KtCallExpression).typeArgumentList!!
+        return (property.initializer as KtCallExpression).typeArgumentList!!
     }
 
     fun createTypeArgument(text: String) = createTypeArguments("<$text>").arguments.first()
@@ -107,13 +117,21 @@ class KtPsiFactory(private val project: Project) {
         return if (typeReference?.text == type) typeReference else null
     }
 
+    fun createFunctionTypeReceiver(typeReference: KtTypeReference): KtFunctionTypeReceiver {
+        return (createType("A.() -> B").typeElement as KtFunctionType).receiver!!.apply { this.typeReference.replace(typeReference) }
+    }
+
+    fun createFunctionTypeParameter(typeReference: KtTypeReference): KtParameter {
+        return (createType("(A) -> B").typeElement as KtFunctionType).parameters.first().apply { this.typeReference!!.replace(typeReference) }
+    }
+
     fun createTypeAlias(name: String, typeParameters: List<String>, typeElement: KtTypeElement): KtTypeAlias {
         return createTypeAlias(name, typeParameters, "X").apply { getTypeReference()!!.replace(createType(typeElement)) }
     }
 
     fun createTypeAlias(name: String, typeParameters: List<String>, body: String): KtTypeAlias {
         val typeParametersText = if (typeParameters.isNotEmpty()) typeParameters.joinToString(prefix = "<", postfix = ">") else ""
-        return createDeclaration<KtTypeAlias>("typealias $name$typeParametersText = $body")
+        return createDeclaration("typealias $name$typeParametersText = $body")
     }
 
     fun createStar(): PsiElement {
@@ -133,7 +151,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createEQ(): PsiElement {
-        return createFunction("fun foo() = foo").getEqualsToken()!!
+        return createFunction("fun foo() = foo").equalsToken!!
     }
 
     fun createSemicolon(): PsiElement {
@@ -167,8 +185,12 @@ class KtPsiFactory(private val project: Project) {
         return createDeclaration(text)
     }
 
+    fun createObject(text: String): KtObjectDeclaration {
+        return createDeclaration(text)
+    }
+
     fun createCompanionObject(): KtObjectDeclaration {
-        return createClass("class A {\n companion object{\n}\n}").getCompanionObjects().first()
+        return createClass("class A {\n companion object{\n}\n}").companionObjects.first()
     }
 
     fun createFileAnnotation(annotationText: String): KtAnnotationEntry {
@@ -176,7 +198,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createFileAnnotationListWithAnnotation(annotationText: String) : KtFileAnnotationList {
-        return createFile("@file:${annotationText}").fileAnnotationList!!
+        return createFile("@file:$annotationText").fileAnnotationList!!
     }
 
     fun createFile(text: String): KtFile {
@@ -184,7 +206,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     private fun doCreateFile(fileName: String, text: String): KtFile {
-        return PsiFileFactory.getInstance(project).createFileFromText(fileName, KotlinFileType.INSTANCE, text, LocalTimeCounter.currentTime(), false) as KtFile
+        return PsiFileFactory.getInstance(project).createFileFromText(fileName, KotlinFileType.INSTANCE, text, LocalTimeCounter.currentTime(), false, markGenerated) as KtFile
     }
 
     fun createFile(fileName: String, text: String): KtFile {
@@ -211,9 +233,15 @@ class KtPsiFactory(private val project: Project) {
         return PsiFileFactory.getInstance(project).createFileFromText(fileName, KotlinFileType.INSTANCE, text, LocalTimeCounter.currentTime(), true) as KtFile
     }
 
-    fun createProperty(name: String, type: String?, isVar: Boolean, initializer: String?): KtProperty {
-        val text = (if (isVar) "var " else "val ") + name + (if (type != null) ":" + type else "") + (if (initializer == null) "" else " = " + initializer)
+    fun createProperty(modifiers: String?, name: String, type: String?, isVar: Boolean, initializer: String?): KtProperty {
+        val text = modifiers.let { "$it "} +
+                   (if (isVar) " var " else " val ") + name +
+                   (if (type != null) ":" + type else "") + (if (initializer == null) "" else " = " + initializer)
         return createProperty(text)
+    }
+
+    fun createProperty(name: String, type: String?, isVar: Boolean, initializer: String?): KtProperty {
+        return createProperty(null, name, type, isVar, initializer)
     }
 
     fun createProperty(name: String, type: String?, isVar: Boolean): KtProperty {
@@ -233,34 +261,40 @@ class KtPsiFactory(private val project: Project) {
         return getter
     }
 
+    fun createPropertySetter(expression: KtExpression): KtPropertyAccessor {
+        val property = if (expression is KtBlockExpression)
+            createProperty("val x get() = 1\nset(value) {\n field = value\n }")
+        else
+            createProperty("val x get() = 1\nset(value) = TODO()")
+        val setter = property.setter!!
+        val bodyExpression = setter.bodyExpression!!
+
+        bodyExpression.replace(expression)
+        return setter
+    }
+
     fun createDestructuringDeclaration(text: String): KtDestructuringDeclaration {
         return (createFunction("fun foo() {$text}").bodyExpression as KtBlockExpression).statements.first() as KtDestructuringDeclaration
     }
 
-    fun createDestructuringDeclarationInFor(text: String): KtDestructuringDeclaration {
-        return ((createFunction("fun foo() {for ($text in foo) {} }").bodyExpression as KtBlockExpression).statements.first() as KtForExpression).destructuringParameter!!
-    }
-
-    fun createDestructuringParameter(text: String): KtDestructuringDeclaration {
-        val dummyFun = createFunction("fun foo() { for ($text in foo) {} }")
-        return ((dummyFun.bodyExpression as KtBlockExpression).statements.first() as KtForExpression).destructuringParameter!!
+    fun createDestructuringParameter(text: String): KtParameter {
+        val dummyFun = createFunction("fun foo() = { $text -> }")
+        return (dummyFun.bodyExpression as KtLambdaExpression).functionLiteral.valueParameters.first()
     }
 
     fun <TDeclaration : KtDeclaration> createDeclaration(text: String): TDeclaration {
         val file = createFile(text)
         val declarations = file.declarations
         assert(declarations.size == 1) { "${declarations.size} declarations in $text" }
-        @Suppress("UNCHECKED_CAST")
-        val result = declarations.first() as TDeclaration
-        return result
+        return declarations.first() as TDeclaration
     }
 
-    fun createNameIdentifier(name: String): PsiElement {
-        return createProperty(name, null, false).getNameIdentifier()!!
-    }
+    fun createNameIdentifier(name: String) = createNameIdentifierIfPossible(name)!!
+
+    fun createNameIdentifierIfPossible(name: String) = createProperty(name, null, false).nameIdentifier
 
     fun createSimpleName(name: String): KtSimpleNameExpression {
-        return createProperty(name, null, false, name).getInitializer() as KtSimpleNameExpression
+        return createProperty(name, null, false, name).initializer as KtSimpleNameExpression
     }
 
     fun createOperationName(name: String): KtSimpleNameExpression {
@@ -278,7 +312,7 @@ class KtPsiFactory(private val project: Project) {
     fun createCallableReferenceExpression(text: String) = createExpression(text) as? KtCallableReferenceExpression
 
     fun createSecondaryConstructor(decl: String): KtSecondaryConstructor {
-        return createClass("class Foo {\n $decl \n}").getSecondaryConstructors().first()
+        return createClass("class Foo {\n $decl \n}").secondaryConstructors.first()
     }
 
     fun createModifierList(modifier: KtModifierKeywordToken): KtModifierList {
@@ -286,7 +320,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createModifierList(text: String): KtModifierList {
-        return createProperty(text + " val x").getModifierList()!!
+        return createProperty(text + " val x").modifierList!!
     }
 
     fun createModifier(modifier: KtModifierKeywordToken): PsiElement {
@@ -294,12 +328,12 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createAnnotationEntry(text: String): KtAnnotationEntry {
-        val modifierList = createProperty(text + " val x").getModifierList()
-        return modifierList!!.getAnnotationEntries().first()
+        val modifierList = createProperty(text + " val x").modifierList
+        return modifierList!!.annotationEntries.first()
     }
 
     fun createEmptyBody(): KtBlockExpression {
-        return createFunction("fun foo() {}").getBodyExpression() as KtBlockExpression
+        return createFunction("fun foo() {}").bodyExpression as KtBlockExpression
     }
 
     fun createAnonymousInitializer(): KtAnonymousInitializer {
@@ -311,23 +345,29 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createParameter(text : String): KtParameter {
-        return createClass("class A($text)").getPrimaryConstructorParameters().first()
+        return createClass("class A($text)").primaryConstructorParameters.first()
     }
 
     fun createParameterList(text: String): KtParameterList {
-        return createFunction("fun foo$text{}").getValueParameterList()!!
+        return createFunction("fun foo$text{}").valueParameterList!!
     }
 
     fun createTypeParameterList(text: String) = createClass("class Foo$text").typeParameterList!!
 
     fun createTypeParameter(text: String) = createTypeParameterList("<$text>").parameters.first()!!
 
-    fun createFunctionLiteralParameterList(text: String): KtParameterList {
-        return (createExpression("{ $text -> 0}") as KtLambdaExpression).functionLiteral.valueParameterList!!
-    }
+    fun createLambdaParameterListIfAny(text: String) =
+            createLambdaExpression(text, "0").functionLiteral.valueParameterList
+
+    fun createLambdaParameterList(text: String) = createLambdaParameterListIfAny(text)!!
+
+    fun createLambdaExpression(parameters: String, body: String): KtLambdaExpression =
+            (if (parameters.isNotEmpty()) createExpression("{ $parameters -> $body }")
+            else createExpression("{ $body }")) as KtLambdaExpression
+
 
     fun createEnumEntry(text: String): KtEnumEntry {
-        return createDeclaration<KtClass>("enum class E {$text}").getDeclarations()[0] as KtEnumEntry
+        return createDeclaration<KtClass>("enum class E {$text}").declarations[0] as KtEnumEntry
     }
 
     fun createEnumEntryInitializerList(): KtInitializerList {
@@ -335,7 +375,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createWhenEntry(entryText: String): KtWhenEntry {
-        val function = createFunction("fun foo() { when(12) { " + entryText + " } }")
+        val function = createFunction("fun foo() { when(12) { $entryText } }")
         val whenEntry = PsiTreeUtil.findChildOfType(function, KtWhenEntry::class.java)
 
         assert(whenEntry != null) { "Couldn't generate when entry" }
@@ -345,13 +385,14 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createBlockStringTemplateEntry(expression: KtExpression): KtStringTemplateEntryWithExpression {
-        val stringTemplateExpression = createExpression("\"\${" + expression.text + "}\"") as KtStringTemplateExpression
+        // We don't want reformatting here as it can potentially change something in raw strings
+        val stringTemplateExpression = createExpressionByPattern("\"$\${$0}\"", expression, reformat = false) as KtStringTemplateExpression
         return stringTemplateExpression.entries[0] as KtStringTemplateEntryWithExpression
     }
 
-    fun createSimpleNameStringTemplateEntry(name: String): KtStringTemplateEntryWithExpression {
+    fun createSimpleNameStringTemplateEntry(name: String): KtSimpleNameStringTemplateEntry {
         val stringTemplateExpression = createExpression("\"\$$name\"") as KtStringTemplateExpression
-        return stringTemplateExpression.entries[0] as KtStringTemplateEntryWithExpression
+        return stringTemplateExpression.entries[0] as KtSimpleNameStringTemplateEntry
     }
 
     fun createStringTemplate(content: String) = createExpression("\"$content\"") as KtStringTemplateExpression
@@ -365,7 +406,7 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createImportDirective(importPath: ImportPath): KtImportDirective {
-        if (importPath.fqnPart().isRoot) {
+        if (importPath.fqName.isRoot) {
             throw IllegalArgumentException("import path must not be empty")
         }
 
@@ -381,24 +422,19 @@ class KtPsiFactory(private val project: Project) {
         return file.importDirectives.first()
     }
 
-    fun createImportDirectiveWithImportList(importPath: ImportPath): KtImportList {
-        val importDirective = createImportDirective(importPath)
-        return importDirective.getParent() as KtImportList
+    fun createPrimaryConstructor(): KtPrimaryConstructor {
+        return createClass("class A()").primaryConstructor!!
     }
 
-    fun createPrimaryConstructor(): KtPrimaryConstructor {
-        return createClass("class A()").getPrimaryConstructor()!!
+    fun createPrimaryConstructor(modifiers: String?): KtPrimaryConstructor {
+        return modifiers?.let { createClass("class A $modifiers constructor()").primaryConstructor } ?: createPrimaryConstructor()
     }
 
     fun createConstructorKeyword(): PsiElement =
-            createClass("class A constructor()").getPrimaryConstructor()!!.getConstructorKeyword()!!
+            createClass("class A constructor()").primaryConstructor!!.getConstructorKeyword()!!
 
     fun createLabeledExpression(labelName: String): KtLabeledExpression
         = createExpression("$labelName@ 1") as KtLabeledExpression
-
-    fun createFieldIdentifier(fieldName: String): PsiElement {
-        return (createExpression("$" + fieldName) as KtNameReferenceExpression).getReferencedNameElement()
-    }
 
     fun createTypeCodeFragment(text: String, context: PsiElement?): KtTypeCodeFragment {
         return KtTypeCodeFragment(project, "fragment.kt", text, context)
@@ -439,17 +475,19 @@ class KtPsiFactory(private val project: Project) {
         return argumentList.arguments.single()
     }
 
+    fun createArgument(text: String) = createCallArguments("($text)").arguments.first()!!
+
     fun createSuperTypeCallEntry(text: String): KtSuperTypeCallEntry {
-        return createClass("class A: $text").getSuperTypeListEntries().first() as KtSuperTypeCallEntry
+        return createClass("class A: $text").superTypeListEntries.first() as KtSuperTypeCallEntry
     }
 
     fun createSuperTypeEntry(text: String): KtSuperTypeEntry {
-        return createClass("class A: $text").getSuperTypeListEntries().first() as KtSuperTypeEntry
+        return createClass("class A: $text").superTypeListEntries.first() as KtSuperTypeEntry
     }
 
     fun creareDelegatedSuperTypeEntry(text: String): KtConstructorDelegationCall {
         val colonOrEmpty = if (text.isEmpty()) "" else ": "
-        return createClass("class A { constructor()$colonOrEmpty$text {}").getSecondaryConstructors().first().getDelegationCall()
+        return createClass("class A { constructor()$colonOrEmpty$text {}").secondaryConstructors.first().getDelegationCall()
     }
 
     class ClassHeaderBuilder {
@@ -476,7 +514,7 @@ class KtPsiFactory(private val project: Project) {
         private fun placeKeyword() {
             assert(state == State.MODIFIERS)
 
-            if (sb.length != 0) {
+            if (sb.isNotEmpty()) {
                 sb.append(" ")
             }
             sb.append("class ")
@@ -546,8 +584,14 @@ class KtPsiFactory(private val project: Project) {
     }
 
     class CallableBuilder(private val target: Target) {
+
+        companion object {
+            val CONSTRUCTOR_NAME = KtTokens.CONSTRUCTOR_KEYWORD.value
+        }
+
         enum class Target {
             FUNCTION,
+            CONSTRUCTOR,
             READ_ONLY_PROPERTY
         }
 
@@ -566,7 +610,7 @@ class KtPsiFactory(private val project: Project) {
         private var state = State.MODIFIERS
 
         private fun closeParams() {
-            if (target == Target.FUNCTION) {
+            if (target == Target.FUNCTION || target == Target.CONSTRUCTOR) {
                 assert(state == State.FIRST_PARAM || state == State.REST_PARAMS)
                 sb.append(")")
             }
@@ -577,11 +621,12 @@ class KtPsiFactory(private val project: Project) {
         private fun placeKeyword() {
             assert(state == State.MODIFIERS)
 
-            if (sb.length != 0) {
+            if (sb.isNotEmpty() && !sb.endsWith(" ")) {
                 sb.append(" ")
             }
             val keyword = when (target) {
                 Target.FUNCTION -> "fun"
+                Target.CONSTRUCTOR -> ""
                 Target.READ_ONLY_PROPERTY -> "val"
             }
             sb.append("$keyword ")
@@ -589,9 +634,9 @@ class KtPsiFactory(private val project: Project) {
             state = State.RECEIVER
         }
 
-        private fun bodyPrefix() = when (target) {
-            Target.FUNCTION -> ""
-            Target.READ_ONLY_PROPERTY -> "\nget()"
+        private fun bodyPrefix(breakLine: Boolean = true) = when (target) {
+            Target.FUNCTION, Target.CONSTRUCTOR -> ""
+            Target.READ_ONLY_PROPERTY -> (if (breakLine) "\n" else " ") + "get()"
         }
 
         fun modifier(modifier: String): CallableBuilder {
@@ -602,7 +647,7 @@ class KtPsiFactory(private val project: Project) {
             return this
         }
 
-        fun typeParams(values: Collection<String>): CallableBuilder {
+        fun typeParams(values: Collection<String> = emptyList()): CallableBuilder {
             placeKeyword()
             if (!values.isEmpty()) {
                 sb.append(values.joinToString(", ", "<", "> ", -1, ""))
@@ -620,30 +665,34 @@ class KtPsiFactory(private val project: Project) {
             return this
         }
 
-        fun name(name: String): CallableBuilder {
+        fun name(name: String = CONSTRUCTOR_NAME): CallableBuilder {
             assert(state == State.NAME || state == State.RECEIVER)
+            assert(name != CONSTRUCTOR_NAME || target == Target.CONSTRUCTOR)
 
             sb.append(name)
-            when (target) {
-                Target.FUNCTION -> {
+            state = when (target) {
+                Target.FUNCTION, Target.CONSTRUCTOR -> {
                     sb.append("(")
-                    state = State.FIRST_PARAM
+                    State.FIRST_PARAM
                 }
                 else ->
-                    state = State.TYPE_CONSTRAINTS
+                    State.TYPE_CONSTRAINTS
             }
 
             return this
         }
 
-        fun param(name: String, type: String): CallableBuilder {
-            assert(target == Target.FUNCTION)
+        fun param(name: String, type: String, defaultValue: String? = null): CallableBuilder {
+            assert(target == Target.FUNCTION || target == Target.CONSTRUCTOR)
             assert(state == State.FIRST_PARAM || state == State.REST_PARAMS)
 
             if (state == State.REST_PARAMS) {
                 sb.append(", ")
             }
             sb.append(name).append(": ").append(type)
+            if (defaultValue != null) {
+                sb.append("= ").append(defaultValue)
+            }
             if (state == State.FIRST_PARAM) {
                 state = State.REST_PARAMS
             }
@@ -665,7 +714,7 @@ class KtPsiFactory(private val project: Project) {
         }
 
         fun typeConstraints(values: Collection<String>): CallableBuilder {
-            assert(state == State.TYPE_CONSTRAINTS)
+            assert(state == State.TYPE_CONSTRAINTS && target != Target.CONSTRUCTOR)
 
             if (!values.isEmpty()) {
                 sb.append(values.joinToString(", ", " where ", "", -1, ""))
@@ -675,10 +724,29 @@ class KtPsiFactory(private val project: Project) {
             return this
         }
 
+        fun superDelegation(argumentList: String): CallableBuilder {
+            assert(state == State.TYPE_CONSTRAINTS && target == Target.CONSTRUCTOR)
+
+            sb.append(": super").append(argumentList)
+            state = State.BODY
+
+            return this
+        }
+
         fun blockBody(body: String): CallableBuilder {
             assert(state == State.BODY || state == State.TYPE_CONSTRAINTS)
 
             sb.append(bodyPrefix()).append(" {\n").append(body).append("\n}")
+            state = State.DONE
+
+            return this
+        }
+
+        fun getterExpression(expression: String, breakLine: Boolean = true): CallableBuilder {
+            assert(target == Target.READ_ONLY_PROPERTY)
+            assert(state == State.BODY || state == State.TYPE_CONSTRAINTS)
+
+            sb.append(bodyPrefix(breakLine)).append(" = ").append(expression)
             state = State.DONE
 
             return this
@@ -714,11 +782,11 @@ class KtPsiFactory(private val project: Project) {
     }
 
     fun createBlock(bodyText: String): KtBlockExpression {
-        return createFunction("fun foo() {\n" + bodyText + "\n}").getBodyExpression() as KtBlockExpression
+        return createFunction("fun foo() {\n$bodyText\n}").bodyExpression as KtBlockExpression
     }
 
     fun createSingleStatementBlock(statement: KtExpression): KtBlockExpression {
-        return createDeclarationByPattern<KtNamedFunction>("fun foo() {\n$0\n}", statement).getBodyExpression() as KtBlockExpression
+        return createDeclarationByPattern<KtNamedFunction>("fun foo() {\n$0\n}", statement).bodyExpression as KtBlockExpression
     }
 
     fun createComment(text: String): PsiComment {
@@ -736,7 +804,7 @@ class KtPsiFactory(private val project: Project) {
             return expression
         }
         val function = createFunction("fun f() { ${expression.text} }")
-        val block = function.getBodyExpression() as KtBlockExpression
+        val block = function.bodyExpression as KtBlockExpression
         return BlockWrapper(block, expression)
     }
 

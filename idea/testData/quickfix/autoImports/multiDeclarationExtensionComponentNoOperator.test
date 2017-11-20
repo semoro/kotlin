@@ -1,5 +1,5 @@
 // FILE: first.before.kt
-// "Import" "false"
+// "class org.jetbrains.kotlin.idea.quickfix.ImportFix" "false"
 // ERROR: Destructuring declaration initializer of type Some must have a 'component1()' function
 // ACTION: Create extension function 'Some.component1'
 // ACTION: Create member function 'Some.component1'
@@ -23,8 +23,3 @@ public class Some
 
 fun Some.component1() = 1
 operator fun Some.component2() = 3
-//-----------------------
-
-
-// FILE: first.after.kt
-// -- Empty file --

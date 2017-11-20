@@ -8,8 +8,13 @@ import java.io.File
 class CasesPublicAPITest {
 
     companion object {
-        val visibilities = readKotlinVisibilities(File("target/cases-declarations.json"))
-        val baseClassPath = File("target/test-classes/cases").absoluteFile
+        val visibilities by lazy { readKotlinVisibilities(File(System.getenv("PROJECT_BUILD_DIR") ?: "build", "cases-declarations.json")) }
+        val baseClassPaths: List<File> =
+                (System.getenv("PROJECT_CLASSES_DIRS")?.let { it.split(File.pathSeparator) }
+                ?: listOf("build/classes/kotlin/test/cases", "build/classes/java/test/cases"))
+                        .mapNotNull { File(it, "cases").canonicalFile.takeIf { it.isDirectory } }
+                        .takeIf { it.isNotEmpty() }
+                ?: throw IllegalStateException("Unable to get classes output dirs, set PROJECT_CLASSES_DIRS environment variable")
         val baseOutputPath = File("src/test/kotlin/cases")
     }
 
@@ -19,6 +24,8 @@ class CasesPublicAPITest {
     @Test fun companions() { snapshotAPIAndCompare(testName.methodName) }
 
     @Test fun inline() { snapshotAPIAndCompare(testName.methodName) }
+
+    @Test fun interfaces() { snapshotAPIAndCompare(testName.methodName) }
 
     @Test fun internal() { snapshotAPIAndCompare(testName.methodName) }
 
@@ -40,8 +47,8 @@ class CasesPublicAPITest {
 
 
     private fun snapshotAPIAndCompare(testClassRelativePath: String) {
-        val testClassPath = baseClassPath.resolve(testClassRelativePath)
-        val testClasses = testClassPath.listFiles() ?: throw IllegalStateException("Cannot list files in $testClassPath")
+        val testClassPaths = baseClassPaths.map { it.resolve(testClassRelativePath) }
+        val testClasses = testClassPaths.flatMap { it.listFiles()?.asIterable() ?: emptyList() }
         val testClassStreams = testClasses.asSequence().filter { it.name.endsWith(".class") }.map { it.inputStream() }
 
         val api = getBinaryAPI(testClassStreams, visibilities).filterOutNonPublic()

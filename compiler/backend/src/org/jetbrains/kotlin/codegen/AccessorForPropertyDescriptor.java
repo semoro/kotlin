@@ -46,7 +46,9 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
             boolean setterAccessorRequired
     ) {
         this(property, property.getType(), DescriptorUtils.getReceiverParameterType(property.getExtensionReceiverParameter()),
-             property.getDispatchReceiverParameter(), containingDeclaration, superCallTarget, nameSuffix,
+             /* dispatchReceiverParameter = */
+             CodegenUtilKt.isJvmStaticInObjectOrClass(property) ? null : property.getDispatchReceiverParameter(),
+             containingDeclaration, superCallTarget, nameSuffix,
              getterAccessorRequired, setterAccessorRequired);
     }
 
@@ -62,7 +64,7 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
         this(original, propertyType, receiverType, dispatchReceiverParameter, containingDeclaration, superCallTarget, nameSuffix, true, true);
     }
 
-    protected AccessorForPropertyDescriptor(
+    private AccessorForPropertyDescriptor(
             @NotNull PropertyDescriptor original,
             @NotNull KotlinType propertyType,
             @Nullable KotlinType receiverType,
@@ -74,8 +76,8 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
             boolean setterAccessorRequired
     ) {
         super(containingDeclaration, null, Annotations.Companion.getEMPTY(), Modality.FINAL, Visibilities.LOCAL,
-              original.isVar(), Name.identifier("access$" + nameSuffix),
-              Kind.DECLARATION, SourceElement.NO_SOURCE, /* lateInit = */ false, /* isConst = */ false);
+              original.isVar(), Name.identifier("access$" + nameSuffix), Kind.DECLARATION, SourceElement.NO_SOURCE,
+              false, false, false, false, false, false);
 
         this.calleeDescriptor = original;
         this.superCallTarget = superCallTarget;

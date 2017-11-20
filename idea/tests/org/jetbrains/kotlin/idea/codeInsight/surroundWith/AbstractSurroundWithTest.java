@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.testFramework.LightCodeInsightTestCase;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression.KotlinNotSurrounder;
-import org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression.KotlinParenthesesSurrounder;
-import org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression.KotlinStringTemplateSurrounder;
-import org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression.KotlinWhenSurrounder;
+import org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression.*;
 import org.jetbrains.kotlin.idea.codeInsight.surroundWith.statement.*;
 import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 
@@ -44,6 +41,14 @@ public abstract class AbstractSurroundWithTest extends LightCodeInsightTestCase 
 
     public void doTestWithIfElseSurrounder(String path) throws Exception {
         doTest(path, new KotlinIfElseSurrounder());
+    }
+
+    public void doTestWithIfElseExpressionSurrounder(String path) throws Exception {
+        doTest(path, new KotlinIfElseExpressionSurrounder(false));
+    }
+
+    public void doTestWithIfElseExpressionBracesSurrounder(String path) throws Exception {
+        doTest(path, new KotlinIfElseExpressionSurrounder(true));
     }
 
     public void doTestWithNotSurrounder(String path) throws Exception {
@@ -66,8 +71,16 @@ public abstract class AbstractSurroundWithTest extends LightCodeInsightTestCase 
         doTest(path, new KotlinTryCatchSurrounder());
     }
 
+    public void doTestWithTryCatchExpressionSurrounder(String path) throws Exception {
+        doTest(path, new KotlinTryExpressionSurrounder.TryCatch());
+    }
+
     public void doTestWithTryCatchFinallySurrounder(String path) throws Exception {
         doTest(path, new KotlinTryCatchFinallySurrounder());
+    }
+
+    public void doTestWithTryCatchFinallyExpressionSurrounder(String path) throws Exception {
+        doTest(path, new KotlinTryExpressionSurrounder.TryCatchFinally());
     }
 
     public void doTestWithTryFinallySurrounder(String path) throws Exception {
@@ -76,6 +89,14 @@ public abstract class AbstractSurroundWithTest extends LightCodeInsightTestCase 
 
     public void doTestWithFunctionLiteralSurrounder(String path) throws Exception {
         doTest(path, new KotlinFunctionLiteralSurrounder());
+    }
+
+    public void doTestWithSurroundWithIfExpression(String path) throws Exception {
+        doTest(path, new KotlinWithIfExpressionSurrounder(false));
+    }
+
+    public void doTestWithSurroundWithIfElseExpression(String path) throws Exception {
+        doTest(path, new KotlinWithIfExpressionSurrounder(true));
     }
 
     private void doTest(String path, Surrounder surrounder) throws Exception {

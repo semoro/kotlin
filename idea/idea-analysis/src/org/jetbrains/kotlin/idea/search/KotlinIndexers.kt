@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.search
 
+import com.google.common.collect.ImmutableSet
 import com.intellij.lexer.Lexer
 import com.intellij.psi.TokenType
 import com.intellij.psi.impl.cache.impl.BaseFilterLexer
@@ -26,13 +27,26 @@ import com.intellij.psi.impl.cache.impl.todo.LexerBasedTodoIndexer
 import com.intellij.psi.search.UsageSearchContext
 import com.intellij.psi.tree.IElementType
 import com.intellij.psi.tree.TokenSet
-import org.jetbrains.kotlin.idea.search.usagesSearch.ALL_SEARCHABLE_OPERATIONS
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.lexer.KotlinLexer
+import org.jetbrains.kotlin.lexer.KtToken
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.types.expressions.OperatorConventions
 import java.util.*
 
 val KOTLIN_NAMED_ARGUMENT_SEARCH_CONTEXT: Short = 0x20
+
+private val ALL_SEARCHABLE_OPERATIONS: ImmutableSet<KtToken> = ImmutableSet
+        .builder<KtToken>()
+        .addAll(OperatorConventions.UNARY_OPERATION_NAMES.keys)
+        .addAll(OperatorConventions.BINARY_OPERATION_NAMES.keys)
+        .addAll(OperatorConventions.ASSIGNMENT_OPERATIONS.keys)
+        .addAll(OperatorConventions.COMPARISON_OPERATIONS)
+        .addAll(OperatorConventions.EQUALS_OPERATIONS)
+        .addAll(OperatorConventions.IN_OPERATIONS)
+        .add(KtTokens.LBRACKET)
+        .add(KtTokens.BY_KEYWORD)
+        .build()
 
 class KotlinFilterLexer(private val occurrenceConsumer: OccurrenceConsumer): BaseFilterLexer(KotlinLexer(), occurrenceConsumer) {
     private val codeTokens = TokenSet.orSet(
@@ -72,6 +86,16 @@ class KotlinFilterLexer(private val occurrenceConsumer: OccurrenceConsumer): Bas
                  }
                  else {
                      addOccurrenceInToken(UsageSearchContext.IN_CODE.toInt())
+                     if (myDelegate.tokenText == "TODO" ) {
+                         // Heuristics to reduce mismatches between indexer and searcher. The searcher returns only occurrences of TO_DO
+                         // as the callee of a call expression, but we can't tell calls and other usages apart based on limited lexer context,
+                         // so we just exclude occurrences in declaration names (and even that doesn't work precisely because it doesn't handle
+                         // declarations with type parameters)
+                         val prevToken = prevTokens.peekFirst()
+                         if (prevToken != KtTokens.FUN_KEYWORD && prevToken != KtTokens.VAR_KEYWORD && prevToken != KtTokens.VAL_KEYWORD && prevToken != KtTokens.CLASS_KEYWORD) {
+                             advanceTodoItemCountsInToken()
+                         }
+                     }
                  }
             }
 
@@ -111,5 +135,7 @@ class KotlinIdIndexer: LexerBasedIdIndexer() {
 }
 
 class KotlinTodoIndexer: LexerBasedTodoIndexer(), IdAndToDoScannerBasedOnFilterLexer {
-    override fun createLexer(consumer: OccurrenceConsumer): Lexer = KotlinFilterLexer(consumer)
+    override fun getVersion() = 2
+
+    override fun createLexer(consumer: OccurrenceConsumer) = KotlinFilterLexer(consumer)
 }

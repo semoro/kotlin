@@ -16,55 +16,50 @@
 
 package org.jetbrains.kotlin.js.test.semantics
 
-import org.jetbrains.kotlin.js.test.AbstractSingleFileTranslationWithDirectivesTest
-import org.jetbrains.kotlin.js.test.KotlinJSMultiFileTest
-import org.jetbrains.kotlin.js.test.MultipleModulesTranslationTest
-import org.jetbrains.kotlin.js.test.SingleFileTranslationTest
+import org.jetbrains.kotlin.js.test.BasicBoxTest
 
-abstract class AbstractBlackBoxTest(d: String) : SingleFileTranslationTest(d) {
-    override fun doTest(filename: String) = checkBlackBoxIsOkByPath(filename)
+abstract class BorrowedInlineTest(relativePath: String) : BasicBoxTest(
+        "compiler/testData/codegen/boxInline/$relativePath",
+        "${BasicBoxTest.TEST_DATA_DIR_PATH}/out/codegen/boxInline/$relativePath/"
+) {
+    init {
+        additionalCommonFileDirectories += BasicBoxTest.TEST_DATA_DIR_PATH + relativePath + "/_commonFiles/"
+    }
 }
 
-abstract class AbstractBridgeTest : AbstractBlackBoxTest("bridges/")
+abstract class AbstractNonLocalReturnsTest : BorrowedInlineTest("nonLocalReturns/")
 
-abstract class AbstractCallableReferenceTest(main: String) : SingleFileTranslationTest("callableReference/" + main)
+abstract class AbstractPropertyAccessorsInlineTests : BorrowedInlineTest("property/")
 
-abstract class AbstractCompanionObjectTest : SingleFileTranslationTest("objectIntrinsics/")
+abstract class AbstractNoInlineTests : BorrowedInlineTest("noInline/")
 
-abstract class AbstractDynamicTest : SingleFileTranslationTest("dynamic/")
+abstract class AbstractCallableReferenceInlineTests : BorrowedInlineTest("callableReference/")
 
-abstract class AbstractFunctionExpressionTest : AbstractBlackBoxTest("functionExpression/")
+abstract class AbstractEnumValuesInlineTests : BorrowedInlineTest("enum/")
 
-abstract class AbstractInlineEvaluationOrderTest : AbstractSingleFileTranslationWithDirectivesTest("inlineEvaluationOrder/")
+abstract class AbstractInlineDefaultValuesTests : BorrowedInlineTest("defaultValues/")
 
-abstract class AbstractInlineJsStdlibTest : AbstractSingleFileTranslationWithDirectivesTest("inlineStdlib/")
+abstract class AbstractBoxJsTest : BasicBoxTest(
+        BasicBoxTest.TEST_DATA_DIR_PATH + "box/",
+        BasicBoxTest.TEST_DATA_DIR_PATH + "out/box/"
+) {
+    override val runMinifierByDefault: Boolean = true
+}
 
-abstract class AbstractInlineJsTest : AbstractSingleFileTranslationWithDirectivesTest("inline/")
+abstract class AbstractJsCodegenBoxTest : BasicBoxTest(
+        "compiler/testData/codegen/box/",
+        BasicBoxTest.TEST_DATA_DIR_PATH + "out/codegen/box/"
+)
 
-abstract class AbstractJsCodeTest : AbstractSingleFileTranslationWithDirectivesTest("jsCode/")
+abstract class AbstractJsLegacyPrimitiveArraysBoxTest : BasicBoxTest(
+        "compiler/testData/codegen/box/arrays/",
+        BasicBoxTest.TEST_DATA_DIR_PATH + "out/codegen/box/arrays-legacy-primitivearrays/",
+        typedArraysEnabled = false
+)
 
-abstract class AbstractLabelTest : AbstractSingleFileTranslationWithDirectivesTest("labels/")
-
-abstract class AbstractMultiModuleTest : MultipleModulesTranslationTest("multiModule/")
-
-abstract class AbstractInlineMultiModuleTest : MultipleModulesTranslationTest("inlineMultiModule/")
-
-abstract class AbstractReservedWordTest : SingleFileTranslationTest("reservedWords/")
-
-abstract class AbstractSecondaryConstructorTest : AbstractBlackBoxTest("secondaryConstructors/")
-
-abstract class AbstractInnerNestedTest : AbstractBlackBoxTest("innerNested/")
-
-abstract class AbstractClassesTest : AbstractBlackBoxTest("classes/")
-
-abstract class AbstractSuperTest : AbstractBlackBoxTest("super/")
-
-abstract class AbstractLocalClassesTest : AbstractBlackBoxTest("localClasses/")
-
-abstract class AbstractNonLocalReturnsTest : KotlinJSMultiFileTest("inline.generated/nonLocalReturns/")
-
-abstract class AbstractRttiTest : SingleFileTranslationTest("rtti/")
-
-abstract class AbstractCastTest : SingleFileTranslationTest("expression/cast/")
-
-abstract class AbstractLightReflectionTest : SingleFileTranslationTest("reflection/light/")
+abstract class AbstractSourceMapGenerationSmokeTest : BasicBoxTest(
+        BasicBoxTest.TEST_DATA_DIR_PATH + "sourcemap/",
+        "${BasicBoxTest.TEST_DATA_DIR_PATH}/out/sourcemap/",
+        generateSourceMap = true,
+        generateNodeJsRunner = false
+)

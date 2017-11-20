@@ -55,6 +55,7 @@ abstract class LexicalScopeStorage(
 
     protected fun addVariableOrClassDescriptor(descriptor: DeclarationDescriptor) {
         val name = descriptor.name
+        if (name.isSpecial) return
         val descriptorIndex = addDescriptor(descriptor)
 
         if (variablesAndClassifiersByName == null) {
@@ -123,4 +124,7 @@ abstract class LexicalScopeStorage(
         } while (rest != null)
         return result
     }
+
+    override fun definitelyDoesNotContainName(name: Name) =
+            functionsByName?.get(name) == null && variablesAndClassifiersByName?.get(name) == null
 }

@@ -20,13 +20,20 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.Printer
-import org.jetbrains.kotlin.utils.toReadOnlyList
+import org.jetbrains.kotlin.utils.addToStdlib.flatMapToNullable
 import java.lang.reflect.Modifier
 
 interface MemberScope : ResolutionScope {
 
     override fun getContributedVariables(name: Name, location: LookupLocation): Collection<PropertyDescriptor>
     override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<SimpleFunctionDescriptor>
+
+    /**
+     * These methods may return a superset of an actual names' set
+     */
+    fun getFunctionNames(): Set<Name>
+    fun getVariableNames(): Set<Name>
+    fun getClassifierNames(): Set<Name>?
 
     /**
      * Is supposed to be used in tests and debug only
@@ -37,12 +44,21 @@ interface MemberScope : ResolutionScope {
         override fun printScopeStructure(p: Printer) {
             p.println("Empty member scope")
         }
+
+        override fun getFunctionNames() = emptySet<Name>()
+        override fun getVariableNames() = emptySet<Name>()
+        override fun getClassifierNames() = emptySet<Name>()
     }
 
     companion object {
         val ALL_NAME_FILTER: (Name) -> Boolean = { true }
     }
 }
+
+fun MemberScope.computeAllNames() = getClassifierNames()?.let { getFunctionNames() + getVariableNames() + it }
+
+fun Collection<MemberScope>.flatMapClassifierNamesOrNull(): MutableSet<Name>? =
+        flatMapToNullable(hashSetOf(), MemberScope::getClassifierNames)
 
 /**
  * The same as getDescriptors(kindFilter, nameFilter) but the result is guaranteed to be filtered by kind and name.
@@ -105,6 +121,7 @@ class DescriptorKindFilter(
     private fun DeclarationDescriptor.kind(): Int {
         return when (this) {
             is ClassDescriptor -> if (this.kind.isSingleton) SINGLETON_CLASSIFIERS_MASK else NON_SINGLETON_CLASSIFIERS_MASK
+            is TypeAliasDescriptor -> TYPE_ALIASES_MASK
             is ClassifierDescriptor -> NON_SINGLETON_CLASSIFIERS_MASK
             is PackageFragmentDescriptor, is PackageViewDescriptor -> PACKAGES_MASK
             is FunctionDescriptor -> FUNCTIONS_MASK
@@ -114,14 +131,18 @@ class DescriptorKindFilter(
     }
 
     companion object {
-        val NON_SINGLETON_CLASSIFIERS_MASK: Int = 0x01
-        val SINGLETON_CLASSIFIERS_MASK: Int = 0x02
-        val PACKAGES_MASK: Int = 0x04
-        val FUNCTIONS_MASK: Int = 0x08
-        val VARIABLES_MASK: Int = 0x10
+        private var nextMaskValue: Int = 0x01
+        private fun nextMask() = nextMaskValue.apply { nextMaskValue = nextMaskValue shl 1 }
 
-        val ALL_KINDS_MASK: Int = 0x1F
-        val CLASSIFIERS_MASK: Int = NON_SINGLETON_CLASSIFIERS_MASK or SINGLETON_CLASSIFIERS_MASK
+        val NON_SINGLETON_CLASSIFIERS_MASK: Int = nextMask()
+        val SINGLETON_CLASSIFIERS_MASK: Int = nextMask()
+        val TYPE_ALIASES_MASK: Int = nextMask()
+        val PACKAGES_MASK: Int = nextMask()
+        val FUNCTIONS_MASK: Int = nextMask()
+        val VARIABLES_MASK: Int = nextMask()
+
+        val ALL_KINDS_MASK: Int = nextMask() - 1
+        val CLASSIFIERS_MASK: Int = NON_SINGLETON_CLASSIFIERS_MASK or SINGLETON_CLASSIFIERS_MASK or TYPE_ALIASES_MASK
         val VALUES_MASK: Int = SINGLETON_CLASSIFIERS_MASK or FUNCTIONS_MASK or VARIABLES_MASK
         val CALLABLES_MASK: Int = FUNCTIONS_MASK or VARIABLES_MASK
 
@@ -129,6 +150,7 @@ class DescriptorKindFilter(
         @JvmField val CALLABLES: DescriptorKindFilter = DescriptorKindFilter(CALLABLES_MASK)
         @JvmField val NON_SINGLETON_CLASSIFIERS: DescriptorKindFilter = DescriptorKindFilter(NON_SINGLETON_CLASSIFIERS_MASK)
         @JvmField val SINGLETON_CLASSIFIERS: DescriptorKindFilter = DescriptorKindFilter(SINGLETON_CLASSIFIERS_MASK)
+        @JvmField val TYPE_ALIASES: DescriptorKindFilter = DescriptorKindFilter(TYPE_ALIASES_MASK)
         @JvmField val CLASSIFIERS: DescriptorKindFilter = DescriptorKindFilter(CLASSIFIERS_MASK)
         @JvmField val PACKAGES: DescriptorKindFilter = DescriptorKindFilter(PACKAGES_MASK)
         @JvmField val FUNCTIONS: DescriptorKindFilter = DescriptorKindFilter(FUNCTIONS_MASK)
@@ -142,7 +164,7 @@ class DescriptorKindFilter(
                     val filter = field.get(null) as? DescriptorKindFilter
                     if (filter != null) MaskToName(filter.kindMask, field.name) else null
                 }
-                .toReadOnlyList()
+                .toList()
 
         private val DEBUG_MASK_BIT_NAMES = staticFields<DescriptorKindFilter>()
                 .filter { it.type == Integer.TYPE }
@@ -151,7 +173,7 @@ class DescriptorKindFilter(
                     val isOneBitMask = mask == (mask and (-mask))
                     if (isOneBitMask) MaskToName(mask, field.name) else null
                 }
-                .toReadOnlyList()
+                .toList()
 
         private inline fun <reified T : Any> staticFields() = T::class.java.fields.filter { Modifier.isStatic(it.modifiers) }
     }
@@ -160,9 +182,13 @@ class DescriptorKindFilter(
 abstract class DescriptorKindExclude {
     abstract fun excludes(descriptor: DeclarationDescriptor): Boolean
 
+    /**
+     * Bit-mask of descriptor kind's that are fully excluded by this [DescriptorKindExclude].
+     * That is, [excludes] returns true for all descriptor of these kinds.
+     */
     abstract val fullyExcludedDescriptorKinds: Int
 
-    override fun toString() = this.javaClass.simpleName
+    override fun toString() = this::class.java.simpleName
 
     object Extensions : DescriptorKindExclude() {
         override fun excludes(descriptor: DeclarationDescriptor)
@@ -175,8 +201,8 @@ abstract class DescriptorKindExclude {
         override fun excludes(descriptor: DeclarationDescriptor)
                 = descriptor !is CallableDescriptor || descriptor.extensionReceiverParameter == null
 
-        override val fullyExcludedDescriptorKinds: Int
-            get() = DescriptorKindFilter.ALL_KINDS_MASK and (DescriptorKindFilter.FUNCTIONS_MASK or DescriptorKindFilter.VARIABLES_MASK).inv()
+        override val fullyExcludedDescriptorKinds
+                = DescriptorKindFilter.ALL_KINDS_MASK and (DescriptorKindFilter.FUNCTIONS_MASK or DescriptorKindFilter.VARIABLES_MASK).inv()
     }
 
     object EnumEntry : DescriptorKindExclude() {

@@ -16,27 +16,17 @@
 
 package org.jetbrains.kotlin.serialization.builtins
 
-import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
-import org.jetbrains.kotlin.config.LanguageVersion
-import org.jetbrains.kotlin.context.ModuleContext
-import org.jetbrains.kotlin.descriptors.PackagePartProvider
+import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
 import org.jetbrains.kotlin.descriptors.resolveClassByFqName
-import org.jetbrains.kotlin.frontend.java.di.createContainerForTopDownAnalyzerForJvm
-import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.load.kotlin.JvmBuiltInsSettings
 import org.jetbrains.kotlin.load.kotlin.computeJvmDescriptor
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.platform.JvmBuiltIns
 import org.jetbrains.kotlin.resolve.descriptorUtil.isEffectivelyPublicApi
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
-import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform
-import org.jetbrains.kotlin.resolve.lazy.declarations.FileBasedDeclarationProviderFactory
-import org.jetbrains.kotlin.storage.LockBasedStorageManager
+import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil
 import org.jetbrains.kotlin.test.ConfigurationKind
-import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.KotlinTestWithEnvironment
 import org.jetbrains.kotlin.test.TestJdkKind
 
@@ -46,21 +36,7 @@ class AdditionalBuiltInsMembersSignatureListsTest : KotlinTestWithEnvironment() 
     }
 
     fun testAllListedSignaturesExistInJdk() {
-        val jvmBuiltIns = JvmBuiltIns(LockBasedStorageManager.NO_LOCKS)
-        val emptyModule = KotlinTestUtils.createEmptyModule("<empty>", JvmPlatform, jvmBuiltIns)
-        jvmBuiltIns.setOwnerModuleDescriptor(emptyModule)
-
-        val moduleContext = ModuleContext(emptyModule, environment.project)
-        val providerFactory = FileBasedDeclarationProviderFactory(moduleContext.storageManager, emptyList())
-
-        val container = createContainerForTopDownAnalyzerForJvm(
-                moduleContext, CliLightClassGenerationSupport.CliBindingTrace(), providerFactory,
-                GlobalSearchScope.allScope(environment.project), LookupTracker.DO_NOTHING, PackagePartProvider.EMPTY,
-                LanguageVersion.LATEST
-        )
-
-        emptyModule.initialize(container.javaDescriptorResolver.packageFragmentProvider)
-        emptyModule.setDependencies(emptyModule)
+        val module = JvmResolveUtil.analyze(environment).moduleDescriptor as ModuleDescriptorImpl
 
         val blackList =
                 JvmBuiltInsSettings.BLACK_LIST_METHOD_SIGNATURES +
@@ -75,7 +51,7 @@ class AdditionalBuiltInsMembersSignatureListsTest : KotlinTestWithEnvironment() 
             it ->
             val (internalName, jvmDescriptors) = it
             val classDescriptor =
-                    emptyModule.resolveClassByFqName(
+                    module.resolveClassByFqName(
                             JvmClassName.byInternalName(internalName).fqNameForClassNameWithoutDollars, NoLookupLocation.FROM_TEST
                     )!!
 

@@ -1,17 +1,18 @@
+// !DIAGNOSTICS: -UNUSED_VARIABLE -UNUSED_PARAMETER -TOPLEVEL_TYPEALIASES_ONLY
 // FILE: file1.kt
-class <!REDECLARATION!>SomeClass<!>
+class <!PACKAGE_OR_CLASSIFIER_REDECLARATION!>SomeClass<!>
 
-typealias <!REDECLARATION!>SomeClass<!> = Any
-typealias <!REDECLARATION!>SomeClass<!> = Any
-typealias <!REDECLARATION!>SomeClass<!> = Any
+typealias <!PACKAGE_OR_CLASSIFIER_REDECLARATION!>SomeClass<!> = Any
+typealias <!PACKAGE_OR_CLASSIFIER_REDECLARATION!>SomeClass<!> = Any
+typealias <!PACKAGE_OR_CLASSIFIER_REDECLARATION!>SomeClass<!> = Any
 
 class Outer {
-    class <!REDECLARATION, CONFLICTING_OVERLOADS!>Nested<!>
+    class <!REDECLARATION!>Nested<!>
 
-    <!CONFLICTING_OVERLOADS!>typealias <!REDECLARATION!>Nested<!> = Any<!>
-    <!CONFLICTING_OVERLOADS!>typealias <!REDECLARATION!>Nested<!> = Any<!>
-    <!CONFLICTING_OVERLOADS!>typealias <!REDECLARATION!>Nested<!> = Any<!>
+    typealias <!REDECLARATION!>Nested<!> = Any
+    typealias <!REDECLARATION!>Nested<!> = Any
+    typealias <!REDECLARATION!>Nested<!> = Any
 }
 
 // FILE: file2.kt
-typealias <!REDECLARATION!>SomeClass<!> = Any
+typealias <!PACKAGE_OR_CLASSIFIER_REDECLARATION!>SomeClass<!> = Any

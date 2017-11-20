@@ -16,9 +16,14 @@
 
 package org.jetbrains.kotlin.idea.stubindex.resolve
 
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analyzer.ModuleInfo
+import org.jetbrains.kotlin.idea.caches.PerModulePackageCacheService
+import org.jetbrains.kotlin.idea.caches.resolve.ModuleSourceInfo
 import org.jetbrains.kotlin.idea.stubindex.PackageIndexUtil
+import org.jetbrains.kotlin.idea.stubindex.SubpackagesIndexService
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.lazy.data.KtClassLikeInfo
@@ -29,7 +34,8 @@ class PluginDeclarationProviderFactory(
         private val project: Project,
         private val indexedFilesScope: GlobalSearchScope,
         private val storageManager: StorageManager,
-        private val nonIndexedFiles: Collection<KtFile>
+        private val nonIndexedFiles: Collection<KtFile>,
+        private val moduleInfo: ModuleInfo
 ) : AbstractDeclarationProviderFactory(storageManager) {
     private val fileBasedDeclarationProviderFactory = FileBasedDeclarationProviderFactory(storageManager, nonIndexedFiles)
 
@@ -48,17 +54,27 @@ class PluginDeclarationProviderFactory(
         }
     }
 
+    private fun packageExists(name: FqName): Boolean {
+        return if (moduleInfo is ModuleSourceInfo)
+            project.service<PerModulePackageCacheService>().packageExists(name, moduleInfo)
+        else
+            PackageIndexUtil.packageExists(name, indexedFilesScope, project)
+    }
+
     private fun getStubBasedPackageMemberDeclarationProvider(name: FqName): PackageMemberDeclarationProvider? {
-        if (!PackageIndexUtil.packageExists(name, indexedFilesScope, project)) return null
+        if (!packageExists(name)) return null
 
         return StubBasedPackageMemberDeclarationProvider(name, project, indexedFilesScope)
     }
 
     override fun diagnoseMissingPackageFragment(file: KtFile) {
         val packageFqName = file.packageFqName
+        val subpackagesIndex = SubpackagesIndexService.getInstance(project)
         throw IllegalStateException("Cannot find package fragment for file ${file.name} with package $packageFqName, " +
                                     "vFile ${file.virtualFile}, nonIndexed ${file in nonIndexedFiles} " +
-                                    "packageExists=${PackageIndexUtil.packageExists(packageFqName, indexedFilesScope, project)}")
+                                    "packageExists=${PackageIndexUtil.packageExists(packageFqName, indexedFilesScope, project)} in $indexedFilesScope," +
+                                    "SPI.packageExists=${subpackagesIndex.packageExists(packageFqName)} SPI=$subpackagesIndex " +
+                                    "OOCB count ${file.manager.modificationTracker.outOfCodeBlockModificationCount}}")
     }
 
     // trying to diagnose org.jetbrains.kotlin.resolve.lazy.NoDescriptorForDeclarationException in completion

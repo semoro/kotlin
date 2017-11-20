@@ -47,7 +47,10 @@ public enum class AnnotationTarget {
     /** Any expression */
     EXPRESSION,
     /** File */
-    FILE
+    FILE,
+    /** Type alias */
+    @SinceKotlin("1.1")
+    TYPEALIAS
 }
 
 /**

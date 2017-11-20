@@ -16,15 +16,19 @@
 
 package org.jetbrains.kotlin.jvm.runtime
 
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.io.FileUtil
+import org.jetbrains.kotlin.checkers.KotlinMultiFileTestWithJava
 import org.jetbrains.kotlin.codegen.GenerationUtils
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
+import org.jetbrains.kotlin.config.ContentRoot
+import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.descriptors.impl.PackageFragmentDescriptorImpl
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.jvm.compiler.ExpectedLoadErrorsUtil
 import org.jetbrains.kotlin.jvm.compiler.LoadDescriptorUtil
-import org.jetbrains.kotlin.load.java.ANNOTATIONS_COPIED_TO_TYPES
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor
 import org.jetbrains.kotlin.load.java.structure.reflect.classId
 import org.jetbrains.kotlin.load.kotlin.header.KotlinClassHeader
@@ -32,22 +36,17 @@ import org.jetbrains.kotlin.load.kotlin.reflect.ReflectKotlinClass
 import org.jetbrains.kotlin.load.kotlin.reflect.RuntimeModuleData
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.renderer.DescriptorRenderer
-import org.jetbrains.kotlin.renderer.DescriptorRendererModifier
-import org.jetbrains.kotlin.renderer.OverrideRenderingPolicy
-import org.jetbrains.kotlin.renderer.ParameterNameRenderingPolicy
+import org.jetbrains.kotlin.renderer.*
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.scopes.ChainedMemberScope
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.resolve.scopes.MemberScopeImpl
-import org.jetbrains.kotlin.serialization.deserialization.findClassAcrossModuleDependencies
 import org.jetbrains.kotlin.test.*
 import org.jetbrains.kotlin.test.KotlinTestUtils.TestFileFactoryNoModules
 import org.jetbrains.kotlin.test.util.DescriptorValidator.ValidationVisitor.errorTypesForbidden
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.Configuration
-import org.jetbrains.kotlin.types.TypeSubstitutor
 import org.jetbrains.kotlin.utils.Printer
 import org.jetbrains.kotlin.utils.sure
 import java.io.File
@@ -59,13 +58,14 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
     companion object {
         private val renderer = DescriptorRenderer.withOptions {
             withDefinedIn = false
-            excludedAnnotationClasses = (listOf(
+            excludedAnnotationClasses = setOf(
                     FqName(ExpectedLoadErrorsUtil.ANNOTATION_CLASS_NAME)
-            ) + ANNOTATIONS_COPIED_TO_TYPES).toSet()
+            )
             overrideRenderingPolicy = OverrideRenderingPolicy.RENDER_OPEN_OVERRIDE
             parameterNameRenderingPolicy = ParameterNameRenderingPolicy.NONE
             includePropertyConstant = false
             verbose = true
+            annotationArgumentsRenderingPolicy = AnnotationArgumentsRenderingPolicy.UNLESS_EMPTY
             renderDefaultAnnotationArguments = true
             modifiers = DescriptorRendererModifier.ALL
         }
@@ -96,6 +96,7 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
                 /* checkPrimaryConstructors = */ fileName.endsWith(".kt"),
                 /* checkPropertyAccessors = */ true,
                 /* includeMethodsOfKotlinAny = */ false,
+                /* renderDeclarationsFromOtherModules = */ true,
                 // Skip Java annotation constructors because order of their parameters is not retained at runtime
                 { descriptor -> !descriptor!!.isJavaAnnotationConstructor() },
                 errorTypesForbidden(), renderer
@@ -108,14 +109,14 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
         }
 
         val expected = LoadDescriptorUtil.loadTestPackageAndBindingContextFromJavaRoot(
-                tmpdir, testRootDisposable, jdkKind, ConfigurationKind.ALL, true
+                tmpdir, testRootDisposable, jdkKind, ConfigurationKind.ALL, true, false, false
         ).first
 
         RecursiveDescriptorComparator.validateAndCompareDescriptors(expected, actual, comparatorConfiguration, null)
     }
 
     private fun DeclarationDescriptor.isJavaAnnotationConstructor() =
-            this is ConstructorDescriptor &&
+            this is ClassConstructorDescriptor &&
             containingDeclaration is JavaClassDescriptor &&
             containingDeclaration.kind == ClassKind.ANNOTATION_CLASS
 
@@ -136,6 +137,9 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
                 val environment = KotlinTestUtils.createEnvironmentWithJdkAndNullabilityAnnotationsFromIdea(
                         myTestRootDisposable, ConfigurationKind.ALL, jdkKind
                 )
+                for (root in environment.configuration.getList(JVMConfigurationKeys.CONTENT_ROOTS)) {
+                    LOG.info("root: " + root.toString())
+                }
                 val ktFile = KotlinTestUtils.createFile(file.path, text, environment.project)
                 GenerationUtils.compileFileTo(ktFile, environment, tmpdir)
             }
@@ -144,7 +148,7 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
 
     private fun createReflectedPackageView(classLoader: URLClassLoader, moduleName: String): SyntheticPackageViewForTest {
         val moduleData = RuntimeModuleData.create(classLoader)
-        moduleData.packageFacadeProvider.registerModule(moduleName)
+        moduleData.packagePartProvider.registerModule(moduleName)
         val module = moduleData.module
 
         val generatedPackageDir = File(tmpdir, LoadDescriptorUtil.TEST_PACKAGE_FQNAME.pathSegments().single().asString())
@@ -184,10 +188,14 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
 
     private fun adaptJavaSource(text: String): String {
         val typeAnnotations = arrayOf("NotNull", "Nullable", "ReadOnly", "Mutable")
-        return typeAnnotations.fold(text) { text, annotation -> text.replace("@$annotation", "") }.replace(
-                "@interface",
-                "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) @interface"
-        )
+        val adaptedSource = typeAnnotations.fold(text) { text, annotation -> text.replace("@$annotation", "") }
+        if ("@Retention" !in adaptedSource) {
+            return adaptedSource.replace(
+                    "@interface",
+                    "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) @interface"
+            )
+        }
+        return adaptedSource
     }
 
     private class SyntheticPackageViewForTest(override val module: ModuleDescriptor,
@@ -206,17 +214,20 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
             get() = LoadDescriptorUtil.TEST_PACKAGE_FQNAME
         override val memberScope: MemberScope
             get() = scope
+        override val fragments: List<PackageFragmentDescriptor> = listOf(
+                object : PackageFragmentDescriptorImpl(module, fqName) {
+                    override fun getMemberScope(): MemberScope = scope
+                }
+        )
+
         override fun <R, D> accept(visitor: DeclarationDescriptorVisitor<R, D>, data: D): R =
                 visitor.visitPackageViewDescriptor(this, data)
 
         override fun getContainingDeclaration() = null
         override fun getOriginal() = throw UnsupportedOperationException()
-        override fun substitute(substitutor: TypeSubstitutor) = throw UnsupportedOperationException()
         override fun acceptVoid(visitor: DeclarationDescriptorVisitor<Void, Void>?) = throw UnsupportedOperationException()
         override fun getName() = throw UnsupportedOperationException()
         override val annotations: Annotations
-            get() = throw UnsupportedOperationException()
-        override val fragments: Nothing
             get() = throw UnsupportedOperationException()
     }
 
@@ -243,3 +254,5 @@ abstract class AbstractJvmRuntimeDescriptorLoaderTest : TestCaseWithTmpdir() {
     }
 
 }
+
+private val LOG = Logger.getInstance(KotlinMultiFileTestWithJava::class.java)

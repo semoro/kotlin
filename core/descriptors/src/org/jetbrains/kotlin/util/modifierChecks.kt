@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.typeUtil.*
+import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
+import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import org.jetbrains.kotlin.util.MemberKindCheck.Member
 import org.jetbrains.kotlin.util.MemberKindCheck.MemberOrExtension
 import org.jetbrains.kotlin.util.OperatorNameConventions.ASSIGNMENT_OPERATIONS
@@ -35,8 +35,6 @@ import org.jetbrains.kotlin.util.OperatorNameConventions.BINARY_OPERATION_NAMES
 import org.jetbrains.kotlin.util.OperatorNameConventions.COMPARE_TO
 import org.jetbrains.kotlin.util.OperatorNameConventions.COMPONENT_REGEX
 import org.jetbrains.kotlin.util.OperatorNameConventions.CONTAINS
-import org.jetbrains.kotlin.util.OperatorNameConventions.COROUTINE_HANDLE_EXCEPTION
-import org.jetbrains.kotlin.util.OperatorNameConventions.COROUTINE_HANDLE_RESULT
 import org.jetbrains.kotlin.util.OperatorNameConventions.DEC
 import org.jetbrains.kotlin.util.OperatorNameConventions.EQUALS
 import org.jetbrains.kotlin.util.OperatorNameConventions.GET
@@ -46,6 +44,7 @@ import org.jetbrains.kotlin.util.OperatorNameConventions.INC
 import org.jetbrains.kotlin.util.OperatorNameConventions.INVOKE
 import org.jetbrains.kotlin.util.OperatorNameConventions.ITERATOR
 import org.jetbrains.kotlin.util.OperatorNameConventions.NEXT
+import org.jetbrains.kotlin.util.OperatorNameConventions.PROVIDE_DELEGATE
 import org.jetbrains.kotlin.util.OperatorNameConventions.RANGE_TO
 import org.jetbrains.kotlin.util.OperatorNameConventions.SET
 import org.jetbrains.kotlin.util.OperatorNameConventions.SET_VALUE
@@ -104,7 +103,7 @@ private object NoTypeParametersCheck : Check {
 }
 
 private object IsKPropertyCheck : Check {
-    override val description = "second parameter must have a KProperty type or its supertype"
+    override val description = "second parameter must be of type KProperty<*> or its supertype"
     override fun check(functionDescriptor: FunctionDescriptor): Boolean {
         val secondParameter = functionDescriptor.valueParameters[1]
         return ReflectionTypes.createKPropertyStarType(secondParameter.module)?.isSubtypeOf(secondParameter.type.makeNotNullable()) ?: false
@@ -162,7 +161,7 @@ internal class Checks private constructor(
 
 abstract class AbstractModifierChecks {
     abstract internal val checks: List<Checks>
-    
+
     inline fun ensure(cond: Boolean, msg: () -> String) = if (!cond) msg() else null
 
     fun check(functionDescriptor: FunctionDescriptor): CheckResult {
@@ -184,6 +183,7 @@ object OperatorChecks : AbstractModifierChecks() {
             },
             Checks(GET_VALUE, MemberOrExtension, NoDefaultAndVarargsCheck, ValueParameterCountCheck.AtLeast(2), IsKPropertyCheck),
             Checks(SET_VALUE, MemberOrExtension, NoDefaultAndVarargsCheck, ValueParameterCountCheck.AtLeast(3), IsKPropertyCheck),
+            Checks(PROVIDE_DELEGATE, MemberOrExtension, NoDefaultAndVarargsCheck, ValueParameterCountCheck.Equals(2), IsKPropertyCheck),
             Checks(INVOKE, MemberOrExtension),
             Checks(CONTAINS, MemberOrExtension, SingleValueParameter, NoDefaultAndVarargsCheck, ReturnsBoolean),
             Checks(ITERATOR, MemberOrExtension, NoValueParameters),
@@ -192,42 +192,20 @@ object OperatorChecks : AbstractModifierChecks() {
             Checks(RANGE_TO, MemberOrExtension, SingleValueParameter, NoDefaultAndVarargsCheck),
             Checks(EQUALS, Member) {
                 fun DeclarationDescriptor.isAny() = this is ClassDescriptor && KotlinBuiltIns.isAny(this)
-                ensure(overriddenDescriptors.any { it.containingDeclaration.isAny() }) { "must override ''equals()'' in Any" }
+                ensure(containingDeclaration.isAny() || overriddenDescriptors.any { it.containingDeclaration.isAny() }) { "must override ''equals()'' in Any" }
             },
             Checks(COMPARE_TO, MemberOrExtension, ReturnsInt, SingleValueParameter, NoDefaultAndVarargsCheck),
             Checks(BINARY_OPERATION_NAMES, MemberOrExtension, SingleValueParameter, NoDefaultAndVarargsCheck),
             Checks(SIMPLE_UNARY_OPERATION_NAMES, MemberOrExtension, NoValueParameters),
             Checks(listOf(INC, DEC), MemberOrExtension) {
                 val receiver = dispatchReceiverParameter ?: extensionReceiverParameter
-                ensure(receiver != null && (returnType?.let { it.isSubtypeOf(receiver.type) } ?: false)) {
+                ensure(receiver != null && (returnType?.isSubtypeOf(receiver.type) ?: false)) {
                     "receiver must be a supertype of the return type"
                 }
             },
             Checks(ASSIGNMENT_OPERATIONS, MemberOrExtension, ReturnsUnit, SingleValueParameter, NoDefaultAndVarargsCheck),
-            Checks(COMPONENT_REGEX, MemberOrExtension, NoValueParameters),
-            Checks(COROUTINE_HANDLE_RESULT, Member, ValueParameterCountCheck.Equals(2), ReturnsUnit, NoDefaultAndVarargsCheck,
-                   NoTypeParametersCheck) {
-                checkHandleSecondParameter()
-            },
-            Checks(COROUTINE_HANDLE_EXCEPTION, Member, ValueParameterCountCheck.Equals(2), ReturnsUnit, NoDefaultAndVarargsCheck,
-                   NoTypeParametersCheck) {
-                checkHandleSecondParameter()
-                ?: ensure(valueParameters[0].type.isThrowable()) {
-                    "First parameter should be 'Throwable'"
-                }
-            }
-    )
-
-    private fun FunctionDescriptor.checkHandleSecondParameter(): String? {
-        val secondParameter = valueParameters[1]
-        return ensure(
-                secondParameter.type.isConstructedFromClassWithGivenFqName(DescriptorUtils.CONTINUATION_INTERFACE_FQ_NAME)
-                && secondParameter.type.arguments[0].type.isNothing()
-        ) {
-            "Second parameter should be Continuation<Nothing>"
-        }
-    }
-}
+            Checks(COMPONENT_REGEX, MemberOrExtension, NoValueParameters)
+    ) }
 
 object InfixChecks : AbstractModifierChecks() {
     override val checks = listOf(

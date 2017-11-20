@@ -28,8 +28,7 @@ import org.jetbrains.kotlin.js.resolve.diagnostics.JsCallDataHtmlRenderer;
 import java.net.URL;
 
 import static org.jetbrains.kotlin.diagnostics.Errors.*;
-import static org.jetbrains.kotlin.diagnostics.rendering.Renderers.RENDER_CLASS_OR_OBJECT;
-import static org.jetbrains.kotlin.diagnostics.rendering.Renderers.STRING;
+import static org.jetbrains.kotlin.diagnostics.rendering.Renderers.*;
 import static org.jetbrains.kotlin.diagnostics.rendering.TabledDescriptorRenderer.TextElementType;
 import static org.jetbrains.kotlin.idea.highlighter.HtmlTabledDescriptorRenderer.tableForTypes;
 import static org.jetbrains.kotlin.idea.highlighter.IdeRenderers.*;
@@ -129,14 +128,13 @@ public class IdeErrorMessages {
         MAP.put(VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION, "<html>Val-property cannot override var-property<br />" +
                                        "{1}</html>", HTML, HTML);
 
-        MAP.put(ABSTRACT_MEMBER_NOT_IMPLEMENTED, "<html>{0} must be declared abstract or implement abstract member<br/>" +
-                                                 "{1}</html>", RENDER_CLASS_OR_OBJECT,
-                HTML);
+        MAP.put(ABSTRACT_MEMBER_NOT_IMPLEMENTED, "<html>{0} is not abstract and does not implement abstract member<br/>" +
+                                                 "{1}</html>", RENDER_CLASS_OR_OBJECT, HTML);
+        MAP.put(ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED, "<html>{0} is not abstract and does not implement abstract base class member<br/>" +
+                                                       "{1}</html>", RENDER_CLASS_OR_OBJECT, HTML);
 
         MAP.put(MANY_IMPL_MEMBER_NOT_IMPLEMENTED, "<html>{0} must override {1}<br />because it inherits many implementations of it</html>",
                 RENDER_CLASS_OR_OBJECT, HTML);
-        MAP.put(CONFLICTING_OVERLOADS, "<html>''{0}''<br />conflicts with another declaration in {1}</html>",
-                IdeRenderers.HTML_COMPACT_WITH_MODIFIERS, Renderers.DECLARATION_NAME_WITH_KIND);
 
         MAP.put(RESULT_TYPE_MISMATCH, "<html>Function return type mismatch." +
                                       "<table><tr><td>Expected:</td><td>{1}</td></tr>" +
@@ -173,6 +171,18 @@ public class IdeErrorMessages {
 
         MAP.put(ErrorsJs.JSCODE_ERROR, "<html>JavaScript: {0}</html>", JsCallDataHtmlRenderer.INSTANCE);
         MAP.put(ErrorsJs.JSCODE_WARNING, "<html>JavaScript: {0}</html>", JsCallDataHtmlRenderer.INSTANCE);
+        MAP.put(UNSUPPORTED_FEATURE, "<html>{0}</html>", new LanguageFeatureMessageRenderer(LanguageFeatureMessageRenderer.Type.UNSUPPORTED, true));
+        MAP.put(EXPERIMENTAL_FEATURE_WARNING, "<html>{0}</html>", new LanguageFeatureMessageRenderer(LanguageFeatureMessageRenderer.Type.WARNING, true));
+        MAP.put(EXPERIMENTAL_FEATURE_ERROR, "<html>{0}</html>", new LanguageFeatureMessageRenderer(LanguageFeatureMessageRenderer.Type.ERROR, true));
+
+        MAP.put(NO_ACTUAL_FOR_EXPECT, "<html>Expected {0} has no actual declaration in module{1}{2}</html>", DECLARATION_NAME_WITH_KIND,
+                PLATFORM, new PlatformIncompatibilityDiagnosticRenderer(IdeMultiplatformDiagnosticRenderingMode.INSTANCE));
+        MAP.put(ACTUAL_WITHOUT_EXPECT, "<html>Actual {0} has no corresponding expected declaration{1}</html>", DECLARATION_NAME_WITH_KIND,
+                new PlatformIncompatibilityDiagnosticRenderer(IdeMultiplatformDiagnosticRenderingMode.INSTANCE));
+
+        MAP.put(NO_ACTUAL_CLASS_MEMBER_FOR_EXPECTED_CLASS, "<html>Actual class ''{0}'' has no corresponding members for expected class members:{1}</html>",
+                NAME, new IncompatibleExpectedActualClassScopesRenderer(IdeMultiplatformDiagnosticRenderingMode.INSTANCE));
+
         MAP.setImmutable();
     }
 

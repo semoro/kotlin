@@ -30,7 +30,6 @@ import org.jetbrains.kotlin.psi.KtCallElement
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.KtValueArgument
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
-import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.renderer.render
 import org.jetbrains.kotlin.types.KotlinType
 import java.util.*
@@ -59,9 +58,9 @@ object NamedArgumentCompletion {
         }
 
         for ((name, types) in nameToParameterType) {
-            val typeText = types.singleOrNull()?.let { DescriptorRenderer.SHORT_NAMES_IN_TYPES.renderType(it) } ?: "..."
+            val typeText = types.singleOrNull()?.let { BasicLookupElementFactory.SHORT_NAMES_RENDERER.renderType(it) } ?: "..."
             val nameString = name.asString()
-            val lookupElement = LookupElementBuilder.create(nameString)
+            val lookupElement = LookupElementBuilder.create("$nameString =")
                     .withPresentableText("$nameString =")
                     .withTailText(" $typeText")
                     .withIcon(KotlinIcons.PARAMETER)

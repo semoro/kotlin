@@ -35,8 +35,7 @@ class RemoveForLoopIndicesInspection : IntentionBasedInspection<KtForExpression>
         RemoveForLoopIndicesIntention::class,
         "Index is not used in the loop body"
 ) {
-    override val problemHighlightType: ProblemHighlightType
-        get() = ProblemHighlightType.LIKE_UNUSED_SYMBOL
+    override fun problemHighlightType(element: KtForExpression): ProblemHighlightType = ProblemHighlightType.LIKE_UNUSED_SYMBOL
 }
 
 class RemoveForLoopIndicesIntention : SelfTargetingRangeIntention<KtForExpression>(KtForExpression::class.java, "Remove indices in 'for' loop") {
@@ -45,7 +44,7 @@ class RemoveForLoopIndicesIntention : SelfTargetingRangeIntention<KtForExpressio
 
     override fun applicabilityRange(element: KtForExpression): TextRange? {
         val loopRange = element.loopRange as? KtDotQualifiedExpression ?: return null
-        val multiParameter = element.destructuringParameter ?: return null
+        val multiParameter = element.destructuringDeclaration ?: return null
         if (multiParameter.entries.size != 2) return null
 
         val bindingContext = element.analyze(BodyResolveMode.PARTIAL)
@@ -60,12 +59,12 @@ class RemoveForLoopIndicesIntention : SelfTargetingRangeIntention<KtForExpressio
     }
 
     override fun applyTo(element: KtForExpression, editor: Editor?) {
-        val multiParameter = element.destructuringParameter!!
+        val multiParameter = element.destructuringDeclaration!!
         val loopRange = element.loopRange as KtDotQualifiedExpression
 
         val elementVar = multiParameter.entries[1]
         val loop = KtPsiFactory(element).createExpressionByPattern("for ($0 in _) {}", elementVar.text) as KtForExpression
-        multiParameter.replace(loop.loopParameter!!)
+        element.loopParameter!!.replace(loop.loopParameter!!)
 
         loopRange.replace(loopRange.receiverExpression)
     }

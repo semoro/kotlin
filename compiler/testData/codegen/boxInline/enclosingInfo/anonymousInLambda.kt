@@ -1,5 +1,7 @@
-// FILE: 1.kt
+// IGNORE_BACKEND: NATIVE
+// NO_CHECK_LAMBDA_INLINING
 // WITH_REFLECT
+// FILE: 1.kt
 package test
 
 inline fun <R> call(s: () -> R) = s()

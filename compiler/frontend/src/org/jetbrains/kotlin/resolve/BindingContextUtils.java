@@ -20,7 +20,6 @@ import com.google.common.collect.Lists;
 import com.intellij.openapi.util.Pair;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
-import kotlin.jvm.functions.Function3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
@@ -36,7 +35,8 @@ import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.types.expressions.KotlinTypeInfo;
 import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryKt;
-import org.jetbrains.kotlin.util.slicedMap.*;
+import org.jetbrains.kotlin.util.slicedMap.MutableSlicedMap;
+import org.jetbrains.kotlin.util.slicedMap.ReadOnlySlice;
 
 import java.util.Collection;
 
@@ -181,7 +181,7 @@ public class BindingContextUtils {
     @Nullable
     public static KotlinTypeInfo getRecordedTypeInfo(@NotNull KtExpression expression, @NotNull BindingContext context) {
         // noinspection ConstantConditions
-        if (!context.get(BindingContext.PROCESSED, expression)) return null;
+        if (context.get(BindingContext.PROCESSED, expression) != Boolean.TRUE) return null;
         // NB: should never return null if expression is already processed
         KotlinTypeInfo result = context.get(BindingContext.EXPRESSION_TYPE_INFO, expression);
         return result != null ? result : TypeInfoFactoryKt.noTypeInfo(DataFlowInfoFactory.EMPTY);
@@ -218,7 +218,7 @@ public class BindingContextUtils {
                     .getSourceFromDescriptor(containingFunctionDescriptor) : null;
         }
 
-        return new Pair<FunctionDescriptor, PsiElement>(containingFunctionDescriptor, containingFunction);
+        return new Pair<>(containingFunctionDescriptor, containingFunction);
     }
 
     @Nullable
@@ -230,18 +230,15 @@ public class BindingContextUtils {
     }
 
     static void addOwnDataTo(
-            @NotNull final BindingTrace trace, @Nullable final TraceEntryFilter filter, boolean commitDiagnostics,
+            @NotNull BindingTrace trace, @Nullable TraceEntryFilter filter, boolean commitDiagnostics,
             @NotNull MutableSlicedMap map, MutableDiagnosticsWithSuppression diagnostics
     ) {
-        map.forEach(new Function3<WritableSlice, Object, Object, Void>() {
-            @Override
-            public Void invoke(WritableSlice slice, Object key, Object value) {
-                if (filter == null || filter.accept(slice, key)) {
-                    trace.record(slice, key, value);
-                }
-
-                return null;
+        map.forEach((slice, key, value) -> {
+            if (filter == null || filter.accept(slice, key)) {
+                trace.record(slice, key, value);
             }
+
+            return null;
         });
 
         if (!commitDiagnostics) return;

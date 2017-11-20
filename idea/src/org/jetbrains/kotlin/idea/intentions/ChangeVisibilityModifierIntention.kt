@@ -19,7 +19,10 @@ package org.jetbrains.kotlin.idea.intentions
 import com.intellij.codeInsight.intention.HighPriorityAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
-import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithVisibility
+import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.idea.core.canBePrivate
 import org.jetbrains.kotlin.idea.core.canBeProtected
 import org.jetbrains.kotlin.idea.core.setVisibility
@@ -29,6 +32,7 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifier
+import java.lang.IllegalArgumentException
 
 open class ChangeVisibilityModifierIntention protected constructor(
         val modifier: KtModifierKeywordToken
@@ -52,14 +56,9 @@ open class ChangeVisibilityModifierIntention protected constructor(
 
         text = defaultText
 
-        val modifierElement = element.visibilityModifier()
-        if (modifierElement != null) {
-            return modifierElement.textRange
-        }
-
         val defaultRange = noModifierYetApplicabilityRange(element) ?: return null
 
-        if (element is KtPrimaryConstructor && defaultRange.isEmpty) {
+        if (element is KtPrimaryConstructor && defaultRange.isEmpty && element.visibilityModifier() == null) {
             text = "Make primary constructor ${modifier.value}" // otherwise it may be confusing
         }
 
@@ -93,14 +92,18 @@ open class ChangeVisibilityModifierIntention protected constructor(
             is KtPrimaryConstructor -> declaration.valueParameterList?.let { TextRange.from(it.startOffset, 0) } //TODO: use constructor keyword if exist
             is KtSecondaryConstructor -> declaration.getConstructorKeyword().textRange
             is KtParameter -> declaration.valOrVarKeyword?.textRange
+            is KtTypeAlias -> declaration.getTypeAliasKeyword()?.textRange
             else -> null
         }
     }
+
+    protected fun isAnnotationClassPrimaryConstructor(element: KtDeclaration) = element is KtPrimaryConstructor && (element.parent as? KtClass)?.hasModifier(KtTokens.ANNOTATION_KEYWORD) ?: false
 
     class Public : ChangeVisibilityModifierIntention(KtTokens.PUBLIC_KEYWORD), HighPriorityAction
 
     class Private : ChangeVisibilityModifierIntention(KtTokens.PRIVATE_KEYWORD), HighPriorityAction {
         override fun applicabilityRange(element: KtDeclaration): TextRange? {
+            if (isAnnotationClassPrimaryConstructor(element)) return null
             return if (element.canBePrivate()) super.applicabilityRange(element) else null
         }
     }
@@ -111,5 +114,10 @@ open class ChangeVisibilityModifierIntention protected constructor(
         }
     }
 
-    class Internal : ChangeVisibilityModifierIntention(KtTokens.INTERNAL_KEYWORD)
+    class Internal : ChangeVisibilityModifierIntention(KtTokens.INTERNAL_KEYWORD) {
+        override fun applicabilityRange(element: KtDeclaration): TextRange? {
+            if (isAnnotationClassPrimaryConstructor(element)) return null
+            return super.applicabilityRange(element)
+        }
+    }
 }

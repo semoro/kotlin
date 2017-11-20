@@ -16,21 +16,15 @@
 
 package org.jetbrains.kotlin.resolve.calls.util
 
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.builtins.getFunctionTypeArgumentProjections
-import org.jetbrains.kotlin.builtins.isExtensionFunctionType
-import org.jetbrains.kotlin.builtins.isFunctionType
+import org.jetbrains.kotlin.builtins.isBuiltinExtensionFunctionalType
+import org.jetbrains.kotlin.builtins.isBuiltinFunctionalType
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.SourceElement
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptorImpl
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationsImpl
 import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.KotlinTypeFactory
-import org.jetbrains.kotlin.types.SimpleType
 import org.jetbrains.kotlin.types.TypeProjection
 
 fun createValueParametersForInvokeInFunctionType(
@@ -43,42 +37,13 @@ fun createValueParametersForInvokeInFunctionType(
                 /* declaresDefaultValue = */ false,
                 /* isCrossinline = */ false,
                 /* isNoinline = */ false,
-                /* isCoroutine = */ false,
                 null, SourceElement.NO_SOURCE
         )
     }
 }
 
-fun createFunctionType(
-        builtIns: KotlinBuiltIns,
-        annotations: Annotations,
-        receiverType: KotlinType?,
-        parameterTypes: List<KotlinType>,
-        returnType: KotlinType
-): SimpleType {
-    val arguments = getFunctionTypeArgumentProjections(receiverType, parameterTypes, returnType)
-    val size = parameterTypes.size
-    val classDescriptor = builtIns.getFunction(if (receiverType == null) size else size + 1)
-
-    val typeAnnotations =
-            if (receiverType == null || annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.extensionFunctionType) != null) {
-                annotations
-            }
-            else {
-                val extensionFunctionAnnotation = AnnotationDescriptorImpl(
-                        builtIns.getBuiltInClassByName(KotlinBuiltIns.FQ_NAMES.extensionFunctionType.shortName()).defaultType,
-                        emptyMap(), SourceElement.NO_SOURCE
-                )
-
-                // TODO: preserve laziness of given annotations
-                AnnotationsImpl(annotations + extensionFunctionAnnotation)
-            }
-
-    return KotlinTypeFactory.simpleNotNullType(typeAnnotations, classDescriptor, arguments)
-}
-
 fun getValueParametersCountFromFunctionType(type: KotlinType): Int {
-    assert(type.isFunctionType) { "Not a function type: $type" }
+    assert(type.isBuiltinFunctionalType) { "Not a function type: $type" }
     // Function type arguments = receiver? + parameters + return-type
-    return type.arguments.size - (if (type.isExtensionFunctionType) 1 else 0) - 1
+    return type.arguments.size - (if (type.isBuiltinExtensionFunctionalType) 1 else 0) - 1
 }

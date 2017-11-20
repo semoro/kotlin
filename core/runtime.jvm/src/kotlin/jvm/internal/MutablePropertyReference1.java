@@ -16,24 +16,23 @@
 
 package kotlin.jvm.internal;
 
+import kotlin.SinceKotlin;
 import kotlin.reflect.KCallable;
 import kotlin.reflect.KMutableProperty1;
 import kotlin.reflect.KProperty1;
 
-public class MutablePropertyReference1 extends MutablePropertyReference implements KMutableProperty1 {
+public abstract class MutablePropertyReference1 extends MutablePropertyReference implements KMutableProperty1 {
+    public MutablePropertyReference1() {
+    }
+
+    @SinceKotlin(version = "1.1")
+    public MutablePropertyReference1(Object receiver) {
+        super(receiver);
+    }
+
     @Override
     protected KCallable computeReflected() {
         return Reflection.mutableProperty1(this);
-    }
-
-    @Override
-    public Object get(Object receiver) {
-        return ((KMutableProperty1) getReflected()).get(receiver);
-    }
-
-    @Override
-    public void set(Object receiver, Object value) {
-        ((KMutableProperty1) getReflected()).set(receiver, value);
     }
 
     @Override
@@ -49,5 +48,11 @@ public class MutablePropertyReference1 extends MutablePropertyReference implemen
     @Override
     public KMutableProperty1.Setter getSetter() {
         return ((KMutableProperty1) getReflected()).getSetter();
+    }
+
+    @Override
+    @SinceKotlin(version = "1.1")
+    public Object getDelegate(Object receiver) {
+        return ((KMutableProperty1) getReflected()).getDelegate(receiver);
     }
 }

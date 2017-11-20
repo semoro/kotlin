@@ -27,9 +27,12 @@ import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.listeners.RefactoringElementListener
 import com.intellij.refactoring.rename.RenamePsiElementProcessor
 import com.intellij.usageView.UsageInfo
+import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.idea.core.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.core.quoteIfNeeded
+import org.jetbrains.kotlin.idea.highlighter.markers.actualsForExpected
+import org.jetbrains.kotlin.idea.highlighter.markers.liftToExpected
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
 import org.jetbrains.kotlin.idea.search.projectScope
@@ -58,8 +61,20 @@ abstract class RenameKotlinPsiProcessor : RenamePsiElementProcessor() {
     }
 
     override fun prepareRenaming(element: PsiElement, newName: String?, allRenames: MutableMap<PsiElement, String>, scope: SearchScope) {
-        if (newName != null && !KotlinNameSuggester.isIdentifier(newName)) {
-            allRenames[element] = newName.quoteIfNeeded()
+        if (newName == null) return
+
+        val safeNewName = newName.quoteIfNeeded()
+
+        if (!KotlinNameSuggester.isIdentifier(newName)) {
+            allRenames[element] = safeNewName
+        }
+
+        val declaration = element.namedUnwrappedElement as? KtNamedDeclaration
+        if (declaration != null) {
+            declaration.liftToExpected()?.let { expectDeclaration ->
+                allRenames[expectDeclaration] = safeNewName
+                expectDeclaration.actualsForExpected().forEach { allRenames[it] = safeNewName }
+            }
         }
     }
 

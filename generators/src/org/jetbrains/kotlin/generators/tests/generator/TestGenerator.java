@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.generators.util.GeneratorsFileUtil;
 import org.jetbrains.kotlin.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.kotlin.test.TargetBackend;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.jetbrains.kotlin.utils.Printer;
 import org.junit.runner.RunWith;
@@ -39,13 +40,6 @@ import java.util.Set;
 import static kotlin.collections.CollectionsKt.single;
 
 public class TestGenerator {
-
-    public enum TargetBackend {
-        ANY,
-        @SuppressWarnings("unused") JVM,
-        JS
-    }
-
     private static final Set<String> GENERATED_FILES = ContainerUtil.newHashSet();
     private static final Class RUNNER = JUnit3RunnerWithInners.class;
 
@@ -86,6 +80,7 @@ public class TestGenerator {
         p.println("import com.intellij.testFramework.TestDataPath;");
         p.println("import ", RUNNER.getCanonicalName(), ";");
         p.println("import " + KotlinTestUtils.class.getCanonicalName() + ";");
+        p.println("import " + TargetBackend.class.getCanonicalName() + ";");
         if (!suiteClassPackage.equals(baseTestClassPackage)) {
             p.println("import " + baseTestClassPackage + "." + baseTestClassName + ";");
         }
@@ -166,21 +161,34 @@ public class TestGenerator {
         Collection<MethodModel> testMethods = testClassModel.getMethods();
         Collection<TestClassModel> innerTestClasses = testClassModel.getInnerTestClasses();
 
+        boolean first = true;
+
         for (Iterator<MethodModel> iterator = testMethods.iterator(); iterator.hasNext(); ) {
             MethodModel methodModel = iterator.next();
-            generateTestMethod(p, methodModel);
-            if (iterator.hasNext() || !innerTestClasses.isEmpty()) {
+
+            if (!methodModel.shouldBeGenerated()) continue;
+
+            if (first) {
+                first = false;
+            }
+            else {
                 p.println();
             }
+
+            generateTestMethod(p, methodModel);
         }
 
         for (Iterator<TestClassModel> iterator = innerTestClasses.iterator(); iterator.hasNext(); ) {
             TestClassModel innerTestClass = iterator.next();
             if (!innerTestClass.isEmpty()) {
-                generateTestClass(p, innerTestClass, true);
-                if (iterator.hasNext()) {
+                if (first) {
+                    first = false;
+                }
+                else {
                     p.println();
                 }
+
+                generateTestClass(p, innerTestClass, true);
             }
         }
 

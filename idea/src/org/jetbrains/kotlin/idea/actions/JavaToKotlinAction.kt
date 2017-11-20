@@ -16,12 +16,12 @@
 
 package org.jetbrains.kotlin.idea.actions
 
+import com.intellij.codeInsight.navigation.NavigationUtil
 import com.intellij.ide.scratch.ScratchFileService
 import com.intellij.ide.scratch.ScratchRootType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -33,8 +33,10 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileVisitor
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.j2k.IdeaJavaToKotlinServices
 import org.jetbrains.kotlin.idea.j2k.J2kPostProcessor
@@ -61,6 +63,8 @@ class JavaToKotlinAction : AnAction() {
             }
         }
 
+        val title = "Convert Java to Kotlin"
+
         private fun saveResults(javaFiles: List<PsiJavaFile>, convertedTexts: List<String>): List<VirtualFile> {
             val result = ArrayList<VirtualFile>()
             for ((psiFile, text) in javaFiles.zip(convertedTexts)) {
@@ -84,26 +88,22 @@ class JavaToKotlinAction : AnAction() {
                     }
                 }
                 catch (e: IOException) {
-                    MessagesEx.error(psiFile.project, e.message).showLater()
+                    MessagesEx.error(psiFile.project, e.message ?: "").showLater()
                 }
             }
             return result
         }
 
         fun convertFiles(javaFiles: List<PsiJavaFile>, project: Project, enableExternalCodeProcessing: Boolean = true): List<KtFile> {
-            ApplicationManager.getApplication().saveAll()
-
             var converterResult: JavaToKotlinConverter.FilesResult? = null
             fun convert() {
                 val converter = JavaToKotlinConverter(project, ConverterSettings.defaultSettings, IdeaJavaToKotlinServices)
                 converterResult = converter.filesToKotlin(javaFiles, J2kPostProcessor(formatCode = true), ProgressManager.getInstance().progressIndicator)
             }
 
-            val title = "Convert Java to Kotlin"
+
             if (!ProgressManager.getInstance().runProcessWithProgressSynchronously(
-                    {
-                        runReadAction(::convert)
-                    },
+                    ::convert,
                     title,
                     true,
                     project)) return emptyList()
@@ -133,6 +133,8 @@ class JavaToKotlinAction : AnAction() {
 
                 externalCodeUpdate?.invoke()
 
+                PsiDocumentManager.getInstance(project).commitAllDocuments()
+
                 newFiles.singleOrNull()?.let {
                     FileEditorManager.getInstance(project).openFile(it, true)
                 }
@@ -143,8 +145,32 @@ class JavaToKotlinAction : AnAction() {
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-        val javaFiles = selectedJavaFiles(e).toList()
+        val javaFiles = selectedJavaFiles(e).filter { it.isWritable }.toList()
         val project = CommonDataKeys.PROJECT.getData(e.dataContext)!!
+
+        val firstSyntaxError = javaFiles.asSequence().map { PsiTreeUtil.findChildOfType(it, PsiErrorElement::class.java) }.firstOrNull()
+
+        if (firstSyntaxError != null) {
+            val count = javaFiles.filter { PsiTreeUtil.hasErrorElements(it) }.count()
+            val question = firstSyntaxError.containingFile.name +
+                           (if (count > 1) " and ${count - 1} more Java files" else " file") +
+                           " contain syntax errors, the conversion result may be incorrect"
+
+            val okText = "Investigate Errors"
+            val cancelText = "Proceed with Conversion"
+            if (Messages.showOkCancelDialog(
+                    project,
+                    question,
+                    title,
+                    okText,
+                    cancelText,
+                    Messages.getWarningIcon()
+            ) == Messages.OK) {
+                NavigationUtil.activateFileWithPsiElement(firstSyntaxError.navigationElement)
+                return
+            }
+        }
+
         convertFiles(javaFiles, project)
     }
 
@@ -158,7 +184,7 @@ class JavaToKotlinAction : AnAction() {
     private fun isAnyJavaFileSelected(project: Project, files: Array<VirtualFile>): Boolean {
         val manager = PsiManager.getInstance(project)
 
-        if (files.any { manager.findFile(it) is PsiJavaFile }) return true
+        if (files.any { manager.findFile(it) is PsiJavaFile && it.isWritable }) return true
         return files.any { it.isDirectory && isAnyJavaFileSelected(project, it.children) }
     }
 

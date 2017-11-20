@@ -49,11 +49,31 @@ public inline fun <T, R> with(receiver: T, block: T.() -> R): R = receiver.block
 public inline fun <T> T.apply(block: T.() -> Unit): T { block(); return this }
 
 /**
+ * Calls the specified function [block] with `this` value as its argument and returns `this` value.
+ */
+@kotlin.internal.InlineOnly
+@SinceKotlin("1.1")
+public inline fun <T> T.also(block: (T) -> Unit): T { block(this); return this }
+
+/**
  * Calls the specified function [block] with `this` value as its argument and returns its result.
  */
 @kotlin.internal.InlineOnly
 public inline fun <T, R> T.let(block: (T) -> R): R = block(this)
 
+/**
+ * Returns `this` value if it satisfies the given [predicate] or `null`, if it doesn't.
+ */
+@kotlin.internal.InlineOnly
+@SinceKotlin("1.1")
+public inline fun <T> T.takeIf(predicate: (T) -> Boolean): T? = if (predicate(this)) this else null
+
+/**
+ * Returns `this` value if it _does not_ satisfy the given [predicate] or `null`, if it does.
+ */
+@kotlin.internal.InlineOnly
+@SinceKotlin("1.1")
+public inline fun <T> T.takeUnless(predicate: (T) -> Boolean): T? = if (!predicate(this)) this else null
 
 /**
  * Executes the given function [action] specified number of [times].
@@ -62,7 +82,7 @@ public inline fun <T, R> T.let(block: (T) -> R): R = block(this)
  */
 @kotlin.internal.InlineOnly
 public inline fun repeat(times: Int, action: (Int) -> Unit) {
-    for (index in 0..times - 1) {
+    for (index in 0 until times) {
         action(index)
     }
 }

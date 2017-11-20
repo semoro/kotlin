@@ -19,20 +19,13 @@ package org.jetbrains.kotlin.descriptors
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap
-import org.jetbrains.kotlin.resolve.ImportPath
-import org.jetbrains.kotlin.types.TypeSubstitutor
 
-interface ModuleDescriptor : DeclarationDescriptor, ModuleParameters {
+interface ModuleDescriptor : DeclarationDescriptor {
     override fun getContainingDeclaration(): DeclarationDescriptor? = null
 
     val builtIns: KotlinBuiltIns
 
-    fun isFriend(other: ModuleDescriptor): Boolean
-
-    override fun substitute(substitutor: TypeSubstitutor): ModuleDescriptor {
-        return this
-    }
+    fun shouldSeeInternalsOf(targetModule: ModuleDescriptor): Boolean
 
     override fun <R, D> accept(visitor: DeclarationDescriptorVisitor<R, D>, data: D): R {
         return visitor.visitModuleDeclaration(this, data)
@@ -42,25 +35,18 @@ interface ModuleDescriptor : DeclarationDescriptor, ModuleParameters {
 
     fun getSubPackagesOf(fqName: FqName, nameFilter: (Name) -> Boolean): Collection<FqName>
 
+    /**
+     * @return dependency modules in the same order in which this module depends on them. Does not include `this`
+     */
+    val allDependencyModules: List<ModuleDescriptor>
+
     fun <T> getCapability(capability: Capability<T>): T?
 
-    class Capability<T>(val name: String)
-}
-
-interface ModuleParameters {
-    val defaultImports: List<ImportPath>
-    val excludedImports: List<FqName> get() = emptyList()
-    val platformToKotlinClassMap: PlatformToKotlinClassMap
-
-    object Empty: ModuleParameters {
-        override val defaultImports: List<ImportPath> = emptyList()
-        override val platformToKotlinClassMap: PlatformToKotlinClassMap = PlatformToKotlinClassMap.EMPTY
+    class Capability<T>(val name: String) {
+        override fun toString() = name
     }
-}
 
-fun ModuleParameters(defaultImports: List<ImportPath>, excludedImports: List<FqName>, platformToKotlinClassMap: PlatformToKotlinClassMap): ModuleParameters =
-        object : ModuleParameters {
-            override val defaultImports: List<ImportPath> = defaultImports
-            override val excludedImports: List<FqName> get() = excludedImports
-            override val platformToKotlinClassMap: PlatformToKotlinClassMap = platformToKotlinClassMap
-        }
+    val isValid: Boolean
+
+    fun assertValid()
+}

@@ -16,30 +16,42 @@
 
 package org.jetbrains.kotlin.builtins.functions
 
+import org.jetbrains.kotlin.builtins.extractParameterNameFromFunctionTypeArgument
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.impl.FunctionDescriptorImpl
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl
 import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.types.TypeSubstitutor
 import org.jetbrains.kotlin.types.Variance
+import org.jetbrains.kotlin.util.OperatorNameConventions
 
 class FunctionInvokeDescriptor private constructor(
         container: DeclarationDescriptor,
         original: FunctionInvokeDescriptor?,
-        callableKind: CallableMemberDescriptor.Kind
+        callableKind: CallableMemberDescriptor.Kind,
+        isSuspend: Boolean
 ) : SimpleFunctionDescriptorImpl(
         container,
         original,
         Annotations.EMPTY,
-        Name.identifier("invoke"),
+        OperatorNameConventions.INVOKE,
         callableKind,
         SourceElement.NO_SOURCE
 ) {
-    // "p0", "p1", etc. should not be baked into the language
-    override fun hasStableParameterNames(): Boolean = false
+    init {
+        this.isOperator = true
+        this.isSuspend = isSuspend
+        this.setHasStableParameterNames(false)
+    }
 
-    override fun hasSynthesizedParameterNames(): Boolean = true
+    override fun doSubstitute(configuration: CopyConfiguration): FunctionDescriptor? {
+        val substituted = super.doSubstitute(configuration) as FunctionInvokeDescriptor? ?: return null
+        if (substituted.valueParameters.none { it.type.extractParameterNameFromFunctionTypeArgument() != null }) return substituted
+        val parameterNames = substituted.valueParameters.map { it.type.extractParameterNameFromFunctionTypeArgument() }
+        return substituted.replaceParameterNames(parameterNames)
+    }
 
     override fun createSubstitutedCopy(
             newOwner: DeclarationDescriptor,
@@ -49,7 +61,7 @@ class FunctionInvokeDescriptor private constructor(
             annotations: Annotations,
             source: SourceElement
     ): FunctionDescriptorImpl {
-        return FunctionInvokeDescriptor(newOwner, original as FunctionInvokeDescriptor?, kind)
+        return FunctionInvokeDescriptor(newOwner, original as FunctionInvokeDescriptor?, kind, isSuspend)
     }
 
     override fun isExternal(): Boolean = false
@@ -58,11 +70,36 @@ class FunctionInvokeDescriptor private constructor(
 
     override fun isTailrec(): Boolean = false
 
+    private fun replaceParameterNames(parameterNames: List<Name?>): FunctionDescriptor {
+        val indexShift = valueParameters.size - parameterNames.size
+        assert(indexShift == 0 || indexShift == 1) // indexShift == 1 for extension function type
+
+        val newValueParameters = valueParameters.map {
+            var newName = it.name
+            val parameterIndex = it.index
+            val nameIndex = parameterIndex - indexShift
+            if (nameIndex >= 0) {
+                val parameterName = parameterNames[nameIndex]
+                if (parameterName != null) {
+                    newName = parameterName
+                }
+            }
+            it.copy(this, newName, parameterIndex)
+        }
+
+        val copyConfiguration = newCopyBuilder(TypeSubstitutor.EMPTY)
+                .setHasSynthesizedParameterNames(parameterNames.any { it == null })
+                .setValueParameters(newValueParameters)
+                .setOriginal(original)
+
+        return super.doSubstitute(copyConfiguration)!!
+    }
+
     companion object Factory {
-        fun create(functionClass: FunctionClassDescriptor): FunctionInvokeDescriptor {
+        fun create(functionClass: FunctionClassDescriptor, isSuspend: Boolean): FunctionInvokeDescriptor {
             val typeParameters = functionClass.declaredTypeParameters
 
-            val result = FunctionInvokeDescriptor(functionClass, null, CallableMemberDescriptor.Kind.DECLARATION)
+            val result = FunctionInvokeDescriptor(functionClass, null, CallableMemberDescriptor.Kind.DECLARATION, isSuspend)
             result.initialize(
                     null,
                     functionClass.thisAsReceiverParameter,
@@ -74,7 +111,7 @@ class FunctionInvokeDescriptor private constructor(
                     Modality.ABSTRACT,
                     Visibilities.PUBLIC
             )
-            result.isOperator = true
+            result.setHasSynthesizedParameterNames(true)
             return result
         }
 
@@ -101,7 +138,6 @@ class FunctionInvokeDescriptor private constructor(
                     /* declaresDefaultValue = */ false,
                     /* isCrossinline = */ false,
                     /* isNoinline = */ false,
-                    /* isCoroutine = */ false,
                     /* varargElementType = */ null,
                     SourceElement.NO_SOURCE
             )

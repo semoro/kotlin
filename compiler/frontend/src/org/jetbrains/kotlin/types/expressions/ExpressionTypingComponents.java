@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.jetbrains.kotlin.types.expressions;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
-import org.jetbrains.kotlin.config.LanguageFeatureSettings;
+import org.jetbrains.kotlin.config.LanguageVersionSettings;
 import org.jetbrains.kotlin.context.GlobalContext;
 import org.jetbrains.kotlin.incremental.components.LookupTracker;
 import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap;
@@ -26,7 +26,9 @@ import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.calls.CallExpressionResolver;
 import org.jetbrains.kotlin.resolve.calls.CallResolver;
 import org.jetbrains.kotlin.resolve.calls.checkers.CallChecker;
+import org.jetbrains.kotlin.resolve.calls.checkers.RttiExpressionChecker;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
+import org.jetbrains.kotlin.types.WrappedTypeFactory;
 
 import javax.inject.Inject;
 
@@ -57,7 +59,11 @@ public class ExpressionTypingComponents {
     /*package*/ LocalVariableResolver localVariableResolver;
     /*package*/ LookupTracker lookupTracker;
     /*package*/ OverloadChecker overloadChecker;
-    /*package*/ LanguageFeatureSettings languageFeatureSettings;
+    /*package*/ LanguageVersionSettings languageVersionSettings;
+    /*package*/ Iterable<RttiExpressionChecker> rttiExpressionCheckers;
+    /*package*/ WrappedTypeFactory wrappedTypeFactory;
+    /*package*/ CollectionLiteralResolver collectionLiteralResolver;
+    /*package*/ DeprecationResolver deprecationResolver;
 
     @Inject
     public void setGlobalContext(@NotNull GlobalContext globalContext) {
@@ -190,7 +196,27 @@ public class ExpressionTypingComponents {
     }
 
     @Inject
-    public void setLanguageFeatureSettings(@NotNull LanguageFeatureSettings languageFeatureSettings) {
-        this.languageFeatureSettings = languageFeatureSettings;
+    public void setLanguageVersionSettings(@NotNull LanguageVersionSettings languageVersionSettings) {
+        this.languageVersionSettings = languageVersionSettings;
+    }
+
+    @Inject
+    public void setRttiExpressionCheckers(@NotNull Iterable<RttiExpressionChecker> rttiExpressionCheckers) {
+        this.rttiExpressionCheckers = rttiExpressionCheckers;
+    }
+
+    @Inject
+    public void setWrappedTypeFactory(WrappedTypeFactory wrappedTypeFactory) {
+        this.wrappedTypeFactory = wrappedTypeFactory;
+    }
+
+    @Inject
+    public void setCollectionLiteralResolver(CollectionLiteralResolver collectionLiteralResolver) {
+        this.collectionLiteralResolver = collectionLiteralResolver;
+    }
+
+    @Inject
+    public void setDeprecationResolver(DeprecationResolver deprecationResolver) {
+        this.deprecationResolver = deprecationResolver;
     }
 }

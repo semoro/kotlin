@@ -20,13 +20,13 @@ import com.intellij.lang.ASTNode;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.ItemPresentationProviders;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.KtNodeTypes;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.stubs.KotlinParameterStub;
 import org.jetbrains.kotlin.psi.stubs.elements.KtStubElementTypes;
@@ -121,6 +121,14 @@ public class KtParameter extends KtNamedDeclarationStub<KotlinParameterStub> imp
         return findChildByType(VAL_VAR_TOKEN_SET);
     }
 
+    @Nullable
+    public KtDestructuringDeclaration getDestructuringDeclaration() {
+        // No destructuring declaration in stubs
+        if (getStub() != null) return null;
+
+        return findChildByType(KtNodeTypes.DESTRUCTURING_DECLARATION);
+    }
+
     private static final TokenSet VAL_VAR_TOKEN_SET = TokenSet.create(KtTokens.VAL_KEYWORD, KtTokens.VAR_KEYWORD);
 
     @Override
@@ -175,7 +183,7 @@ public class KtParameter extends KtNamedDeclarationStub<KotlinParameterStub> imp
     }
 
     @Nullable
-    public KtFunction getOwnerFunction() {
+    public KtDeclarationWithBody getOwnerFunction() {
         PsiElement parent = getParentByStub();
         if (!(parent instanceof KtParameterList)) return null;
         return ((KtParameterList) parent).getOwnerFunction();
@@ -192,6 +200,6 @@ public class KtParameter extends KtNamedDeclarationStub<KotlinParameterStub> imp
         if (owner == null) {
             owner = PsiTreeUtil.getParentOfType(this, KtExpression.class);
         }
-        return owner != null ? new LocalSearchScope(owner) : GlobalSearchScope.EMPTY_SCOPE;
+        return new LocalSearchScope(owner != null ? owner : this);
     }
 }

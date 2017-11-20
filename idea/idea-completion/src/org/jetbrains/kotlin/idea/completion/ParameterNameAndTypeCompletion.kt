@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.utils.collectDescriptorsFiltered
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.isError
 import java.util.*
 
 class ParameterNameAndTypeCompletion(
@@ -89,7 +90,8 @@ class ParameterNameAndTypeCompletion(
     fun addFromAllClasses(parameters: CompletionParameters, indicesHelper: KotlinIndicesHelper) {
         for ((classNameMatcher, userPrefix) in classNamePrefixMatchers.zip(userPrefixes)) {
             AllClassesCompletion(
-                    parameters, indicesHelper, classNameMatcher, resolutionFacade, { !it.isSingleton }, includeJavaClassesNotToBeUsed = false
+                    parameters, indicesHelper, classNameMatcher, resolutionFacade, { !it.isSingleton },
+                    includeTypeAliases = true, includeJavaClassesNotToBeUsed = false
             ).collect(
                     { addSuggestionsForClassifier(it, userPrefix, notImported = true) },
                     { addSuggestionsForJavaClass(it, userPrefix, notImported = true) }
@@ -207,8 +209,8 @@ class ParameterNameAndTypeCompletion(
 
         override fun handleInsert(context: InsertionContext) {
             if (context.completionChar == Lookup.REPLACE_SELECT_CHAR) {
-                val replacementOffset = context.offsetMap.getOffset(REPLACEMENT_OFFSET)
-                if (replacementOffset != -1) {
+                val replacementOffset = context.offsetMap.tryGetOffset(REPLACEMENT_OFFSET)
+                if (replacementOffset != null) {
                     val tailOffset = context.tailOffset
                     context.document.deleteString(tailOffset, replacementOffset)
 

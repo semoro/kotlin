@@ -52,6 +52,7 @@ val PROTO_PATHS: List<ProtoPath> = listOf(
         ProtoPath("core/deserialization/src/descriptors.proto"),
         ProtoPath("core/deserialization/src/builtins.proto"),
         ProtoPath("js/js.serializer/src/js.proto"),
+        ProtoPath("js/js.serializer/src/js-ast.proto"),
         ProtoPath("core/descriptor.loader.java/src/jvm_descriptors.proto"),
         ProtoPath("core/descriptor.loader.java/src/jvm_package_table.proto")
 )
@@ -130,6 +131,8 @@ private fun renamePackages(protoPath: String, outPath: String) {
     javaFile.writeText(
             javaFile.readLines().map { line ->
                 line.replace("com.google.protobuf", "org.jetbrains.kotlin.protobuf")
+                    // Memory footprint optimizations: do not allocate too big bytes buffers that effectively remain unused
+                    .replace("              unknownFieldsOutput);", "              unknownFieldsOutput, 1);")
             }.joinToString(LineSeparator.getSystemLineSeparator().separatorString)
     )
 }

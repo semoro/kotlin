@@ -20,12 +20,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analyzer.ModuleContent
 import org.jetbrains.kotlin.analyzer.ModuleInfo
-import org.jetbrains.kotlin.builtins.DefaultBuiltIns
+import org.jetbrains.kotlin.analyzer.ResolverForProjectImpl
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.context.ProjectContext
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.resolve.CompilerEnvironment
+import org.jetbrains.kotlin.resolve.MultiTargetPlatform
 import org.jetbrains.kotlin.resolve.jvm.JvmAnalyzerFacade
 import org.jetbrains.kotlin.resolve.jvm.JvmPlatformParameters
 
@@ -36,13 +36,12 @@ fun createResolveSessionForFiles(
 ): ResolveSession {
     val projectContext = ProjectContext(project)
     val testModule = TestModule(addBuiltIns)
-    val resolverForProject = JvmAnalyzerFacade.setupResolverForProject(
+    val resolverForProject = ResolverForProjectImpl(
             "test",
-            projectContext, listOf(testModule),
+            projectContext, listOf(testModule), { JvmAnalyzerFacade },
             { ModuleContent(syntheticFiles, GlobalSearchScope.allScope(project)) },
             JvmPlatformParameters { testModule },
-            CompilerEnvironment,
-            DefaultBuiltIns.Instance
+            modulePlatforms = { MultiTargetPlatform.Specific("JVM") }
     )
     return resolverForProject.resolverForModule(testModule).componentProvider.get<ResolveSession>()
 }
@@ -52,7 +51,7 @@ private class TestModule(val dependsOnBuiltIns: Boolean) : ModuleInfo {
     override fun dependencies() = listOf(this)
     override fun dependencyOnBuiltIns() =
             if (dependsOnBuiltIns)
-                ModuleInfo.DependenciesOnBuiltIns.LAST
+                ModuleInfo.DependencyOnBuiltIns.LAST
             else
-                ModuleInfo.DependenciesOnBuiltIns.NONE
+                ModuleInfo.DependencyOnBuiltIns.NONE
 }
