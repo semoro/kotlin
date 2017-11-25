@@ -71,6 +71,8 @@ interface JKTransformerVoid : JKTransformer<Nothing?> {
     override fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: Nothing?): JKStringLiteralExpression = visitStringLiteralExpression(stringLiteralExpression)
     fun visitModalityModifier(modalityModifier: JKModalityModifier): JKModalityModifier = visitModifier(modalityModifier) as JKModalityModifier
     override fun visitModalityModifier(modalityModifier: JKModalityModifier, data: Nothing?): JKModalityModifier = visitModalityModifier(modalityModifier)
+    fun visitAnnotationUse(annotationUse: JKAnnotationUse): JKAnnotationUse = visitMethodCallExpression(annotationUse) as JKAnnotationUse
+    override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: Nothing?): JKAnnotationUse = visitAnnotationUse(annotationUse)
     fun visitJavaField(javaField: JKJavaField): JKDeclaration = visitDeclaration(javaField) 
     override fun visitJavaField(javaField: JKJavaField, data: Nothing?): JKDeclaration = visitJavaField(javaField)
     fun visitJavaMethod(javaMethod: JKJavaMethod): JKDeclaration = visitDeclaration(javaMethod) 

@@ -1,6 +1,7 @@
 package org.jetbrains.kotlin.j2k.tree.visitors
 
 import org.jetbrains.kotlin.j2k.tree.*
+import org.jetbrains.kotlin.j2k.tree.impl.JKTypeReferenceImpl
 
 interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     fun visitElement(element: JKElement) 
@@ -40,7 +41,7 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     fun visitClassReference(classReference: JKClassReference) = visitElement(classReference, null)
     override fun visitClassReference(classReference: JKClassReference, data: Nothing?) = visitClassReference(classReference)
     fun visitTypeReference(typeReference: JKTypeReference) = visitElement(typeReference, null)
-    override fun visitTypeReference(typeReference: JKTypeReference, data: Nothing?) = visitTypeReference(typeReference)
+    override fun visitTypeReference(typeReference: JKTypeReferenceImpl, data: Nothing?) = visitTypeReference(typeReference)
     fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier) = visitIdentifier(operatorIdentifier, null)
     override fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier, data: Nothing?) = visitOperatorIdentifier(operatorIdentifier)
     fun visitQualificationIdentifier(qualificationIdentifier: JKQualificationIdentifier) = visitIdentifier(qualificationIdentifier, null)
@@ -71,6 +72,8 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: Nothing?) = visitStringLiteralExpression(stringLiteralExpression)
     fun visitModalityModifier(modalityModifier: JKModalityModifier) = visitModifier(modalityModifier, null)
     override fun visitModalityModifier(modalityModifier: JKModalityModifier, data: Nothing?) = visitModalityModifier(modalityModifier)
+    fun visitAnnotationUse(annotationUse: JKAnnotationUse) = visitMethodCallExpression(annotationUse, null)
+    override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: Nothing?) = visitAnnotationUse(annotationUse)
     fun visitJavaField(javaField: JKJavaField) = visitDeclaration(javaField, null)
     override fun visitJavaField(javaField: JKJavaField, data: Nothing?) = visitJavaField(javaField)
     fun visitJavaMethod(javaMethod: JKJavaMethod) = visitDeclaration(javaMethod, null)

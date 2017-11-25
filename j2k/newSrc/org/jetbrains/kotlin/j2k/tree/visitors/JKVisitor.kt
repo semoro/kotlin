@@ -1,6 +1,7 @@
 package org.jetbrains.kotlin.j2k.tree.visitors
 
 import org.jetbrains.kotlin.j2k.tree.*
+import org.jetbrains.kotlin.j2k.tree.impl.JKTypeReferenceImpl
 
 interface JKVisitor<out R, in D> {
     fun visitElement(element: JKElement, data: D): R 
@@ -21,7 +22,7 @@ interface JKVisitor<out R, in D> {
     fun visitMethodReference(methodReference: JKMethodReference, data: D): R = visitElement(methodReference, data)
     fun visitFieldReference(fieldReference: JKFieldReference, data: D): R = visitElement(fieldReference, data)
     fun visitClassReference(classReference: JKClassReference, data: D): R = visitElement(classReference, data)
-    fun visitTypeReference(typeReference: JKTypeReference, data: D): R = visitElement(typeReference, data)
+    fun visitTypeReference(typeReference: JKTypeReferenceImpl, data: D): R = visitElement(typeReference, data)
     fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier, data: D): R = visitIdentifier(operatorIdentifier, data)
     fun visitQualificationIdentifier(qualificationIdentifier: JKQualificationIdentifier, data: D): R = visitIdentifier(qualificationIdentifier, data)
     fun visitLoop(loop: JKLoop, data: D): R = visitStatement(loop, data)
@@ -37,6 +38,7 @@ interface JKVisitor<out R, in D> {
     fun visitValueArgument(valueArgument: JKValueArgument, data: D): R = visitElement(valueArgument, data)
     fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: D): R = visitLiteralExpression(stringLiteralExpression, data)
     fun visitModalityModifier(modalityModifier: JKModalityModifier, data: D): R = visitModifier(modalityModifier, data)
+    fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: D): R = visitMethodCallExpression(annotationUse, data)
     fun visitJavaField(javaField: JKJavaField, data: D): R = visitDeclaration(javaField, data)
     fun visitJavaMethod(javaMethod: JKJavaMethod, data: D): R = visitDeclaration(javaMethod, data)
     fun visitJavaForLoop(javaForLoop: JKJavaForLoop, data: D): R = visitLoop(javaForLoop, data)

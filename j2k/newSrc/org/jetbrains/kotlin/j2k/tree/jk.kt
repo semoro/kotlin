@@ -148,3 +148,5 @@ interface JKStringLiteralExpression : JKLiteralExpression {
 }
 
 interface JKModalityModifier : JKModifier
+
+interface JKAnnotationUse: JKMethodCallExpression
