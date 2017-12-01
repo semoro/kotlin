@@ -37,6 +37,8 @@ interface JKTransformerVoid : JKTransformer<Nothing?> {
     override fun visitMethodReference(methodReference: JKMethodReference, data: Nothing?): JKMethodReference = visitMethodReference(methodReference)
     fun visitFieldReference(fieldReference: JKFieldReference): JKFieldReference = visitElement(fieldReference) as JKFieldReference
     override fun visitFieldReference(fieldReference: JKFieldReference, data: Nothing?): JKFieldReference = visitFieldReference(fieldReference)
+    fun visitAnnotationReference(annotationReference: JKAnnotationReference): JKAnnotationReference = visitElement(annotationReference) as JKAnnotationReference
+    override fun visitAnnotationReference(annotationReference: JKAnnotationReference, data: Nothing?): JKAnnotationReference = visitAnnotationReference(annotationReference)
     fun visitClassReference(classReference: JKClassReference): JKClassReference = visitElement(classReference) as JKClassReference
     override fun visitClassReference(classReference: JKClassReference, data: Nothing?): JKClassReference = visitClassReference(classReference)
     fun visitTypeReference(typeReference: JKTypeReference): JKTypeReference = visitElement(typeReference) as JKTypeReference
@@ -71,7 +73,7 @@ interface JKTransformerVoid : JKTransformer<Nothing?> {
     override fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: Nothing?): JKStringLiteralExpression = visitStringLiteralExpression(stringLiteralExpression)
     fun visitModalityModifier(modalityModifier: JKModalityModifier): JKModalityModifier = visitModifier(modalityModifier) as JKModalityModifier
     override fun visitModalityModifier(modalityModifier: JKModalityModifier, data: Nothing?): JKModalityModifier = visitModalityModifier(modalityModifier)
-    fun visitAnnotationUse(annotationUse: JKAnnotationUse): JKAnnotationUse = visitMethodCallExpression(annotationUse) as JKAnnotationUse
+    fun visitAnnotationUse(annotationUse: JKAnnotationUse): JKAnnotationUse = visitElement(annotationUse) as JKAnnotationUse
     override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: Nothing?): JKAnnotationUse = visitAnnotationUse(annotationUse)
     fun visitJavaField(javaField: JKJavaField): JKDeclaration = visitDeclaration(javaField) 
     override fun visitJavaField(javaField: JKJavaField, data: Nothing?): JKDeclaration = visitJavaField(javaField)

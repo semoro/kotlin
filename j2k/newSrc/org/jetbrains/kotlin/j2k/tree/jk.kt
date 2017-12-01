@@ -75,17 +75,17 @@ interface JKFieldAccessExpression : JKExpression {
 }
 
 interface JKArrayAccessExpression : JKExpression {
-    val expression : JKExpression
-    val indexExpression : JKExpression?
+    val expression: JKExpression
+    val indexExpression: JKExpression?
 }
 
 interface JKParenthesizedExpression : JKExpression {
-    val expression : JKExpression?
+    val expression: JKExpression?
 }
 
 interface JKTypeCastExpression : JKExpression {
-    val expression : JKExpression?
-    val type : JKTypeReference?
+    val expression: JKExpression?
+    val type: JKTypeReference?
 }
 
 interface JKExpressionList : JKElement {
@@ -98,6 +98,10 @@ interface JKMethodReference : JKElement {
 
 interface JKFieldReference : JKElement {
 
+}
+
+interface JKAnnotationReference : JKElement {
+    val text: String
 }
 
 interface JKClassReference : JKElement {
@@ -149,4 +153,7 @@ interface JKStringLiteralExpression : JKLiteralExpression {
 
 interface JKModalityModifier : JKModifier
 
-interface JKAnnotationUse: JKMethodCallExpression
+interface JKAnnotationUse : JKElement {
+    val identifier: JKAnnotationReference
+    val arguments: JKExpressionList
+}

@@ -157,7 +157,7 @@ class JKTypeReferenceImpl() : JKTypeReference, JKElementBase() {
     }
 }
 
-class JKAnnotationUseImpl(override val identifier: JKMethodReference, override val arguments: JKExpressionList) : JKAnnotationUse, JKElementBase() {
+class JKAnnotationUseImpl(override val identifier: JKAnnotationReference, override val arguments: JKExpressionList) : JKAnnotationUse, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitAnnotationUse(this, data)
 
     override fun <D> acceptChildren(visitor: JKVisitor<Unit, D>, data: D) {

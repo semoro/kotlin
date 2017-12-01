@@ -1,7 +1,6 @@
 package org.jetbrains.kotlin.j2k.tree.visitors
 
 import org.jetbrains.kotlin.j2k.tree.*
-import org.jetbrains.kotlin.j2k.tree.impl.JKTypeReferenceImpl
 
 interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     fun visitElement(element: JKElement) 
@@ -38,10 +37,12 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitMethodReference(methodReference: JKMethodReference, data: Nothing?) = visitMethodReference(methodReference)
     fun visitFieldReference(fieldReference: JKFieldReference) = visitElement(fieldReference, null)
     override fun visitFieldReference(fieldReference: JKFieldReference, data: Nothing?) = visitFieldReference(fieldReference)
+    fun visitAnnotationReference(annotationReference: JKAnnotationReference) = visitElement(annotationReference, null)
+    override fun visitAnnotationReference(annotationReference: JKAnnotationReference, data: Nothing?) = visitAnnotationReference(annotationReference)
     fun visitClassReference(classReference: JKClassReference) = visitElement(classReference, null)
     override fun visitClassReference(classReference: JKClassReference, data: Nothing?) = visitClassReference(classReference)
     fun visitTypeReference(typeReference: JKTypeReference) = visitElement(typeReference, null)
-    override fun visitTypeReference(typeReference: JKTypeReferenceImpl, data: Nothing?) = visitTypeReference(typeReference)
+    override fun visitTypeReference(typeReference: JKTypeReference, data: Nothing?) = visitTypeReference(typeReference)
     fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier) = visitIdentifier(operatorIdentifier, null)
     override fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier, data: Nothing?) = visitOperatorIdentifier(operatorIdentifier)
     fun visitQualificationIdentifier(qualificationIdentifier: JKQualificationIdentifier) = visitIdentifier(qualificationIdentifier, null)
@@ -72,7 +73,7 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: Nothing?) = visitStringLiteralExpression(stringLiteralExpression)
     fun visitModalityModifier(modalityModifier: JKModalityModifier) = visitModifier(modalityModifier, null)
     override fun visitModalityModifier(modalityModifier: JKModalityModifier, data: Nothing?) = visitModalityModifier(modalityModifier)
-    fun visitAnnotationUse(annotationUse: JKAnnotationUse) = visitMethodCallExpression(annotationUse, null)
+    fun visitAnnotationUse(annotationUse: JKAnnotationUse) = visitElement(annotationUse, null)
     override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: Nothing?) = visitAnnotationUse(annotationUse)
     fun visitJavaField(javaField: JKJavaField) = visitDeclaration(javaField, null)
     override fun visitJavaField(javaField: JKJavaField, data: Nothing?) = visitJavaField(javaField)

@@ -1,7 +1,6 @@
 package org.jetbrains.kotlin.j2k.tree.visitors
 
 import org.jetbrains.kotlin.j2k.tree.*
-import org.jetbrains.kotlin.j2k.tree.impl.JKTypeReferenceImpl
 
 interface JKTransformer<in D> : JKVisitor<JKElement, D> {
     override fun visitElement(element: JKElement, data: D): JKElement 
@@ -21,8 +20,9 @@ interface JKTransformer<in D> : JKVisitor<JKElement, D> {
     override fun visitExpressionList(expressionList: JKExpressionList, data: D): JKExpressionList = visitElement(expressionList, data) as JKExpressionList
     override fun visitMethodReference(methodReference: JKMethodReference, data: D): JKMethodReference = visitElement(methodReference, data) as JKMethodReference
     override fun visitFieldReference(fieldReference: JKFieldReference, data: D): JKFieldReference = visitElement(fieldReference, data) as JKFieldReference
+    override fun visitAnnotationReference(annotationReference: JKAnnotationReference, data: D): JKAnnotationReference = visitElement(annotationReference, data) as JKAnnotationReference
     override fun visitClassReference(classReference: JKClassReference, data: D): JKClassReference = visitElement(classReference, data) as JKClassReference
-    override fun visitTypeReference(typeReference: JKTypeReferenceImpl, data: D): JKTypeReference = visitElement(typeReference, data) as JKTypeReference
+    override fun visitTypeReference(typeReference: JKTypeReference, data: D): JKTypeReference = visitElement(typeReference, data) as JKTypeReference
     override fun visitOperatorIdentifier(operatorIdentifier: JKOperatorIdentifier, data: D): JKOperatorIdentifier = visitIdentifier(operatorIdentifier, data) as JKOperatorIdentifier
     override fun visitQualificationIdentifier(qualificationIdentifier: JKQualificationIdentifier, data: D): JKQualificationIdentifier = visitIdentifier(qualificationIdentifier, data) as JKQualificationIdentifier
     override fun visitLoop(loop: JKLoop, data: D): JKLoop = visitStatement(loop, data) as JKLoop
@@ -38,7 +38,7 @@ interface JKTransformer<in D> : JKVisitor<JKElement, D> {
     override fun visitValueArgument(valueArgument: JKValueArgument, data: D): JKValueArgument = visitElement(valueArgument, data) as JKValueArgument
     override fun visitStringLiteralExpression(stringLiteralExpression: JKStringLiteralExpression, data: D): JKStringLiteralExpression = visitLiteralExpression(stringLiteralExpression, data) as JKStringLiteralExpression
     override fun visitModalityModifier(modalityModifier: JKModalityModifier, data: D): JKModalityModifier = visitModifier(modalityModifier, data) as JKModalityModifier
-    override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: D): JKAnnotationUse = visitMethodCallExpression(annotationUse, data) as JKAnnotationUse
+    override fun visitAnnotationUse(annotationUse: JKAnnotationUse, data: D): JKAnnotationUse = visitElement(annotationUse, data) as JKAnnotationUse
     override fun visitJavaField(javaField: JKJavaField, data: D): JKDeclaration = visitDeclaration(javaField, data) 
     override fun visitJavaMethod(javaMethod: JKJavaMethod, data: D): JKDeclaration = visitDeclaration(javaMethod, data) 
     override fun visitJavaForLoop(javaForLoop: JKJavaForLoop, data: D): JKLoop = visitLoop(javaForLoop, data) 

@@ -22,6 +22,7 @@ import com.intellij.psi.impl.source.tree.ChildRole
 import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl
 import com.intellij.psi.impl.source.tree.java.PsiNewExpressionImpl
 import com.intellij.psi.impl.source.tree.java.PsiReferenceExpressionImpl
+import org.jetbrains.kotlin.j2k.JavaToJKTreeBuilder.ExpressionTreeMapper.toJK
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 
@@ -265,6 +266,28 @@ class JavaToJKTreeBuilder {
             else -> TODO("Not yet supported")
         }
     }
+
+    private object AnnotationMapper {
+
+        fun PsiAnnotation.toJK(): JKAnnotationUse {
+            return JKAnnotationUseImpl(this.nameReferenceElement!!.toJK(), this.parameterList.toJK())
+        }
+
+        fun PsiAnnotationParameterList.toJK(): JKExpressionList {
+            val parametersNotNull = children.mapNotNull { it.psiElementToJKExpr() }.toTypedArray()
+            return JKExpressionListImpl(parametersNotNull)
+        }
+
+        fun PsiJavaCodeReferenceElement.toJK(): JKAnnotationReference {
+            return JKAnnotationReferenceImpl(this.children.filter { it is PsiIdentifier }[0].text)
+        }
+
+        fun PsiElement.psiElementToJKExpr(): JKExpression? {
+            val child = this as? PsiExpression ?: return null
+            with(ExpressionTreeMapper) { return child.toJK() }
+        }
+    }
+
 
     private class ElementVisitor : JavaElementVisitor() {
 

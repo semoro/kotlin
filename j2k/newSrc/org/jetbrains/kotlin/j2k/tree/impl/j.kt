@@ -120,6 +120,14 @@ class JKJavaFieldReferenceImpl() : JKJavaFieldReference, JKElementBase() {
     }
 }
 
+class JKAnnotationReferenceImpl(override val text: String) : JKAnnotationReference, JKElementBase() {
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitAnnotationReference(this, data)
+
+    override fun <D> acceptChildren(visitor: JKVisitor<Unit, D>, data: D) {
+
+    }
+}
+
 class JKJavaClassReferenceImpl() : JKJavaClassReference, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaClassReference(this, data)
 
