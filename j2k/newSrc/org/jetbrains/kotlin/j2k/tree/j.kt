@@ -54,8 +54,8 @@ interface JKJavaFieldAccessExpression : JKFieldAccessExpression {
 }
 
 interface JKJavaNewExpression : JKExpression {
-    val identifier: JKClassReference
-    val arguments: JKExpressionList
+    var identifier: JKClassReference
+    var arguments: JKExpressionList
 }
 
 interface JKJavaMethodReference : JKMethodReference
@@ -65,7 +65,7 @@ interface JKJavaFieldReference : JKFieldReference
 interface JKJavaClassReference : JKClassReference
 
 interface JKJavaAccessModifier : JKAccessModifier {
-    val type: AccessModifierType
+    var type: AccessModifierType
 
     enum class AccessModifierType {
         PUBLIC, PROTECTED, PRIVATE
@@ -81,9 +81,9 @@ interface JKJavaModifier : JKModifier {
 }
 
 interface JKJavaNewEmptyArray : JKExpression {
-    val initializer: List<JKLiteralExpression?>
+    var initializer: List<JKLiteralExpression?>
 }
 
 interface JKJavaNewArray : JKExpression {
-    val initializer: List<JKExpression>
+    var initializer: List<JKExpression>
 }

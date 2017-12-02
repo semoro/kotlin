@@ -43,53 +43,53 @@ interface JKStatement : JKElement
 interface JKExpression : JKStatement
 
 interface JKBinaryExpression : JKExpression {
-    val left: JKExpression
-    val right: JKExpression?
-    val operator: JKOperatorIdentifier
+    var left: JKExpression
+    var right: JKExpression?
+    var operator: JKOperatorIdentifier
 }
 
 interface JKUnaryExpression : JKExpression {
-    val expression: JKExpression?
-    val operator: JKOperatorIdentifier
+    var expression: JKExpression?
+    var operator: JKOperatorIdentifier
 }
 
 interface JKPrefixExpression : JKUnaryExpression
 
 interface JKPostfixExpression : JKUnaryExpression {
-    override val expression: JKExpression
+    override var expression: JKExpression?
 }
 
 interface JKQualifiedExpression : JKExpression {
-    val receiver: JKExpression
-    val operator: JKQualificationIdentifier
-    val selector: JKStatement
+    var receiver: JKExpression
+    var operator: JKQualificationIdentifier
+    var selector: JKStatement
 }
 
 interface JKMethodCallExpression : JKExpression {
-    val identifier: JKMethodReference
-    val arguments: JKExpressionList
+    var identifier: JKMethodReference
+    var arguments: JKExpressionList
 }
 
 interface JKFieldAccessExpression : JKExpression {
-    val identifier: JKFieldReference
+    var identifier: JKFieldReference
 }
 
 interface JKArrayAccessExpression : JKExpression {
-    val expression : JKExpression
-    val indexExpression : JKExpression?
+    var expression : JKExpression
+    var indexExpression : JKExpression?
 }
 
 interface JKParenthesizedExpression : JKExpression {
-    val expression : JKExpression?
+    var expression : JKExpression?
 }
 
 interface JKTypeCastExpression : JKExpression {
-    val expression : JKExpression?
-    val type : JKTypeReference?
+    var expression : JKExpression?
+    var type : JKTypeReference?
 }
 
 interface JKExpressionList : JKElement {
-    val expressions: Array<JKExpression>
+    var expressions: Array<JKExpression>
 }
 
 interface JKMethodReference : JKElement {
@@ -125,13 +125,13 @@ interface JKIdentifier : JKElement
 interface JKTypeIdentifier : JKIdentifier
 
 interface JKNameIdentifier : JKIdentifier {
-    val name: String
+    var name: String
 }
 
 interface JKLiteralExpression : JKExpression
 
 interface JKModifierList : JKElement {
-    val modifiers: MutableList<JKModifier>
+    var modifiers: List<JKModifier>
 }
 
 interface JKModifier : JKElement
@@ -139,7 +139,7 @@ interface JKModifier : JKElement
 interface JKAccessModifier : JKModifier
 
 interface JKValueArgument : JKElement {
-    val type: JKTypeIdentifier
+    var type: JKTypeIdentifier
     val name: String
 }
 
