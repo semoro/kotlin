@@ -49,14 +49,14 @@ interface JKBinaryExpression : JKExpression {
 }
 
 interface JKUnaryExpression : JKExpression {
-    var expression: JKExpression?
+    val expression: JKExpression?
     var operator: JKOperatorIdentifier
 }
 
 interface JKPrefixExpression : JKUnaryExpression
 
 interface JKPostfixExpression : JKUnaryExpression {
-    override var expression: JKExpression?
+    override val expression: JKExpression
 }
 
 interface JKQualifiedExpression : JKExpression {

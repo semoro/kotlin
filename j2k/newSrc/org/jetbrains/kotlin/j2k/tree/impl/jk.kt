@@ -102,7 +102,7 @@ class JKBinaryExpressionImpl(override var left: JKExpression, override var right
     }
 }
 
-class JKPrefixExpressionImpl(override var expression: JKExpression?,
+class JKPrefixExpressionImpl(override var expression: JKExpression,
                              override var operator: JKOperatorIdentifier) : JKPrefixExpression, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitPrefixExpression(this, data)
     override fun <D> acceptChildren(visitor: JKVisitor<Unit, D>, data: D) {
@@ -116,7 +116,7 @@ class JKPrefixExpressionImpl(override var expression: JKExpression?,
     }
 }
 
-class JKPostfixExpressionImpl(override var expression: JKExpression?,
+class JKPostfixExpressionImpl(override var expression: JKExpression,
                               override var operator: JKOperatorIdentifier) : JKPostfixExpression, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitPostfixExpression(this, data)
     override fun <D> acceptChildren(visitor: JKVisitor<Unit, D>, data: D) {
