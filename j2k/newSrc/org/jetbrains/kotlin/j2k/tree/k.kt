@@ -33,3 +33,5 @@ interface JKKtProperty : JKDeclaration, JKModifierListOwner {
     var getter: JKBlock?
     var setter: JKBlock?
 }
+
+interface

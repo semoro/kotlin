@@ -91,7 +91,7 @@ class JavaToJKTreeBuilder {
         fun PsiPostfixExpression.toJK(): JKExpression {
             return JKPostfixExpressionImpl(operand.toJK(), operationSign.toJK())
         }
-
+ё
         fun PsiMethodCallExpression.toJK(): JKExpression {
             val method = methodExpression as PsiReferenceExpressionImpl
             val identifier = (method.referenceNameElement as PsiIdentifier).convertMethodReference()
@@ -161,6 +161,7 @@ class JavaToJKTreeBuilder {
         }
 
         fun PsiIdentifier.convertMethodReference(): JKJavaMethodReference {
+
             return JKJavaMethodReferenceImpl()
         }
 

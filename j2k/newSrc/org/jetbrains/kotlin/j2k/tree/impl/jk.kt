@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.j2k.tree.impl
 
+import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKTransformer
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
@@ -149,7 +150,11 @@ class JKTypeCastExpressionImpl(override val expression: JKExpression?, override 
     }
 }
 
-class JKTypeReferenceImpl() : JKTypeReference, JKElementBase() {
+class JKTypeReferenceImpl(override val nullability: Nullability, override val parameters: ArrayList<JKTypeReference>) : JKTypeReference, JKElementBase() {
+    override fun resolve(): JKElement {
+
+    }
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitTypeReference(this, data)
 
     override fun <D> acceptChildren(visitor: JKVisitor<Unit, D>, data: D) {

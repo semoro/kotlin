@@ -16,6 +16,8 @@
 
 package org.jetbrains.kotlin.j2k.tree
 
+import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.visitors.JKTransformer
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 
@@ -75,36 +77,61 @@ interface JKFieldAccessExpression : JKExpression {
 }
 
 interface JKArrayAccessExpression : JKExpression {
-    val expression : JKExpression
-    val indexExpression : JKExpression?
+    val expression: JKExpression
+    val indexExpression: JKExpression?
 }
 
 interface JKParenthesizedExpression : JKExpression {
-    val expression : JKExpression?
+    val expression: JKExpression?
 }
 
 interface JKTypeCastExpression : JKExpression {
-    val expression : JKExpression?
-    val type : JKTypeReference?
+    val expression: JKExpression?
+    val type: JKTypeReference?
 }
 
 interface JKExpressionList : JKElement {
     val expressions: Array<JKExpression>
 }
 
-interface JKMethodReference : JKElement {
+interface JKReference : JKElement {
+    fun resolve(): JKElement
+}
+
+interface JKExternalReference {
+    fun resolve(): PsiElement
+}
+
+interface JKMethodReference : JKReference {
 
 }
 
-interface JKFieldReference : JKElement {
+interface JKFieldReference : JKReference {
 
 }
 
-interface JKClassReference : JKElement {
+interface JKClassReference : JKReference {
 
 }
 
-interface JKTypeReference : JKElement {
+interface JKTypeReference : JKReference {
+    val nullability: Nullability
+    val parameters:ArrayList<JKTypeReference>
+}
+
+interface JKExternalMethodReference : JKExternalReference {
+
+}
+
+interface JKExternalFieldReference : JKExternalReference {
+
+}
+
+interface JKExternalClassReference : JKExternalReference {
+
+}
+
+interface JKExternalTypeReference : JKExternalReference {
 
 }
 
