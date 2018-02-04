@@ -34,4 +34,10 @@ interface JKKtProperty : JKDeclaration, JKModifierListOwner {
     var setter: JKBlock?
 }
 
-interface
+interface JKKtMethod : JKDeclaration, JKModifierListOwner {
+    var returnType: JKTypeIdentifier
+    var name: JKNameIdentifier
+    var valueArguments: List<JKValueArgument>
+    var block: JKBlock?
+}
+
