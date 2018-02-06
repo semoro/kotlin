@@ -17,16 +17,16 @@
 package org.jetbrains.kotlin.j2k.tree
 
 interface JKJavaField : JKDeclaration, JKModifierListOwner {
-    var type: JKTypeIdentifier
-    var name: JKNameIdentifier
-    var initializer: JKExpression?
+    val type: JKTypeIdentifier
+    val name: JKNameIdentifier
+    val initializer: JKExpression?
 }
 
 interface JKJavaMethod : JKDeclaration {
-    var modifierList: JKModifierList
-    var name: JKNameIdentifier
-    var valueArguments: List<JKValueArgument>
-    var block: JKBlock?
+    val modifierList: JKModifierList
+    val name: JKNameIdentifier
+    val valueArguments: List<JKValueArgument>
+    val block: JKBlock?
 }
 
 interface JKJavaForLoop : JKLoop
@@ -54,8 +54,8 @@ interface JKJavaFieldAccessExpression : JKFieldAccessExpression {
 }
 
 interface JKJavaNewExpression : JKExpression {
-    var identifier: JKClassReference
-    var arguments: JKExpressionList
+    val identifier: JKClassReference
+    val arguments: JKExpressionList
 }
 
 interface JKJavaMethodReference : JKMethodReference
@@ -65,7 +65,7 @@ interface JKJavaFieldReference : JKFieldReference
 interface JKJavaClassReference : JKClassReference
 
 interface JKJavaAccessModifier : JKAccessModifier {
-    var type: AccessModifierType
+    val type: AccessModifierType
 
     enum class AccessModifierType {
         PUBLIC, PROTECTED, PRIVATE
@@ -81,9 +81,9 @@ interface JKJavaModifier : JKModifier {
 }
 
 interface JKJavaNewEmptyArray : JKExpression {
-    var initializer: List<JKLiteralExpression?>
+    val initializer: List<JKLiteralExpression?>
 }
 
 interface JKJavaNewArray : JKExpression {
-    var initializer: List<JKExpression>
+    val initializer: List<JKExpression>
 }
