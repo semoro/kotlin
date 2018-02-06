@@ -28,10 +28,10 @@ class JKKtPropertyImpl(override var modifierList: JKModifierList,
 
 }
 
-class JKKtMethodImpl(override var returnType: JKTypeIdentifier,
-                     override var name: JKNameIdentifier,
-                     override var valueArguments: List<JKValueArgument>,
-                     override var block: JKBlock?,
-                     override var modifierList: JKModifierList) : JKElementBase(), JKKtMethod {
+class JKKtFunctionImpl(override var returnType: JKTypeIdentifier,
+                       override var name: JKNameIdentifier,
+                       override var valueArguments: List<JKValueArgument>,
+                       override var block: JKBlock?,
+                       override var modifierList: JKModifierList) : JKElementBase(), JKKtFunction {
 
 }

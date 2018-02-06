@@ -18,7 +18,7 @@ package org.jetbrains.kotlin.j2k.conversions
 
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKJavaTypeIdentifierImpl
-import org.jetbrains.kotlin.j2k.tree.impl.JKKtMethodImpl
+import org.jetbrains.kotlin.j2k.tree.impl.JKKtFunctionImpl
 import org.jetbrains.kotlin.j2k.tree.impl.JKKtPropertyImpl
 
 class JavaFieldToKotlinPropertyConversion : TransformerBasedConversion() {
@@ -32,11 +32,11 @@ class JavaFieldToKotlinPropertyConversion : TransformerBasedConversion() {
     }
 }
 
-class JavaMethodToKotlinPropertyConversion : TransformerBasedConversion() {
+class JavaMethodToKotlinFunctionConversion : TransformerBasedConversion() {
     override fun visitElement(element: JKElement): JKElement = element.also { it.transformChildren(this, null) }
 
     override fun visitJavaMethod(javaMethod: JKJavaMethod): JKDeclaration {
         somethingChanged = true
-        return JKKtMethodImpl(JKJavaTypeIdentifierImpl("Stab"), javaMethod.name, javaMethod.valueArguments, javaMethod.block, javaMethod.modifierList)
+        return JKKtFunctionImpl(JKJavaTypeIdentifierImpl("Stab"), javaMethod.name, javaMethod.valueArguments, javaMethod.block, javaMethod.modifierList)
     }
 }
