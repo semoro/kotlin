@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.j2k.tree
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.visitors.JKTransformer
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 
@@ -115,8 +114,7 @@ interface JKClassReference : JKReference {
 }
 
 interface JKTypeReference : JKReference {
-    val nullability: Nullability
-    val parameters:ArrayList<JKTypeReference>
+    val parameters: List<JKTypeReference>
 }
 
 interface JKExternalMethodReference : JKExternalReference {

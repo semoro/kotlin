@@ -150,7 +150,7 @@ class JKTypeCastExpressionImpl(override val expression: JKExpression?, override 
     }
 }
 
-class JKTypeReferenceImpl(override val nullability: Nullability, override val parameters: ArrayList<JKTypeReference>) : JKTypeReference, JKElementBase() {
+class JKTypeReferenceImpl(override val parameters: List<JKTypeReference>) : JKTypeReference, JKElementBase() {
     override fun resolve(): JKElement {
 
     }
