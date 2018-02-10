@@ -90,11 +90,11 @@ interface JKTypeCastExpression : JKExpression {
 }
 
 interface JKExpressionList : JKElement {
-    val expressions: Array<JKExpression>
+
 }
 
 interface JKReference : JKElement {
-    fun resolve(): JKElement
+
 }
 
 interface JKExternalReference {
@@ -115,22 +115,6 @@ interface JKClassReference : JKReference {
 
 interface JKTypeReference : JKReference {
     val parameters: List<JKTypeReference>
-}
-
-interface JKExternalMethodReference : JKExternalReference {
-
-}
-
-interface JKExternalFieldReference : JKExternalReference {
-
-}
-
-interface JKExternalClassReference : JKExternalReference {
-
-}
-
-interface JKExternalTypeReference : JKExternalReference {
-
 }
 
 interface JKOperatorIdentifier : JKIdentifier

@@ -150,9 +150,7 @@ class JKTypeCastExpressionImpl(override val expression: JKExpression?, override 
 }
 
 class JKTypeReferenceImpl(override val parameters: List<JKTypeReference>) : JKTypeReference, JKElementBase() {
-    override fun resolve(): JKElement {
 
-    }
 
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitTypeReference(this, data)
 
