@@ -28,6 +28,8 @@ object ConversionsRunner {
             FieldToPropertyConversion().runConversion(it, context)
             TypeMappingConversion(context).runConversion(it, context)
             AssignmentAsExpressionToAlsoConversion(context).runConversion(it, context)
+            AssignmentStatenmentValCreationConversion(context).runConversion(it, context)
+            AssignmentStatenmentOperatorConversion().runConversion(it, context)
             JavaMethodToKotlinFunctionConversion().runConversion(it, context)
             LiteralConversion().runConversion(it, context)
             ModifiersConversion().runConversion(it, context)
