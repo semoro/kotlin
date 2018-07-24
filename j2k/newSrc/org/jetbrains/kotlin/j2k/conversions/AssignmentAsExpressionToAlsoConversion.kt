@@ -25,7 +25,7 @@ class AssignmentAsExpressionToAlsoConversion(val context: ConversionContext) : R
             ), alsoSymbol
         ).also {
             it.statement.cast<JKBlockStatement>().block.statements.first().cast<JKKtAssignmentStatement>().expression =
-                    JKKtFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it.parameter))
+                    JKFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it.parameter))
         }
         element.invalidate()
 
