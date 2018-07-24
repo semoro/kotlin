@@ -29,6 +29,8 @@ object ConversionsRunner {
         AssignmentAsExpressionToAlsoConversion(context),
         AssignmentStatenmentValCreationConversion(context),
         AssignmentStatenmentOperatorConversion(),
+        AssignmentStatementSimplifyValConversion(),
+        AssignmentStatementSimplifyAlsoConversion(),
         ConstructorConversion(context),
         PrimaryConstructorDetectConversion(context),
         JavaMethodToKotlinFunctionConversion(),
