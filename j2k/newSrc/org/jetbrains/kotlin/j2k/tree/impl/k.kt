@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.utils.addToStdlib.cast
+import org.jetbrains.kotlin.j2k.ast.Nullability
 
 class JKKtPropertyImpl(
     modifierList: JKModifierList,
@@ -153,7 +154,7 @@ class JKKtAlsoCallExpressionImpl(
                             JKNameIdentifierImpl(parameterName),
                             JKModifierListImpl()
                         )
-                    ), JKTypeElementImpl(JKJavaVoidType), statement
+                    ), statement
                 )
             )
         )
@@ -166,6 +167,11 @@ class JKKtAssignmentStatenmentImpl(
     override var expression by child(expression)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtAssignmentStatement(this, data)
 
+}
+
+object JKKtContextType : JKType {
+    override val nullability: Nullability
+        get() = Nullability.Default
 }
 
 class JKKtConstructorImpl(

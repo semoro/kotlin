@@ -317,8 +317,9 @@ class JKAccessModifierImpl(override val visibility: JKAccessModifier.Visibility)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitAccessModifier(this, data)
 }
 
-class JKLambdaExpressionImpl(parameters: List<JKParameter>, returnType: JKTypeElement, statement: JKStatement) :
-    JKLambdaExpression, JKBranchElementBase() {
+class JKLambdaExpressionImpl(
+    parameters: List<JKParameter>, statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKKtContextType)
+) : JKLambdaExpression, JKBranchElementBase() {
     override var statement by child(statement)
     override val returnType by child(returnType)
     override var parameters by children(parameters)
