@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.j2k.tree.impl
 
 import com.intellij.psi.JavaTokenType
+import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
@@ -153,7 +154,7 @@ class JKKtAlsoCallExpressionImpl(
                             JKNameIdentifierImpl(parameterName),
                             JKModifierListImpl()
                         )
-                    ), JKTypeElementImpl(JKJavaVoidType), statement
+                    ), statement
                 )
             )
         )
@@ -166,4 +167,9 @@ class JKKtAssignmentStatenmentImpl(
     override var expression by child(expression)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtAssignmentStatement(this, data)
 
+}
+
+object JKKtContextType : JKType {
+    override val nullability: Nullability
+        get() = Nullability.Default
 }

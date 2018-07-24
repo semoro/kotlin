@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 
-class AssignmentStatenmentValCreationConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
+class AssignmentStatementValCreationConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKKtAlsoCallExpression) return recurse(element)
         val codeBlock = (element.statement as? JKBlockStatement)?.block ?: return recurse(element)
@@ -25,14 +25,14 @@ class AssignmentStatenmentValCreationConversion(val context: ConversionContext) 
                         listOf(
                             JKLocalVariableImpl(
                                 JKModifierListImpl(JKModalityModifierImpl(JKModalityModifier.Modality.FINAL)),
-                                JKTypeElementImpl(JKJavaVoidType/*TODO*/),
+                                JKTypeElementImpl(JKKtContextType),
                                 JKNameIdentifierImpl("arr"),
                                 ex1
                             ).also {
                                 assignableExpr.expression = JKKtFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
                             }, JKLocalVariableImpl(
                                 JKModifierListImpl(JKModalityModifierImpl(JKModalityModifier.Modality.FINAL)),
-                                JKTypeElementImpl(JKJavaVoidType/*TODO*/),
+                                JKTypeElementImpl(JKKtContextType),
                                 JKNameIdentifierImpl("i"),
                                 ex2
                             ).also {
@@ -51,7 +51,7 @@ class AssignmentStatenmentValCreationConversion(val context: ConversionContext) 
                         listOf(
                             JKLocalVariableImpl(
                                 JKModifierListImpl(JKModalityModifierImpl(JKModalityModifier.Modality.FINAL)),
-                                JKTypeElementImpl(JKJavaVoidType/*TODO*/),
+                                JKTypeElementImpl(JKKtContextType),
                                 JKNameIdentifierImpl("arg"),
                                 ex
                             ).also {

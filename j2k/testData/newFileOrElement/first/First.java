@@ -1,9 +1,10 @@
 package p;
 
 public class Some {
-    public String test=""+"a";
+    public static String test = "" + "a";
 
     public static void main(String[][][] args, int[] b) {
-        System.out.println("Test");
+        b[0] |= test;
+        Some.test = test;
     }
 }
