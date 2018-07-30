@@ -6,8 +6,10 @@
 package org.jetbrains.kotlin.j2k
 
 import com.intellij.psi.*
+import org.jetbrains.kotlin.j2k.conversions.resolveFqName
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedFunction
 
@@ -15,6 +17,7 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 class JKSymbolProvider {
     val symbolsByPsi = mutableMapOf<PsiElement, JKSymbol>()
     val symbolsByJK = mutableMapOf<JKDeclaration, JKSymbol>()
+    val symbolByFqName = mutableMapOf<String, JKSymbol>()
     private val elementVisitor = ElementVisitor()
 
     fun preBuildTree(files: List<PsiJavaFile>) {
@@ -37,7 +40,8 @@ class JKSymbolProvider {
     inline fun <reified T : JKSymbol> provideSymbol(reference: PsiReference): T {
         val target = reference.resolve()
         if (target != null) return provideDirectSymbol(target) as T
-        return JKUnresolvedField(reference).let { if (it is T) it else JKUnresolvedMethod(reference) as T }
+        return (if (T::class.java.isAssignableFrom(JKUnresolvedField::class.java)) JKUnresolvedField(reference)
+        else JKUnresolvedField.JKUnresolvedMethod(reference)) as T
     }
 
     fun provideUniverseSymbol(psi: PsiElement, jk: JKDeclaration): JKSymbol = provideUniverseSymbol(psi).also {
@@ -75,6 +79,14 @@ class JKSymbolProvider {
     fun provideUniverseSymbol(jk: JKMethod): JKMethodSymbol = symbolsByJK.getOrPut(jk) {
         JKUniverseMethodSymbol(this).also { it.target = jk }
     } as JKMethodSymbol
+
+    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String): T = symbolByFqName.getOrPut(fqName) {
+        resolveFqName(ClassId.fromString(fqName), symbolsByPsi.keys.first())?.let(this::provideDirectSymbol) as? T ?: when {
+            T::class.java.isAssignableFrom(JKUnresolvedField.JKUnresolvedMethod::class.java) -> JKUnresolvedMethod(fqName.replace('/', '.'))
+            T::class.java.isAssignableFrom(JKUnresolvedField::class.java) -> JKUnresolvedField(fqName.replace('/', '.'))
+            else -> TODO()
+        }
+    } as T
 
     private inner class ElementVisitor : JavaElementVisitor() {
         override fun visitClass(aClass: PsiClass) {
