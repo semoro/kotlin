@@ -23,7 +23,6 @@ import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitorVoid
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.utils.Printer
-import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 
 class NewCodeBuilder {
 
@@ -269,6 +268,15 @@ class NewCodeBuilder {
 
         override fun visitMethodCallExpression(methodCallExpression: JKMethodCallExpression) {
             printer.printWithNoIndent(FqName(methodCallExpression.identifier.fqName).shortName().asString())
+            if (methodCallExpression.typeArguments.isNotEmpty()) {
+                printer.printWithNoIndent("<")
+                methodCallExpression.typeArguments.firstOrNull()?.accept(this)
+                for (i in 1..methodCallExpression.typeArguments.lastIndex) {
+                    printer.printWithNoIndent(", ")
+                    methodCallExpression.typeArguments[i].accept(this)
+                }
+                printer.printWithNoIndent(">")
+            }
             printer.par {
                 methodCallExpression.arguments.accept(this)
             }
@@ -307,7 +315,7 @@ class NewCodeBuilder {
             }
 
             printer.printWithNoIndent(" ", localVariable.name.value)
-            if(localVariable.type.type != JKKtContextType) {
+            if (localVariable.type.type != JKKtContextType) {
                 printer.printWithNoIndent(": ")
                 localVariable.type.accept(this)
             }
@@ -343,9 +351,7 @@ class NewCodeBuilder {
         }
 
         override fun visitTypeElement(typeElement: JKTypeElement) {
-            val type = typeElement.type
-
-            renderType(type)
+            renderType(typeElement.type)
         }
 
         override fun visitBlock(block: JKBlock) {
@@ -424,9 +430,11 @@ class NewCodeBuilder {
 
         override fun visitLambdaExpression(lambdaExpression: JKLambdaExpression) {
             printer.printWithNoIndent("{")
-            lambdaExpression.parameters.firstOrNull()?.accept(this)
-            lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
-            printer.printWithNoIndent(" -> ")
+            if (lambdaExpression.parameters.size != 1 || lambdaExpression.parameters[0].name.value != "it") {
+                lambdaExpression.parameters.firstOrNull()?.accept(this)
+                lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
+                printer.printWithNoIndent(" -> ")
+            }
             lambdaExpression.statement.accept(this)
             printer.printWithNoIndent("}")
         }
@@ -460,7 +468,7 @@ class NewCodeBuilder {
     }
 }
 
-private inline fun <T> List<T>.headTail(): Pair<T?, List<T>?> {
+private fun <T> List<T>.headTail(): Pair<T?, List<T>?> {
     val head = this.firstOrNull()
     val tail = if (size <= 1) null else subList(1, size)
     return head to tail

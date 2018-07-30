@@ -65,11 +65,13 @@ sealed class JKKtQualifierImpl : JKQualifier, JKElementBase() {
 
 class JKKtCallExpressionImpl(
     override val identifier: JKMethodSymbol,
-    arguments: JKExpressionList
+    arguments: JKExpressionList,
+    typeArguments: List<JKTypeElement> = emptyList()
 ) : JKKtMethodCallExpression, JKBranchElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtMethodCallExpression(this, data)
 
     override var arguments: JKExpressionList by child(arguments)
+    override var typeArguments: List<JKTypeElement> by children(typeArguments)
 }
 
 class JKKtLiteralExpressionImpl(
@@ -167,9 +169,10 @@ class JKKtAlsoCallExpressionImpl(
             )
         )
     )
+    override var typeArguments: List<JKTypeElement> by children(emptyList())
 }
 
-class JKKtAssignmentStatenmentImpl(
+class JKKtAssignmentStatementImpl(
     override var field: JKAssignableExpression, expression: JKExpression, override var operator: JKOperator
 ) : JKKtAssignmentStatement, JKBranchElementBase() {
     override var expression by child(expression)

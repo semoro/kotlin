@@ -116,6 +116,8 @@ class JKPostfixExpressionImpl(expression: JKExpression, override var operator: J
 }
 
 class JKExpressionListImpl(expressions: List<JKExpression> = emptyList()) : JKExpressionList, JKBranchElementBase() {
+    constructor(vararg expresions: JKExpression) : this(expresions.asList())
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitExpressionList(this, data)
 
     override var expressions by children(expressions)
@@ -172,7 +174,7 @@ class JKTypeElementImpl(override val type: JKType) : JKTypeElement, JKElementBas
 
 class JKClassTypeImpl(
     override val classReference: JKClassSymbol,
-    override var parameters: List<JKType>,
+    override var parameters: List<JKType> = emptyList(),
     override val nullability: Nullability = Nullability.Default
 ) : JKClassType
 
@@ -318,7 +320,9 @@ class JKAccessModifierImpl(override val visibility: JKAccessModifier.Visibility)
 }
 
 class JKLambdaExpressionImpl(
-    parameters: List<JKParameter>, statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKKtContextType)
+    parameters: List<JKParameter> = listOf(
+        JKParameterImpl(JKTypeElementImpl(JKJavaVoidType), JKNameIdentifierImpl("it"), JKModifierListImpl())
+    ), statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKKtContextType)
 ) : JKLambdaExpression, JKBranchElementBase() {
     override var statement by child(statement)
     override val returnType by child(returnType)
