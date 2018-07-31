@@ -259,22 +259,14 @@ class NewCodeBuilder {
         }
 
         override fun visitExpressionList(expressionList: JKExpressionList) {
-            expressionList.expressions.firstOrNull()?.accept(this)
-            for (i in 1..expressionList.expressions.lastIndex) {
-                printer.printWithNoIndent(", ")
-                expressionList.expressions[i].accept(this)
-            }
+            renderList(expressionList.expressions) { it.accept(this) }
         }
 
         override fun visitMethodCallExpression(methodCallExpression: JKMethodCallExpression) {
             printer.printWithNoIndent(FqName(methodCallExpression.identifier.fqName).shortName().asString())
             if (methodCallExpression.typeArguments.isNotEmpty()) {
                 printer.printWithNoIndent("<")
-                methodCallExpression.typeArguments.firstOrNull()?.accept(this)
-                for (i in 1..methodCallExpression.typeArguments.lastIndex) {
-                    printer.printWithNoIndent(", ")
-                    methodCallExpression.typeArguments[i].accept(this)
-                }
+                renderList(methodCallExpression.typeArguments) { it.accept(this) }
                 printer.printWithNoIndent(">")
             }
             printer.par {
@@ -343,9 +335,7 @@ class NewCodeBuilder {
             }
             if (type is JKParametrizedType && type.parameters.isNotEmpty()) {
                 printer.par(ANGLE) {
-                    renderList(type.parameters) {
-                        renderType(it)
-                    }
+                    renderList(type.parameters, renderElement = ::renderType)
                 }
             }
         }
@@ -468,7 +458,7 @@ class NewCodeBuilder {
     }
 }
 
-private fun <T> List<T>.headTail(): Pair<T?, List<T>?> {
+private inline fun <T> List<T>.headTail(): Pair<T?, List<T>?> {
     val head = this.firstOrNull()
     val tail = if (size <= 1) null else subList(1, size)
     return head to tail

@@ -91,7 +91,7 @@ interface JKModalityModifier : JKModifier {
 }
 
 interface JKTypeElement : JKTreeElement {
-    val type: JKType
+    var type: JKType
 }
 
 interface JKStatement : JKTreeElement
