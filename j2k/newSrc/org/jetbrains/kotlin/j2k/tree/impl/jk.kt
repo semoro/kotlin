@@ -177,7 +177,7 @@ class JKTypeCastExpressionImpl(override var expression: JKExpression, type: JKTy
     override var type by child(type)
 }
 
-class JKTypeElementImpl(override val type: JKType) : JKTypeElement, JKElementBase() {
+class JKTypeElementImpl(override var type: JKType) : JKTypeElement, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitTypeElement(this, data)
 }
 

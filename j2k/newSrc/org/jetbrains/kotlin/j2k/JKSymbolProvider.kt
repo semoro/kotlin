@@ -41,7 +41,7 @@ class JKSymbolProvider {
         val target = reference.resolve()
         if (target != null) return provideDirectSymbol(target) as T
         return (if (T::class.java.isAssignableFrom(JKUnresolvedField::class.java)) JKUnresolvedField(reference)
-        else JKUnresolvedField.JKUnresolvedMethod(reference)) as T
+        else JKUnresolvedMethod(reference)) as T
     }
 
     fun provideUniverseSymbol(psi: PsiElement, jk: JKDeclaration): JKSymbol = provideUniverseSymbol(psi).also {
@@ -80,13 +80,16 @@ class JKSymbolProvider {
         JKUniverseMethodSymbol(this).also { it.target = jk }
     } as JKMethodSymbol
 
-    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String): T = symbolByFqName.getOrPut(fqName) {
-        resolveFqName(ClassId.fromString(fqName), symbolsByPsi.keys.first())?.let(this::provideDirectSymbol) as? T ?: when {
-            T::class.java.isAssignableFrom(JKUnresolvedField.JKUnresolvedMethod::class.java) -> JKUnresolvedMethod(fqName.replace('/', '.'))
-            T::class.java.isAssignableFrom(JKUnresolvedField::class.java) -> JKUnresolvedField(fqName.replace('/', '.'))
+    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: ClassId): T = symbolByFqName.getOrPut(fqName.asString()) {
+        resolveFqName(fqName, symbolsByPsi.keys.first())?.let(this::provideDirectSymbol) as? T ?: when {
+            T::class.java.isAssignableFrom(JKUnresolvedMethod::class.java) -> JKUnresolvedMethod(fqName.asString().replace('/', '.'))
+            T::class.java.isAssignableFrom(JKUnresolvedField::class.java) -> JKUnresolvedField(fqName.asString().replace('/', '.'))
             else -> TODO()
         }
     } as T
+
+
+    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String): T = provideByFqName(ClassId.fromString(fqName))
 
     private inner class ElementVisitor : JavaElementVisitor() {
         override fun visitClass(aClass: PsiClass) {
