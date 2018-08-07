@@ -27,6 +27,7 @@ object ConversionsRunner {
         DefaultArgumentsConversion(),
         TypeMappingConversion(context),
         FieldToPropertyConversion(),
+        PrintlnConversion(context),
         AssignmentAsExpressionToAlsoConversion(context),
         AssignmentStatenmentValCreationConversion(context),
         AssignmentStatenmentOperatorConversion(),
