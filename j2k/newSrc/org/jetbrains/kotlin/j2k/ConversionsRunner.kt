@@ -24,6 +24,7 @@ object ConversionsRunner {
     private fun createConversions(context: ConversionContext) = listOf(
         ModalityConversion(context),
         ImplicitInitializerConversion(),
+        DefaultArgumentsConversion(),
         TypeMappingConversion(context),
         FieldToPropertyConversion(),
         AssignmentAsExpressionToAlsoConversion(context),
