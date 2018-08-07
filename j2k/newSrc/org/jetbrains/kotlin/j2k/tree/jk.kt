@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.j2k.tree
 
+import org.jetbrains.kotlin.j2k.ast.Mutability
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKFieldSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKMethodSymbol
@@ -58,6 +59,7 @@ interface JKMethod : JKDeclaration, JKModifierListOwner {
     val name: JKNameIdentifier
     var parameters: List<JKParameter>
     val returnType: JKTypeElement
+    var block: JKBlock
 }
 
 interface JKField : JKDeclaration, JKModifierListOwner {
@@ -90,6 +92,10 @@ interface JKModalityModifier : JKModifier {
     val modality: Modality
 }
 
+interface JKMutabilityModifier : JKModifier {
+    val mutability: Mutability
+}
+
 interface JKTypeElement : JKTreeElement {
     val type: JKType
 }
@@ -108,7 +114,7 @@ interface JKNameIdentifier : JKIdentifier {
 
 interface JKExpression : JKTreeElement
 
-interface JKExpressionStatement : JKBranchElement, JKStatement {
+interface JKExpressionStatement : JKStatement, JKBranchElement {
     val expression: JKExpression
 }
 
@@ -137,7 +143,7 @@ interface JKQualifiedExpression : JKExpression, JKAssignableExpression {
     var selector: JKExpression
 }
 
-interface JKMethodCallExpression : JKExpression {
+interface JKMethodCallExpression : JKExpression, JKBranchElement {
     val identifier: JKMethodSymbol
     val arguments: JKExpressionList
 }
@@ -164,7 +170,7 @@ interface JKTypeCastExpression : JKExpression {
     val type: JKTypeElement
 }
 
-interface JKExpressionList : JKTreeElement {
+interface JKExpressionList : JKTreeElement, JKBranchElement {
     var expressions: List<JKExpression>
 }
 
