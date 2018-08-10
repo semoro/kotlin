@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.JKLiteralExpression.LiteralType.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 
 class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
@@ -119,7 +120,6 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
         fun PsiLambdaExpression.toJK(): JKExpression {
             return JKLambdaExpressionImpl(
                 with(declarationMapper) { parameterList.parameters.map { it.toJK() } },
-                JKTypeElementImpl(JKJavaVoidType),
                 body.let {
                     when (it) {
                         is PsiExpression -> JKExpressionStatementImpl(it.toJK())
@@ -154,34 +154,40 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
             val symbol = symbolProvider.provideSymbol(this)
             val access = when (symbol) {
                 is JKClassSymbol -> JKClassAccessExpressionImpl(symbol)
-                is JKFieldSymbol -> JKJavaFieldAccessExpressionImpl(symbol)
+                is JKFieldSymbol -> JKFieldAccessExpressionImpl(symbol)
                 else -> TODO()
             }
             return qualifierExpression?.let { JKQualifiedExpressionImpl(it.toJK(), JKJavaQualifierImpl.DOT, access) } ?: access
         }
 
         fun PsiArrayInitializerExpression.toJK(): JKExpression {
-            return JKJavaNewArrayImpl(initializers.map { it.toJK() })
+            return JKJavaNewArrayImpl(
+                initializers.map { it.toJK() },
+                JKTypeElementImpl(type?.toJK().safeAs<JKJavaArrayType>()?.type ?: JKContextType)
+            )
         }
 
         fun PsiNewExpression.toJK(): JKExpression {
-            assert(this is PsiNewExpressionImpl)
-            if ((this as PsiNewExpressionImpl).findChildByRole(ChildRole.LBRACKET) != null) {
+            require(this is PsiNewExpressionImpl)
+            if (findChildByRole(ChildRole.LBRACKET) != null) {
                 return arrayInitializer?.toJK() ?: run {
-                    val dimensions = mutableListOf<PsiLiteralExpression?>()
+                    val dimensions = mutableListOf<PsiExpression?>()
                     var child = firstChild
                     while (child != null) {
                         if (child.node.elementType == JavaTokenType.LBRACKET) {
                             child = child.nextSibling
-                            if (child.node.elementType == JavaTokenType.RBRACKET) {
-                                dimensions.add(null)
+                            dimensions += if (child.node.elementType == JavaTokenType.RBRACKET) {
+                                null
                             } else {
-                                dimensions.add(child as PsiLiteralExpression?)
+                                child as PsiExpression? //TODO
                             }
                         }
                         child = child.nextSibling
                     }
-                    JKJavaNewEmptyArrayImpl(dimensions.map { it?.toJK() })
+                    JKJavaNewEmptyArrayImpl(
+                        dimensions.map { it?.toJK() ?: JKStubExpressionImpl() },
+                        JKTypeElementImpl(generateSequence(type?.toJK()) { it.safeAs<JKJavaArrayType>()?.type }.last())
+                    )
                 }
             }
             val constructedClass = classOrAnonymousClassReference?.resolve()

@@ -14,7 +14,7 @@ import org.jetbrains.kotlin.j2k.tree.impl.JKKtWordOperatorImpl
 import org.jetbrains.kotlin.j2k.tree.impl.JKStubExpressionImpl
 import org.jetbrains.kotlin.lexer.KtTokens
 
-class AssignmentStatenmentOperatorConversion : RecursiveApplicableConversionBase() {
+class AssignmentStatementOperatorConversion : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKKtAssignmentStatement) return recurse(element)
         val newOperator = JKKtOperatorImpl.javaToKotlinOperator[element.operator] ?: return recurse(element)
@@ -22,7 +22,7 @@ class AssignmentStatenmentOperatorConversion : RecursiveApplicableConversionBase
             element.operator = JKKtOperatorImpl.tokenToOperator[KtTokens.EQ] ?: return recurse(element)
             val expr = element.expression
             element.expression = JKStubExpressionImpl()
-            element.expression = JKBinaryExpressionImpl(expr, element.field.copyTree(), newOperator)
+            element.expression = JKBinaryExpressionImpl(element.field.copyTree(), expr, newOperator)
         } else {
             element.operator = newOperator
         }

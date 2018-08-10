@@ -260,15 +260,16 @@ class NewCodeBuilder {
         }
 
         override fun visitExpressionList(expressionList: JKExpressionList) {
-            expressionList.expressions.firstOrNull()?.accept(this)
-            for (i in 1..expressionList.expressions.lastIndex) {
-                printer.printWithNoIndent(", ")
-                expressionList.expressions[i].accept(this)
-            }
+            renderList(expressionList.expressions) { it.accept(this) }
         }
 
         override fun visitMethodCallExpression(methodCallExpression: JKMethodCallExpression) {
             printer.printWithNoIndent(FqName(methodCallExpression.identifier.fqName).shortName().asString())
+            if (methodCallExpression.typeArguments.isNotEmpty()) {
+                printer.printWithNoIndent("<")
+                renderList(methodCallExpression.typeArguments) { it.accept(this) }
+                printer.printWithNoIndent(">")
+            }
             printer.par {
                 methodCallExpression.arguments.accept(this)
             }
@@ -306,8 +307,11 @@ class NewCodeBuilder {
                 printer.print("var")
             }
 
-            printer.printWithNoIndent(" ", localVariable.name.value, ": ")
-            localVariable.type.accept(this)
+            printer.printWithNoIndent(" ", localVariable.name.value)
+            if (localVariable.type.type != JKContextType) {
+                printer.printWithNoIndent(": ")
+                localVariable.type.accept(this)
+            }
             if (localVariable.initializer !is JKStubExpression) {
                 printer.printWithNoIndent(" = ")
                 localVariable.initializer.accept(this)
@@ -318,10 +322,9 @@ class NewCodeBuilder {
 
         private fun renderType(type: JKType) {
             when (type) {
-                is JKClassType ->
-                    (type.classReference as JKClassSymbol).fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
-                is JKUnresolvedClassType ->
-                    printer.printWithNoIndent(type.name)
+                is JKClassType -> type.classReference.fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
+                is JKUnresolvedClassType -> printer.printWithNoIndent(type.name)
+                is JKContextType -> return
                 else -> printer.printWithNoIndent("Unit /* TODO: ${type::class} */")
             }
             when (type.nullability) {
@@ -332,17 +335,13 @@ class NewCodeBuilder {
             }
             if (type is JKParametrizedType && type.parameters.isNotEmpty()) {
                 printer.par(ANGLE) {
-                    renderList(type.parameters) {
-                        renderType(it)
-                    }
+                    renderList(type.parameters, renderElement = ::renderType)
                 }
             }
         }
 
         override fun visitTypeElement(typeElement: JKTypeElement) {
-            val type = typeElement.type
-
-            renderType(type)
+            renderType(typeElement.type)
         }
 
         override fun visitBlock(block: JKBlock) {
@@ -421,9 +420,10 @@ class NewCodeBuilder {
 
         override fun visitLambdaExpression(lambdaExpression: JKLambdaExpression) {
             printer.printWithNoIndent("{")
-            lambdaExpression.parameters.firstOrNull()?.accept(this)
-            lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
-            printer.printWithNoIndent(" -> ")
+            if (lambdaExpression.parameters.size != 1 || lambdaExpression.parameters[0].name.value != "it") {
+                renderList(lambdaExpression.parameters) { it.accept(this) }
+                printer.printWithNoIndent(" -> ")
+            }
             lambdaExpression.statement.accept(this)
             printer.printWithNoIndent("}")
         }

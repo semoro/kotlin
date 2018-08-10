@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.utils.addToStdlib.cast
+import org.jetbrains.kotlin.j2k.ast.Nullability
 
 class JKKtPropertyImpl(
     modifierList: JKModifierList,
@@ -64,15 +65,13 @@ sealed class JKKtQualifierImpl : JKQualifier, JKElementBase() {
 
 class JKKtCallExpressionImpl(
     override val identifier: JKMethodSymbol,
-    arguments: JKExpressionList
+    arguments: JKExpressionList,
+    typeArguments: List<JKTypeElement> = emptyList()
 ) : JKKtMethodCallExpression, JKBranchElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtMethodCallExpression(this, data)
 
     override var arguments: JKExpressionList by child(arguments)
-}
-
-class JKKtFieldAccessExpressionImpl(override val identifier: JKFieldSymbol) : JKKtFieldAccessExpression, JKElementBase() {
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtFieldAccessExpression(this, data)
+    override var typeArguments: List<JKTypeElement> by children(typeArguments)
 }
 
 class JKKtLiteralExpressionImpl(
@@ -113,6 +112,9 @@ class JKKtOperatorImpl private constructor(val token: KtSingleValueToken) : JKOp
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.EQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.EQ]!!
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.PLUSEQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.PLUSEQ]!!
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.MINUSEQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.MINUSEQ]!!
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.ASTERISKEQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.MULTEQ]!!
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.DIVEQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.DIVEQ]!!
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.PERCEQ]!!] = JKKtOperatorImpl.tokenToOperator[KtTokens.PERCEQ]!!
 
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.AND]!!] = JKKtWordOperatorImpl("and")
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.OR]!!] = JKKtWordOperatorImpl("or")
@@ -123,6 +125,10 @@ class JKKtOperatorImpl private constructor(val token: KtSingleValueToken) : JKOp
 
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.OREQ]!!] = JKKtWordOperatorImpl("or")
                 this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.ANDEQ]!!] = JKKtWordOperatorImpl("and")
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.XOREQ]!!] = JKKtWordOperatorImpl("xor")
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.GTGTGTEQ]!!] = JKKtWordOperatorImpl("ushr")
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.GTGTEQ]!!] = JKKtWordOperatorImpl("shr")
+                this[JKJavaOperatorImpl.tokenToOperator[JavaTokenType.LTLTEQ]!!] = JKKtWordOperatorImpl("shl")
             }
         }
     }
@@ -138,9 +144,14 @@ class JKKtModifierImpl(override val type: JKKtModifier.KtModifierType) : JKKtMod
 }
 
 class JKKtAlsoCallExpressionImpl(
-    override val statement: JKStatement, override val identifier: JKMethodSymbol, override val parameterName: String = "it"
+    statement: JKStatement, override val identifier: JKMethodSymbol, override val parameterName: String = "it"
 ) : JKKtAlsoCallExpression, JKBranchElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtAlsoCallExpression(this, data)
+    override var statement
+        get() = arguments.expressions.first().cast<JKLambdaExpressionImpl>().statement
+        set(it) {
+            arguments.expressions.first().cast<JKLambdaExpressionImpl>().statement = it
+        }
     val parameter
         get() = arguments.expressions.first().cast<JKLambdaExpression>().parameters.first()
     override var arguments: JKExpressionList by child(
@@ -153,14 +164,15 @@ class JKKtAlsoCallExpressionImpl(
                             JKNameIdentifierImpl(parameterName),
                             JKModifierListImpl()
                         )
-                    ), JKTypeElementImpl(JKJavaVoidType), statement
+                    ), statement
                 )
             )
         )
     )
+    override var typeArguments: List<JKTypeElement> by children(emptyList())
 }
 
-class JKKtAssignmentStatenmentImpl(
+class JKKtAssignmentStatementImpl(
     override var field: JKAssignableExpression, expression: JKExpression, override var operator: JKOperator
 ) : JKKtAssignmentStatement, JKBranchElementBase() {
     override var expression by child(expression)
@@ -168,6 +180,10 @@ class JKKtAssignmentStatenmentImpl(
 
 }
 
+object JKContextType : JKType {
+    override val nullability: Nullability
+        get() = Nullability.Default
+}
 class JKKtConstructorImpl(
     name: JKNameIdentifier,
     parameters: List<JKParameter>,

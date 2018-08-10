@@ -14,14 +14,14 @@ import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassTypeImpl
+import org.jetbrains.kotlin.j2k.tree.impl.JKJavaPrimitiveTypeImpl.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKJavaVoidType
-import org.jetbrains.kotlin.j2k.tree.impl.JKTypeElementImpl
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
-import org.jetbrains.kotlin.psi.KtClassOrObject
 
 class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
+    private val unitSymbol = context.symbolProvider.provideByFqName<JKClassSymbol>(ClassId.topLevel(KotlinBuiltIns.FQ_NAMES.unit.toSafe()))
 
     private val typeFlavorCalculator = TypeFlavorCalculator(object : TypeFlavorConverterFacade {
         override val referenceSearcher: ReferenceSearcher
@@ -36,32 +36,32 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
     })
 
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
-        return if (element is JKTypeElement) {
-            val type = element.type
-            when (type) {
-                is JKJavaPrimitiveType -> mapPrimitiveType(type, element)
-                is JKClassType -> mapClassType(type, element)
-                is JKJavaVoidType -> classTypeByFqName(
-                    context.backAnnotator(element),
-                    ClassId.topLevel(KotlinBuiltIns.FQ_NAMES.unit.toSafe()),
-                    emptyList(),
-                    Nullability.NotNull
-                )?.let { JKTypeElementImpl(it) } ?: element
-                else -> applyRecursive(element, this::applyToElement)
-            }
-        } else applyRecursive(element, this::applyToElement)
+        if (element is JKTypeElement) {
+            element.type = mapType(element.type)
+        }
+        return recurse(element)
     }
 
-    private fun classTypeByFqName(
-        contextElement: PsiElement?,
-        fqName: ClassId,
-        parameters: List<JKType>,
-        nullability: Nullability = Nullability.Default
-    ): JKType? {
-        contextElement ?: return null
-        val newTarget = resolveFqName(fqName, contextElement) as? KtClassOrObject ?: return null
+    private fun mapType(type: JKType): JKType = when (type) {
+        is JKJavaPrimitiveType -> mapPrimitiveType(type)
+        is JKClassType -> mapClassType(type).also { it.parameters = it.parameters.map(::mapType) }
+        is JKJavaVoidType -> JKClassTypeImpl(unitSymbol, nullability = Nullability.NotNull)
+        is JKJavaArrayType -> JKClassTypeImpl(
+            context.symbolProvider.provideByFqName(fqNameByType(type.type)),
+            if (type.type is JKJavaPrimitiveType) emptyList() else listOf(mapType(type.type)),
+            type.nullability
+        )
+        else -> type
+    }
 
-        return JKClassTypeImpl(context.symbolProvider.provideDirectSymbol(newTarget) as JKClassSymbol, parameters, nullability)
+    private fun mapClassType(type: JKClassType): JKClassType {
+        val newFqName = JavaToKotlinClassMap.mapJavaToKotlin(FqName(type.classReference.fqName ?: return type)) ?: return type
+        return JKClassTypeImpl(context.symbolProvider.provideByFqName(newFqName), type.parameters, type.nullability)
+    }
+
+    private fun mapPrimitiveType(type: JKJavaPrimitiveType): JKType {
+        val fqName = type.jvmPrimitiveType.primitiveType.typeFqName
+        return JKClassTypeImpl(context.symbolProvider.provideByFqName(ClassId.topLevel(fqName)), nullability = Nullability.NotNull)
     }
 
     private fun calculateNullability(typeElement: JKTypeElement): Nullability {
@@ -74,26 +74,15 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
         }
     }
 
-    private fun mapClassType(type: JKClassType, typeElement: JKTypeElement): JKTypeElement {
-        val fqNameStr = (type.classReference as? JKClassSymbol)?.fqName ?: return typeElement
-
-        val newFqName = JavaToKotlinClassMap.mapJavaToKotlin(FqName(fqNameStr)) ?: return typeElement
-
-        return classTypeByFqName(context.backAnnotator(typeElement), newFqName, type.parameters, calculateNullability(typeElement))?.let {
-            JKTypeElementImpl(it)
-        } ?: typeElement
-    }
-
-    private fun mapPrimitiveType(type: JKJavaPrimitiveType, typeElement: JKTypeElement): JKTypeElement {
-        val fqName = type.jvmPrimitiveType.primitiveType.typeFqName
-
-        val convertedType = classTypeByFqName(
-            context.backAnnotator(typeElement),
-            ClassId.topLevel(fqName),
-            emptyList(),
-            nullability = Nullability.NotNull
-        ) ?: return typeElement
-
-        return JKTypeElementImpl(convertedType)
+    private fun fqNameByType(type: JKType): String = when (type) {
+        BOOLEAN -> "kotlin/BooleanArray"
+        BYTE -> "kotlin/ByteArray"
+        CHAR -> "kotlin/CharArray"
+        DOUBLE -> "kotlin/DoubleArray"
+        FLOAT -> "kotlin/FloatArray"
+        INT -> "kotlin/IntArray"
+        LONG -> "kotlin/LongArray"
+        SHORT -> "kotlin/ShortArray"
+        else -> "kotlin/Array"
     }
 }

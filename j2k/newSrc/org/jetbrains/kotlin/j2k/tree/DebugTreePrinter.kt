@@ -24,10 +24,10 @@ private class DebugTreePrinter : JKVisitorVoid {
     internal val stringBuilder = StringBuilder()
     private val printer = Printer(stringBuilder)
 
-    override fun visitTreeElement(element: JKTreeElement) {
-        printer.println(element.classNameWithoutJK(), " [")
+    override fun visitTreeElement(treeElement: JKTreeElement) {
+        printer.println(treeElement.classNameWithoutJK(), " [")
         printer.indented {
-            element.acceptChildren(this, null)
+            treeElement.acceptChildren(this, null)
         }
         printer.println("]")
     }
@@ -75,7 +75,7 @@ private class DebugTreePrinter : JKVisitorVoid {
         printer.println(type.classNameWithoutJK(), " \"")
         printer.indented {
             if (type is JKClassType) {
-                printer.println((type.classReference as? JKClassSymbol)?.fqName ?: type.classReference?.let { it::class } ?: "Unbound")
+                printer.println((type.classReference as? JKClassSymbol)?.fqName ?: type.classReference.let { it::class })
             }
             if (type is JKJavaPrimitiveType) {
                 printer.println(type.jvmPrimitiveType.javaKeywordName)

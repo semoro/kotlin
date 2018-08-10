@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 
-class AssignmentStatenmentValCreationConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
+class AssignmentStatementValCreationConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKKtAlsoCallExpression) return recurse(element)
         val codeBlock = (element.statement as? JKBlockStatement)?.block ?: return recurse(element)
@@ -29,7 +29,7 @@ class AssignmentStatenmentValCreationConversion(val context: ConversionContext) 
                                 JKNameIdentifierImpl("arr"),
                                 ex1
                             ).also {
-                                assignableExpr.expression = JKKtFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
+                                assignableExpr.expression = JKFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
                             }, JKLocalVariableImpl(
                                 JKModifierListImpl(JKModalityModifierImpl(JKModalityModifier.Modality.FINAL)),
                                 JKTypeElementImpl(JKJavaVoidType/*TODO*/),
@@ -37,7 +37,7 @@ class AssignmentStatenmentValCreationConversion(val context: ConversionContext) 
                                 ex2
                             ).also {
                                 assignableExpr.indexExpression =
-                                        JKKtFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
+                                        JKFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
                             }
                         )
                     )
@@ -55,7 +55,7 @@ class AssignmentStatenmentValCreationConversion(val context: ConversionContext) 
                                 JKNameIdentifierImpl("arg"),
                                 ex
                             ).also {
-                                assignableExpr.receiver = JKKtFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
+                                assignableExpr.receiver = JKFieldAccessExpressionImpl(context.symbolProvider.provideUniverseSymbol(it))
                             }
                         )
                     )

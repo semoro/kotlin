@@ -116,6 +116,8 @@ class JKPostfixExpressionImpl(expression: JKExpression, override var operator: J
 }
 
 class JKExpressionListImpl(expressions: List<JKExpression> = emptyList()) : JKExpressionList, JKBranchElementBase() {
+    constructor(vararg expresions: JKExpression) : this(expresions.asList())
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitExpressionList(this, data)
 
     override var expressions by children(expressions)
@@ -166,13 +168,13 @@ class JKTypeCastExpressionImpl(override var expression: JKExpression, type: JKTy
     override var type by child(type)
 }
 
-class JKTypeElementImpl(override val type: JKType) : JKTypeElement, JKElementBase() {
+class JKTypeElementImpl(override var type: JKType) : JKTypeElement, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitTypeElement(this, data)
 }
 
 class JKClassTypeImpl(
     override val classReference: JKClassSymbol,
-    override var parameters: List<JKType>,
+    override var parameters: List<JKType> = emptyList(),
     override val nullability: Nullability = Nullability.Default
 ) : JKClassType
 
@@ -317,8 +319,11 @@ class JKAccessModifierImpl(override val visibility: JKAccessModifier.Visibility)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitAccessModifier(this, data)
 }
 
-class JKLambdaExpressionImpl(parameters: List<JKParameter>, returnType: JKTypeElement, statement: JKStatement) :
-    JKLambdaExpression, JKBranchElementBase() {
+class JKLambdaExpressionImpl(
+    parameters: List<JKParameter> = listOf(
+        JKParameterImpl(JKTypeElementImpl(JKJavaVoidType), JKNameIdentifierImpl("it"), JKModifierListImpl())
+    ), statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKContextType)
+) : JKLambdaExpression, JKBranchElementBase() {
     override var statement by child(statement)
     override val returnType by child(returnType)
     override var parameters by children(parameters)
@@ -336,8 +341,13 @@ class JKDelegationConstructorCallImpl(
     expression: JKExpression,
     arguments: JKExpressionList
 ) : JKBranchElementBase(), JKDelegationConstructorCall {
+    override var typeArguments by children(emptyList<JKTypeElement>())
     override val expression: JKExpression by child(expression)
     override val arguments: JKExpressionList by child(arguments)
 
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitDelegationConstructorCall(this, data)
+}
+
+class JKFieldAccessExpressionImpl(override var identifier: JKFieldSymbol) : JKFieldAccessExpression, JKElementBase() {
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitFieldAccessExpression(this, data)
 }

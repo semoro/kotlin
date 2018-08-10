@@ -91,7 +91,7 @@ interface JKModalityModifier : JKModifier {
 }
 
 interface JKTypeElement : JKTreeElement {
-    val type: JKType
+    var type: JKType
 }
 
 interface JKStatement : JKTreeElement
@@ -140,6 +140,7 @@ interface JKQualifiedExpression : JKExpression, JKAssignableExpression {
 interface JKMethodCallExpression : JKExpression {
     val identifier: JKMethodSymbol
     val arguments: JKExpressionList
+    var typeArguments: List<JKTypeElement>
 }
 
 interface JKFieldAccessExpression : JKAssignableExpression {
