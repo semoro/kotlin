@@ -180,11 +180,10 @@ class JKKtAssignmentStatementImpl(
 
 }
 
-object JKKtContextType : JKType {
+object JKContextType : JKType {
     override val nullability: Nullability
         get() = Nullability.Default
 }
-
 class JKKtConstructorImpl(
     name: JKNameIdentifier,
     parameters: List<JKParameter>,

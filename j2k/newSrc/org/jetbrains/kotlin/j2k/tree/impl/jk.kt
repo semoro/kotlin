@@ -322,7 +322,7 @@ class JKAccessModifierImpl(override val visibility: JKAccessModifier.Visibility)
 class JKLambdaExpressionImpl(
     parameters: List<JKParameter> = listOf(
         JKParameterImpl(JKTypeElementImpl(JKJavaVoidType), JKNameIdentifierImpl("it"), JKModifierListImpl())
-    ), statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKKtContextType)
+    ), statement: JKStatement, returnType: JKTypeElement = JKTypeElementImpl(JKContextType)
 ) : JKLambdaExpression, JKBranchElementBase() {
     override var statement by child(statement)
     override val returnType by child(returnType)
