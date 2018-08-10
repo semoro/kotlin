@@ -12,23 +12,17 @@ class AssignmentStatementSimplifyValConversion : RecursiveApplicableConversionBa
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKKtAlsoCallExpression) return recurse(element)
         val codeBlock = (element.statement as? JKBlockStatement)?.block ?: return recurse(element)
-        if (codeBlock.statements.size < 2) {
-            element.statement = codeBlock.statements.first().also { codeBlock.statements = emptyList() }
-            return recurse(element)
-        }
-        val assignment = codeBlock.statements[1] as? JKKtAssignmentStatement ?: return recurse(element)
-        val declaration = codeBlock.statements[0] as? JKDeclarationStatement ?: return recurse(element)
-        when (declaration.declaredStatements.size) {
-            1 -> {
-                if (assignment.expression !is JKBinaryExpression) {
+        if (codeBlock.statements.size > 1) {
+            val assignment = codeBlock.statements[1] as? JKKtAssignmentStatement ?: return recurse(element)
+            val declaration = codeBlock.statements[0] as? JKDeclarationStatement ?: return recurse(element)
+            when (declaration.declaredStatements.size) {
+                1 -> if (assignment.expression !is JKBinaryExpression) {
                     codeBlock.statements = listOf(assignment)
                     (assignment.field as JKQualifiedExpression).receiver = declaration.extractInitializerByIndex(0)
                 } else {
 
                 }
-            }
-            2 -> {
-                if (assignment.expression !is JKBinaryExpression) {
+                2 -> if (assignment.expression !is JKBinaryExpression) {
                     codeBlock.statements = listOf(assignment)
                     val arrayAccess = assignment.field as JKArrayAccessExpression
                     arrayAccess.expression = declaration.extractInitializerByIndex(0)
