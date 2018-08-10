@@ -164,7 +164,7 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
         fun PsiArrayInitializerExpression.toJK(): JKExpression {
             return JKJavaNewArrayImpl(
                 initializers.map { it.toJK() },
-                JKTypeElementImpl(type?.toJK().safeAs<JKJavaArrayType>()?.type ?: JKKtContextType)
+                JKTypeElementImpl(type?.toJK().safeAs<JKJavaArrayType>()?.type ?: JKContextType)
             )
         }
 

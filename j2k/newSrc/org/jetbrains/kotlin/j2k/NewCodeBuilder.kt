@@ -312,7 +312,7 @@ class NewCodeBuilder {
             }
 
             printer.printWithNoIndent(" ", localVariable.name.value)
-            if (localVariable.type.type != JKKtContextType) {
+            if (localVariable.type.type != JKContextType) {
                 printer.printWithNoIndent(": ")
                 localVariable.type.accept(this)
             }
@@ -329,7 +329,7 @@ class NewCodeBuilder {
                 is JKClassType ->
                     (type.classReference as JKClassSymbol).fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
                 is JKUnresolvedClassType -> printer.printWithNoIndent(type.name)
-                is JKKtContextType -> return
+                is JKContextType -> return
                 else -> printer.printWithNoIndent("Unit /* TODO: ${type::class} */")
             }
             if (type is JKParametrizedType && type.parameters.isNotEmpty()) {
