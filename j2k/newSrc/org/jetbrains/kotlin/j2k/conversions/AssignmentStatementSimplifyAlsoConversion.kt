@@ -12,18 +12,18 @@ import org.jetbrains.kotlin.j2k.tree.impl.JKStubExpressionImpl
 class AssignmentStatementSimplifyAlsoConversion : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKExpressionStatement) return recurse(element)
-        val qualifiedExpr = element.expression as? JKQualifiedExpression ?: return recurse(element)
-        val alsoCall = qualifiedExpr.selector as? JKKtAlsoCallExpression ?: return recurse(element)
-        val arg = qualifiedExpr.receiver.also { qualifiedExpr.receiver = JKStubExpressionImpl() }
+        val qualifiedExpression = element.expression as? JKQualifiedExpression ?: return recurse(element)
+        val alsoCall = qualifiedExpression.selector as? JKKtAlsoCallExpression ?: return recurse(element)
+        val argument = qualifiedExpression.receiver.also { qualifiedExpression.receiver = JKStubExpressionImpl() }
         return recurse(if (alsoCall.statement !is JKBlockStatement) alsoCall.statement.also {
             alsoCall.statement = JKExpressionStatementImpl(JKStubExpressionImpl())
-        }.also { inlineVal(it, arg) } else element)
+        }.also { inlineVal(it, argument) } else element)
     }
 
-    private fun inlineVal(stat: JKStatement, expr: JKExpression) {
-        if (stat is JKKtAssignmentStatement) {
-            (stat.expression as? JKBinaryExpression)?.right = expr
-            if (stat.expression !is JKBinaryExpression) stat.expression = expr
+    private fun inlineVal(statement: JKStatement, expression: JKExpression) {
+        if (statement is JKKtAssignmentStatement) {
+            (statement.expression as? JKBinaryExpression)?.right = expression
+            if (statement.expression !is JKBinaryExpression) statement.expression = expression
         }
     }
 }
