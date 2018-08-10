@@ -12,12 +12,13 @@ import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 
 class JKSymbolProvider {
     val symbolsByPsi = mutableMapOf<PsiElement, JKSymbol>()
     val symbolsByJK = mutableMapOf<JKDeclaration, JKSymbol>()
-    val symbolByFqName = mutableMapOf<String, JKSymbol>()
+
     private val elementVisitor = ElementVisitor()
 
     fun preBuildTree(files: List<PsiJavaFile>) {
@@ -80,14 +81,13 @@ class JKSymbolProvider {
         JKUniverseMethodSymbol(this).also { it.target = jk }
     } as JKMethodSymbol
 
-    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: ClassId): T = symbolByFqName.getOrPut(fqName.asString()) {
-        resolveFqName(fqName, symbolsByPsi.keys.first())?.let(this::provideDirectSymbol) as? T ?: when {
-            T::class.java.isAssignableFrom(JKUnresolvedMethod::class.java) -> JKUnresolvedMethod(fqName.asString().replace('/', '.'))
-            T::class.java.isAssignableFrom(JKUnresolvedField::class.java) -> JKUnresolvedField(fqName.asString().replace('/', '.'))
+    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: ClassId, context: PsiElement = symbolsByPsi.keys.first()): T {
+        return resolveFqName(fqName, context)?.let(::provideDirectSymbol).safeAs<T>() ?: when {
+            isAssignable<T, JKUnresolvedMethod>() -> JKUnresolvedMethod(fqName.asString().replace('/', '.'))
+            isAssignable<T, JKUnresolvedField>() -> JKUnresolvedField(fqName.asString().replace('/', '.'))
             else -> TODO()
-        }
-    } as T
-
+        } as T
+    }
 
     internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String): T = provideByFqName(ClassId.fromString(fqName))
 
@@ -109,4 +109,6 @@ class JKSymbolProvider {
             file.acceptChildren(this)
         }
     }
+
+    private inline fun <reified A, reified B> isAssignable(): Boolean = A::class.java.isAssignableFrom(B::class.java)
 }
