@@ -321,8 +321,7 @@ class NewCodeBuilder {
 
         private fun renderType(type: JKType) {
             when (type) {
-                is JKClassType ->
-                    (type.classReference as JKClassSymbol).fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
+                is JKClassType -> type.classReference.fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
                 is JKUnresolvedClassType -> printer.printWithNoIndent(type.name)
                 is JKContextType -> return
                 else -> printer.printWithNoIndent("Unit /* TODO: ${type::class} */")
@@ -421,8 +420,7 @@ class NewCodeBuilder {
         override fun visitLambdaExpression(lambdaExpression: JKLambdaExpression) {
             printer.printWithNoIndent("{")
             if (lambdaExpression.parameters.size != 1 || lambdaExpression.parameters[0].name.value != "it") {
-                lambdaExpression.parameters.firstOrNull()?.accept(this)
-                lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
+                renderList(lambdaExpression.parameters) { it.accept(this) }
                 printer.printWithNoIndent(" -> ")
             }
             lambdaExpression.statement.accept(this)
