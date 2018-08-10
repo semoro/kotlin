@@ -354,6 +354,7 @@ class JKDelegationConstructorCallImpl(
     expression: JKExpression,
     arguments: JKExpressionList
 ) : JKBranchElementBase(), JKDelegationConstructorCall {
+    override var typeArguments by children(emptyList<JKTypeElement>())
     override val expression: JKExpression by child(expression)
     override val arguments: JKExpressionList by child(arguments)
 

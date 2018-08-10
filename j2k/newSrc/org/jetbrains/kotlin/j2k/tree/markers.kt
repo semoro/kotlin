@@ -51,7 +51,7 @@ interface JKType {
 }
 
 interface JKParametrizedType : JKType {
-    val parameters: List<JKType>
+    var parameters: List<JKType>
 }
 
 interface JKClassType : JKParametrizedType {
