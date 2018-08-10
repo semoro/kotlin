@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 interface JKSymbol {
     val target: Any
     val declaredIn: JKSymbol?
+    val fqName: String?
 }
 
 interface JKNamedSymbol : JKSymbol {
@@ -31,16 +32,14 @@ interface JKUniverseSymbol<T: JKTreeElement> : JKSymbol {
     override var target: T
 }
 
-interface JKClassSymbol : JKNamedSymbol {
-    val fqName: String?
-}
+interface JKClassSymbol : JKNamedSymbol
 
 interface JKMethodSymbol : JKNamedSymbol {
-    val fqName: String
+    override val fqName: String
 }
 
 interface JKFieldSymbol : JKNamedSymbol {
-    val fqName: String
+    override val fqName: String
 }
 
 class JKUniverseClassSymbol : JKClassSymbol, JKUniverseSymbol<JKClass> {
