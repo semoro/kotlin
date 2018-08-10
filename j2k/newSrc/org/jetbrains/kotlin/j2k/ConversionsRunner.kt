@@ -22,13 +22,14 @@ import org.jetbrains.kotlin.j2k.tree.JKTreeElement
 object ConversionsRunner {
 
     private fun createConversions(context: ConversionContext) = listOf(
+        ArrayInitializerConversion(context),
         ModalityConversion(context),
         ImplicitInitializerConversion(),
         TypeMappingConversion(context),
         FieldToPropertyConversion(),
         AssignmentAsExpressionToAlsoConversion(context),
-        AssignmentStatenmentValCreationConversion(context),
-        AssignmentStatenmentOperatorConversion(),
+        AssignmentStatementValCreationConversion(context),
+        AssignmentStatementOperatorConversion(),
         AssignmentStatementSimplifyValConversion(),
         AssignmentStatementSimplifyAlsoConversion(),
         ConstructorConversion(context),

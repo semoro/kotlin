@@ -56,7 +56,7 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
 
     private fun mapClassType(type: JKClassType): JKClassType {
         val newFqName = JavaToKotlinClassMap.mapJavaToKotlin(FqName(type.classReference.fqName ?: return type)) ?: return type
-        return JKClassTypeImpl(context.symbolProvider.provideByFqName(newFqName), type.parameters, calculateNullability(typeElement))
+        return JKClassTypeImpl(context.symbolProvider.provideByFqName(newFqName), type.parameters, type.nullability)
     }
 
     private fun mapPrimitiveType(type: JKJavaPrimitiveType): JKType {
@@ -73,8 +73,6 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
             else -> Nullability.Default
         }
     }
-
-
 
     private fun fqNameByType(type: JKType): String = when (type) {
         BOOLEAN -> "kotlin/BooleanArray"
