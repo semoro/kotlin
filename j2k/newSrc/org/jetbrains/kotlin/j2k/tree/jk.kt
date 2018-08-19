@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.j2k.tree
 
+import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKFieldSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKMethodSymbol
@@ -172,8 +173,15 @@ interface JKLiteralExpression : JKExpression {
     val literal: String
     val type: LiteralType
 
-    enum class LiteralType {
-        STRING, CHAR, BOOLEAN, NULL, INT, LONG, FLOAT, DOUBLE
+    enum class LiteralType(val primitiveType: PrimitiveType?) {
+        STRING(null),
+        CHAR(PrimitiveType.CHAR),
+        BOOLEAN(PrimitiveType.BOOLEAN),
+        NULL(null),
+        INT(PrimitiveType.INT),
+        LONG(PrimitiveType.LONG),
+        FLOAT(PrimitiveType.FLOAT),
+        DOUBLE(PrimitiveType.DOUBLE)
     }
 }
 
@@ -235,7 +243,9 @@ interface JKIfElseExpression : JKExpression {
     var elseBranch: JKExpression
 }
 
-interface JKAssignableExpression : JKExpression
+interface JKAssignableExpression : JKExpression {
+    fun computeExpectedType(): JKType
+}
 
 interface JKLambdaExpression : JKExpression {
     var parameters: List<JKParameter>

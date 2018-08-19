@@ -126,6 +126,10 @@ class JKQualifiedExpressionImpl(
     override var operator: JKQualifier,
     selector: JKExpression
 ) : JKQualifiedExpression, JKBranchElementBase() {
+    override fun computeExpectedType(): JKType {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitQualifiedExpression(this, data)
 
     override var receiver: JKExpression by child(receiver)
@@ -148,6 +152,10 @@ class JKArrayAccessExpressionImpl(
     expression: JKExpression,
     indexExpression: JKExpression
 ) : JKArrayAccessExpression, JKBranchElementBase() {
+    override fun computeExpectedType(): JKType {
+        return JKJavaPrimitiveTypeImpl.BOOLEAN // STAB
+    }
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitArrayAccessExpression(this, data)
 
     override var expression: JKExpression by child(expression)

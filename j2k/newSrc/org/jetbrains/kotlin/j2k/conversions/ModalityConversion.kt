@@ -30,5 +30,4 @@ class ModalityConversion(private val context: ConversionContext) : RecursiveAppl
             klass.modifierList.modality = JKModalityModifier.Modality.FINAL
         }
     }
-
 }

@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.j2k.tree.impl
 
 import com.intellij.psi.JavaTokenType
+import org.jetbrains.kotlin.j2k.conversions.getType
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
@@ -72,6 +73,10 @@ class JKKtCallExpressionImpl(
 }
 
 class JKKtFieldAccessExpressionImpl(override val identifier: JKFieldSymbol) : JKKtFieldAccessExpression, JKElementBase() {
+    override fun computeExpectedType(): JKType {
+        return identifier.getType()
+    }
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtFieldAccessExpression(this, data)
 }
 

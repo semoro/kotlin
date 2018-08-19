@@ -19,7 +19,9 @@ package org.jetbrains.kotlin.j2k.tree.impl
 import com.intellij.psi.JavaTokenType
 import com.intellij.psi.impl.source.tree.ElementType.OPERATION_BIT_SET
 import com.intellij.psi.tree.IElementType
+import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.j2k.ast.Nullability
+import org.jetbrains.kotlin.j2k.conversions.getType
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.JKLiteralExpression.LiteralType.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
@@ -102,6 +104,10 @@ class JKJavaMethodCallExpressionImpl(
 }
 
 class JKJavaFieldAccessExpressionImpl(override var identifier: JKFieldSymbol) : JKJavaFieldAccessExpression, JKElementBase() {
+    override fun computeExpectedType(): JKType {
+        return identifier.getType()
+    }
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaFieldAccessExpression(this, data)
 }
 
@@ -198,6 +204,9 @@ class JKJavaAssignmentExpressionImpl(
     expression: JKExpression,
     override var operator: JKOperator
 ) : JKBranchElementBase(), JKJavaAssignmentExpression {
+
+
+
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaAssignmentExpression(this, data)
 
     override var expression: JKExpression by child(expression)
