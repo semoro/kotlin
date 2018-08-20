@@ -13,7 +13,6 @@ object Numeric : TemplateGroupBase() {
         }
     }
 
-    // TODO: use just numericPrimitives
     private val numericPrimitivesDefaultOrder = PrimitiveType.defaultPrimitives intersect PrimitiveType.numericPrimitives
 
     val f_sum = fn("sum()") {
@@ -41,12 +40,13 @@ object Numeric : TemplateGroupBase() {
         returns("Double")
         platformName("averageOf<T>")
         body {
+            fun checkOverflow(value: String) = if (f == Family.Sequences || f == Family.Iterables) "checkCountOverflow($value)" else value
             """
             var sum: Double = 0.0
             var count: Int = 0
             for (element in this) {
                 sum += element
-                count += 1
+                ${checkOverflow("++count")}
             }
             return if (count == 0) Double.NaN else sum / count
             """

@@ -74,6 +74,11 @@ public class MultiFileJvmBasicCompletionTestGenerated extends AbstractMultiFileJ
         runTest("idea/idea-completion/testData/basic/multifile/DoNotCompleteWithConstraints/");
     }
 
+    @TestMetadata("EnhancementFlexibleTypes")
+    public void testEnhancementFlexibleTypes() throws Exception {
+        runTest("idea/idea-completion/testData/basic/multifile/EnhancementFlexibleTypes/");
+    }
+
     @TestMetadata("EntriesOfNotImportedEnumFromKotlin")
     public void testEntriesOfNotImportedEnumFromKotlin() throws Exception {
         runTest("idea/idea-completion/testData/basic/multifile/EntriesOfNotImportedEnumFromKotlin/");
@@ -352,6 +357,11 @@ public class MultiFileJvmBasicCompletionTestGenerated extends AbstractMultiFileJ
     @TestMetadata("StaticMembersOfNotImportedClassNameConflict")
     public void testStaticMembersOfNotImportedClassNameConflict() throws Exception {
         runTest("idea/idea-completion/testData/basic/multifile/StaticMembersOfNotImportedClassNameConflict/");
+    }
+
+    @TestMetadata("SuspensionPointInMonitor")
+    public void testSuspensionPointInMonitor() throws Exception {
+        runTest("idea/idea-completion/testData/basic/multifile/SuspensionPointInMonitor/");
     }
 
     @TestMetadata("SyntheticExtensionDeprecated")

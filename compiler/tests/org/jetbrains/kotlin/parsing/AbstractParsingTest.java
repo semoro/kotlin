@@ -28,6 +28,7 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.PathUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.KtNodeTypes;
+import org.jetbrains.kotlin.TestsCompilerError;
 import org.jetbrains.kotlin.cli.common.script.CliScriptDefinitionProvider;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.script.ScriptDefinitionProvider;
@@ -37,6 +38,8 @@ import org.jetbrains.kotlin.test.testFramework.KtParsingTestCase;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+
+import kotlin.jvm.functions.Function1;
 
 public abstract class AbstractParsingTest extends KtParsingTestCase {
     @Override
@@ -87,47 +90,58 @@ public abstract class AbstractParsingTest extends KtParsingTestCase {
     }
 
     protected void doParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, KtNodeTypes.KT_FILE);
+        doBaseTest(filePath, KtNodeTypes.KT_FILE, null);
+    }
+
+    protected void doParsingTest(@NotNull String filePath, Function1<String, String> contentFilter) throws Exception {
+        doBaseTest(filePath, KtNodeTypes.KT_FILE, contentFilter);
     }
 
     protected void doExpressionCodeFragmentParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, KtNodeTypes.EXPRESSION_CODE_FRAGMENT);
+        doBaseTest(filePath, KtNodeTypes.EXPRESSION_CODE_FRAGMENT, null);
     }
 
     protected void doBlockCodeFragmentParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, KtNodeTypes.BLOCK_CODE_FRAGMENT);
+        doBaseTest(filePath, KtNodeTypes.BLOCK_CODE_FRAGMENT, null);
     }
 
-    private void doBaseTest(@NotNull String filePath, @NotNull IElementType fileType) throws Exception {
-        myFileExt = FileUtilRt.getExtension(PathUtil.getFileName(filePath));
-        myFile = createFile(filePath, fileType);
+    private void doBaseTest(@NotNull String filePath, @NotNull IElementType fileType, Function1<String, String> contentFilter) throws Exception {
+        String fileContent = loadFile(filePath);
 
-        myFile.acceptChildren(new KtVisitorVoid() {
-            @Override
-            public void visitKtElement(@NotNull KtElement element) {
-                element.acceptChildren(this);
-                try {
-                    checkPsiGetters(element);
+        myFileExt = FileUtilRt.getExtension(PathUtil.getFileName(filePath));
+
+        try {
+            myFile = createFile(filePath, fileType, contentFilter != null ? contentFilter.invoke(fileContent) : fileContent);
+            myFile.acceptChildren(new KtVisitorVoid() {
+                @Override
+                public void visitKtElement(@NotNull KtElement element) {
+                    element.acceptChildren(this);
+                    try {
+                        checkPsiGetters(element);
+                    }
+                    catch (Throwable throwable) {
+                        throw new TestsCompilerError(throwable);
+                    }
                 }
-                catch (Throwable throwable) {
-                    throw new RuntimeException(throwable);
-                }
-            }
-        });
+            });
+        } catch (Throwable throwable) {
+            throw new TestsCompilerError(throwable);
+        }
 
         doCheckResult(myFullDataPath, filePath.replaceAll("\\.kts?", ".txt"), toParseTreeText(myFile, false, false).trim());
     }
 
-    private PsiFile createFile(@NotNull String filePath, @NotNull IElementType fileType) throws Exception {
+    private PsiFile createFile(@NotNull String filePath, @NotNull IElementType fileType, @NotNull String fileContent) {
         KtPsiFactory psiFactory = KtPsiFactoryKt.KtPsiFactory(myProject);
+
         if (fileType == KtNodeTypes.EXPRESSION_CODE_FRAGMENT) {
-            return psiFactory.createExpressionCodeFragment(loadFile(filePath), null);
+            return psiFactory.createExpressionCodeFragment(fileContent, null);
         }
         else if (fileType == KtNodeTypes.BLOCK_CODE_FRAGMENT) {
-            return psiFactory.createBlockCodeFragment(loadFile(filePath), null);
+            return psiFactory.createBlockCodeFragment(fileContent, null);
         }
         else {
-            return createPsiFile(FileUtil.getNameWithoutExtension(PathUtil.getFileName(filePath)), loadFile(filePath));
+            return createPsiFile(FileUtil.getNameWithoutExtension(PathUtil.getFileName(filePath)), fileContent);
         }
     }
 

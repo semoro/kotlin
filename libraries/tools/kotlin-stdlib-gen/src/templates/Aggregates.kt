@@ -155,6 +155,7 @@ object Aggregates : TemplateGroupBase() {
         doc { "Returns the number of ${f.element.pluralize()} matching the given [predicate]." }
         returns("Int")
         body {
+            fun checkOverflow(value: String) = if (f == Sequences || f == Iterables) "checkCountOverflow($value)" else value
             """
             ${when (f) {
                 Iterables -> "if (this is Collection && isEmpty()) return 0"
@@ -162,7 +163,7 @@ object Aggregates : TemplateGroupBase() {
                 else -> ""
             }}
             var count = 0
-            for (element in this) if (predicate(element)) count++
+            for (element in this) if (predicate(element)) ${checkOverflow("++count")}
             return count
             """
         }
@@ -175,10 +176,11 @@ object Aggregates : TemplateGroupBase() {
         doc { "Returns the number of ${f.element.pluralize()} in this ${f.collection}." }
         returns("Int")
         body {
+            fun checkOverflow(value: String) = if (f == Sequences || f == Iterables) "checkCountOverflow($value)" else value
             """
             ${if (f == Iterables) "if (this is Collection) return size" else ""}
             var count = 0
-            for (element in this) count++
+            for (element in this) ${checkOverflow("++count")}
             return count
             """
         }
@@ -296,6 +298,7 @@ object Aggregates : TemplateGroupBase() {
     } builder {
         inline()
         doc { "Returns the first ${f.element} yielding the smallest value of the given function or `null` if there are no ${f.element.pluralize()}." }
+        sample("samples.collections.Collections.Aggregates.minBy")
         typeParam("R : Comparable<R>")
         returns("T?")
         body {
@@ -378,6 +381,7 @@ object Aggregates : TemplateGroupBase() {
         inline()
 
         doc { "Returns the first ${f.element} yielding the largest value of the given function or `null` if there are no ${f.element.pluralize()}." }
+        sample("samples.collections.Collections.Aggregates.maxBy")
         typeParam("R : Comparable<R>")
         returns("T?")
         body {
@@ -474,10 +478,11 @@ object Aggregates : TemplateGroupBase() {
         typeParam("R")
         returns("R")
         body {
+            fun checkOverflow(value: String) = if (f == Sequences || f == Iterables) "checkIndexOverflow($value)" else value
             """
             var index = 0
             var accumulator = initial
-            for (element in this) accumulator = operation(index++, accumulator, element)
+            for (element in this) accumulator = operation(${checkOverflow("index++")}, accumulator, element)
             return accumulator
             """
         }
@@ -617,6 +622,7 @@ object Aggregates : TemplateGroupBase() {
         typeParam("T : S")
         returns("S")
         body {
+            fun checkOverflow(value: String) = if (f == Sequences || f == Iterables) "checkIndexOverflow($value)" else value
             """
             val iterator = this.iterator()
             if (!iterator.hasNext()) throw UnsupportedOperationException("Empty ${f.doc.collection} can't be reduced.")
@@ -624,7 +630,7 @@ object Aggregates : TemplateGroupBase() {
             var index = 1
             var accumulator: S = iterator.next()
             while (iterator.hasNext()) {
-                accumulator = operation(index++, accumulator, iterator.next())
+                accumulator = operation(${checkOverflow("index++")}, accumulator, iterator.next())
             }
             return accumulator
             """
@@ -899,9 +905,10 @@ object Aggregates : TemplateGroupBase() {
             """ }
         returns("Unit")
         body {
+            fun checkOverflow(value: String) = if (f == Sequences || f == Iterables) "checkIndexOverflow($value)" else value
             """
             var index = 0
-            for (item in this) action(index++, item)
+            for (item in this) action(${checkOverflow("index++")}, item)
             """
         }
     }

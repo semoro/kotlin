@@ -7,8 +7,15 @@
 
 package kotlin
 
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+public inline class UIntArray
 @Suppress("NON_PUBLIC_PRIMARY_CONSTRUCTOR_OF_INLINE_CLASS")
-public inline class UIntArray internal constructor(private val storage: IntArray) : Collection<UInt> {
+@PublishedApi
+internal constructor(@PublishedApi internal val storage: IntArray) : Collection<UInt> {
+
+    /** Creates a new array of the specified [size], with all elements initialized to zero. */
+    public constructor(size: Int) : this(IntArray(size))
 
     /** Returns the array element at the given [index]. This method can be called using the index operator. */
     public operator fun get(index: Int): UInt = storage[index].toUInt()
@@ -37,11 +44,14 @@ public inline class UIntArray internal constructor(private val storage: IntArray
     override fun isEmpty(): Boolean = this.storage.size == 0
 }
 
-public /*inline*/ fun UIntArray(size: Int, init: (Int) -> UInt): UIntArray {
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+@kotlin.internal.InlineOnly
+public inline fun UIntArray(size: Int, init: (Int) -> UInt): UIntArray {
     return UIntArray(IntArray(size) { index -> init(index).toInt() })
 }
 
-@Suppress("FORBIDDEN_VARARG_PARAMETER_TYPE")
-public fun uintArrayOf(vararg elements: UInt): UIntArray {
-    return UIntArray(elements.size) { index -> elements[index] }
-}
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+@kotlin.internal.InlineOnly
+public inline fun uintArrayOf(vararg elements: UInt): UIntArray = elements

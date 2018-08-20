@@ -7,15 +7,21 @@ package org.jetbrains.kotlin.idea.debugger
 
 import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.engine.DebuggerManagerThreadImpl
+import com.intellij.debugger.engine.evaluation.AbsentInformationEvaluateException
 import com.intellij.debugger.engine.events.DebuggerCommandImpl
 import com.intellij.debugger.impl.DebuggerContextImpl
+import com.intellij.debugger.impl.DebuggerUtilsEx
 import com.intellij.debugger.jdi.LocalVariableProxyImpl
+import com.intellij.debugger.jdi.StackFrameProxyImpl
 import com.intellij.psi.PsiElement
 import com.sun.jdi.*
 import com.sun.tools.jdi.LocalVariableImpl
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding
+import org.jetbrains.kotlin.codegen.binding.CodegenBinding.asmTypeForAnonymousClass
 import org.jetbrains.kotlin.codegen.coroutines.DO_RESUME_METHOD_NAME
+import org.jetbrains.kotlin.codegen.coroutines.INVOKE_SUSPEND_METHOD_NAME
 import org.jetbrains.kotlin.codegen.coroutines.continuationAsmTypes
+import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
 import org.jetbrains.kotlin.idea.refactoring.getLineEndOffset
@@ -25,18 +31,105 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.inline.InlineUtil
 import java.util.*
 
-fun isInsideInlineFunctionBody(visibleVariables: List<LocalVariableProxyImpl>): Boolean {
+fun StackFrameProxyImpl.visibleVariablesSafe(): List<LocalVariableProxyImpl> {
+    try {
+        return visibleVariables()
+    } catch (e: AbsentInformationEvaluateException) {
+        // Current implementation of visibleVariables() wraps an AbsentInformationException into EvaluateException
+        return emptyList()
+    } catch (e: AbsentInformationException) {
+        return emptyList()
+    }
+}
+
+fun Method.safeAllLineLocations(): List<Location> {
+    return DebuggerUtilsEx.allLineLocations(this) ?: emptyList()
+}
+
+fun ReferenceType.safeAllLineLocations(): List<Location> {
+    return DebuggerUtilsEx.allLineLocations(this) ?: emptyList()
+}
+
+fun Method.safeLocationsOfLine(line: Int): List<Location> {
+    return try {
+        locationsOfLine(line)
+    } catch (e: AbsentInformationException) {
+        emptyList()
+    }
+}
+
+fun Method.safeVariables(): List<LocalVariable>? {
+    return try {
+        variables()
+    } catch (e: AbsentInformationException) {
+        null
+    }
+}
+
+fun Method.safeArguments(): List<LocalVariable>? {
+    return try {
+        arguments()
+    } catch (e: AbsentInformationException) {
+        null
+    }
+}
+
+fun Method.safeReturnType(): Type? {
+    return try {
+        returnType()
+    } catch (e: ClassNotLoadedException) {
+        null
+    }
+}
+
+fun LocalVariable.safeType(): Type? {
+    return try {
+        return type()
+    } catch (e: ClassNotLoadedException) {
+        null
+    }
+}
+
+fun Location.safeSourceName(): String? {
+    return try {
+        sourceName()
+    } catch (e: AbsentInformationException) {
+        null
+    } catch (e: InternalError) {
+        null
+    }
+}
+
+fun Location.safeLineNumber(): Int {
+    return DebuggerUtilsEx.getLineNumber(this, false)
+}
+
+fun Location.safeSourceLineNumber(): Int {
+    return DebuggerUtilsEx.getLineNumber(this, true)
+}
+
+fun Location.safeMethod(): Method? {
+    return DebuggerUtilsEx.getMethod(this)
+}
+
+fun isInsideInlineFunctionBody(visibleVariables: List<LocalVariable>): Boolean {
     return visibleVariables.any { it.name().startsWith(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) }
 }
 
-fun numberOfInlinedFunctions(visibleVariables: List<LocalVariableProxyImpl>): Int {
+fun numberOfInlinedFunctions(visibleVariables: List<LocalVariable>): Int {
     return visibleVariables.count { it.name().startsWith(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) }
 }
 
-fun isInsideInlineArgument(inlineArgument: KtFunction, location: Location, debugProcess: DebugProcessImpl): Boolean {
+fun isInsideInlineArgument(
+    inlineArgument: KtFunction,
+    location: Location,
+    debugProcess: DebugProcessImpl,
+    bindingContext: BindingContext = KotlinDebuggerCaches.getOrCreateTypeMapper(inlineArgument).bindingContext
+): Boolean {
     val visibleVariables = location.visibleVariables(debugProcess)
     val markerLocalVariables = visibleVariables.filter { it.name().startsWith(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT) }
 
@@ -45,10 +138,19 @@ fun isInsideInlineArgument(inlineArgument: KtFunction, location: Location, debug
     val functionName = runReadAction { functionNameByArgument(inlineArgument, context) }
 
     return markerLocalVariables
-            .map { it.name() }
-            .any { variableName ->
-                lambdaOrdinalByLocalVariable(variableName) == lambdaOrdinal && functionNameByLocalVariable(variableName) == functionName
+        .map { it.name().drop(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT.length) }
+        .any { variableName ->
+            if (variableName.startsWith("-")) {
+                val lambdaClassName = asmTypeForAnonymousClass(bindingContext, inlineArgument)
+                    .internalName.substringAfterLast("/")
+
+                variableName == "-$functionName-$lambdaClassName"
+            } else {
+                // For Kotlin up to 1.3.10
+                lambdaOrdinalByLocalVariable(variableName) == lambdaOrdinal
+                        && functionNameByLocalVariable(variableName) == functionName
             }
+        }
 }
 
 fun <T : Any> DebugProcessImpl.invokeInManagerThread(f: (DebuggerContextImpl) -> T?): T? {
@@ -108,7 +210,7 @@ private class MockStackFrame(private val location: Location, private val vm: Vir
 
     private fun createVisibleVariables() {
         if (visibleVariables == null) {
-            val allVariables = location.method().variables()
+            val allVariables = location.method().safeVariables() ?: emptyList()
             val map = HashMap<String, LocalVariable>(allVariables.size)
 
             for (allVariable in allVariables) {
@@ -143,7 +245,8 @@ private class MockStackFrame(private val location: Location, private val vm: Vir
     override fun virtualMachine() = vm
 }
 
-private val DO_RESUME_SIGNATURE = "(Ljava/lang/Object;Ljava/lang/Throwable;)Ljava/lang/Object;"
+private const val DO_RESUME_SIGNATURE = "(Ljava/lang/Object;Ljava/lang/Throwable;)Ljava/lang/Object;"
+private const val INVOKE_SUSPEND_SIGNATURE = "(Ljava/lang/Object;)Ljava/lang/Object;"
 
 fun isInSuspendMethod(location: Location): Boolean {
     val method = location.method()
@@ -151,7 +254,8 @@ fun isInSuspendMethod(location: Location): Boolean {
 
     for (continuationAsmType in continuationAsmTypes()) {
         if (signature.contains(continuationAsmType.toString()) ||
-            (method.name() == DO_RESUME_METHOD_NAME && signature == DO_RESUME_SIGNATURE)
+            (method.name() == DO_RESUME_METHOD_NAME && signature == DO_RESUME_SIGNATURE) ||
+            (method.name() == INVOKE_SUSPEND_METHOD_NAME && signature == INVOKE_SUSPEND_SIGNATURE)
         ) return true
     }
     return false
@@ -176,7 +280,7 @@ fun isOnSuspendReturnOrReenter(location: Location): Boolean {
 }
 
 fun isLastLineLocationInMethod(location: Location): Boolean {
-    val knownLines = location.method().allLineLocations().map { it.lineNumber() }.filter { it != -1 }
+    val knownLines = location.method().safeAllLineLocations().map { it.lineNumber() }.filter { it != -1 }
     if (knownLines.isEmpty()) {
         return false
     }
@@ -185,7 +289,7 @@ fun isLastLineLocationInMethod(location: Location): Boolean {
 }
 
 fun isOneLineMethod(location: Location): Boolean {
-    val allLineLocations = location.method().allLineLocations()
+    val allLineLocations = location.method().safeAllLineLocations()
     val firstLine = allLineLocations.firstOrNull()?.lineNumber()
     val lastLine = allLineLocations.lastOrNull()?.lineNumber()
 
@@ -227,4 +331,13 @@ fun findCallByEndToken(element: PsiElement): KtCallExpression? {
         }
         else -> null
     }
+}
+
+fun PropertyDescriptor.getBackingFieldName(): String? {
+    if (backingField == null) {
+        return null
+    }
+
+    val jvmNameAnnotation = DescriptorUtils.findJvmNameAnnotation(this) ?: return name.asString()
+    return jvmNameAnnotation.allValueArguments.values.singleOrNull()?.toString()
 }

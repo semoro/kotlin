@@ -78,4 +78,24 @@ public class MultiFileLocalInspectionTestGenerated extends AbstractMultiFileLoca
     public void testReconcilePackageWithDirectory_packageMatchesDirectory_PackageMatchesDirectory() throws Exception {
         runTest("idea/testData/multiFileLocalInspections/reconcilePackageWithDirectory/packageMatchesDirectory/packageMatchesDirectory.test");
     }
+
+    @TestMetadata("unusedSymbol/fromKotlinTest/fromKotlinTest.test")
+    public void testUnusedSymbol_fromKotlinTest_FromKotlinTest() throws Exception {
+        runTest("idea/testData/multiFileLocalInspections/unusedSymbol/fromKotlinTest/fromKotlinTest.test");
+    }
+
+    @TestMetadata("unusedSymbol/fromKotlinTestClass/fromKotlinTestClass.test")
+    public void testUnusedSymbol_fromKotlinTestClass_FromKotlinTestClass() throws Exception {
+        runTest("idea/testData/multiFileLocalInspections/unusedSymbol/fromKotlinTestClass/fromKotlinTestClass.test");
+    }
+
+    @TestMetadata("unusedSymbol/inlineClassesImplInterface/inlineClassesImplInterface.test")
+    public void testUnusedSymbol_inlineClassesImplInterface_InlineClassesImplInterface() throws Exception {
+        runTest("idea/testData/multiFileLocalInspections/unusedSymbol/inlineClassesImplInterface/inlineClassesImplInterface.test");
+    }
+
+    @TestMetadata("unusedSymbol/internalConstructorUsedInJava/internalConstructorUsedInJava.test")
+    public void testUnusedSymbol_internalConstructorUsedInJava_InternalConstructorUsedInJava() throws Exception {
+        runTest("idea/testData/multiFileLocalInspections/unusedSymbol/internalConstructorUsedInJava/internalConstructorUsedInJava.test");
+    }
 }

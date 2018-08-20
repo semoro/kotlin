@@ -124,7 +124,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
         private fun replaceExpression(expressionToReplace: KtExpression, addToReferences: Boolean): KtExpression {
             val isActualExpression = expression == expressionToReplace
 
-            val replacement = psiFactory.createExpression(nameSuggestions.single().first())
+            val replacement = psiFactory.createExpression(nameSuggestions.asSequence().single().first())
             val substringInfo = expressionToReplace.extractableSubstringInfo
             var result = when {
                 expressionToReplace.isLambdaOutsideParentheses() -> {
@@ -167,7 +167,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
             else {
                 buildString {
                     append("$varOvVal ")
-                    append(nameSuggestions.single().first())
+                    append(nameSuggestions.asSequence().single().first())
                     if (noTypeInference) {
                         val typeToRender = expressionType ?: resolutionFacade.moduleDescriptor.builtIns.anyType
                         append(": ").append(IdeDescriptorRenderers.SOURCE_CODE.renderType(typeToRender))
@@ -312,8 +312,8 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
 
             val newDeclaration = ConvertToBlockBodyIntention.convert(commonContainer)
 
-            val newCommonContainer = (newDeclaration.bodyExpression as KtBlockExpression?)
-                    .sure { "New body is not found: " + newDeclaration }
+            val newCommonContainer = newDeclaration.bodyBlockExpression
+                .sure { "New body is not found: " + newDeclaration }
 
             val newExpression = newCommonContainer.findExpressionByCopyableDataAndClearIt(EXPRESSION_KEY)
             val newCommonParent = newCommonContainer.findElementByCopyableDataAndClearIt(COMMON_PARENT_KEY)
@@ -450,7 +450,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
                             FinishMarkAction.finish(project, editor, startMarkAction)
                         }
 
-                        override fun templateFinished(template: Template?, brokenOff: Boolean) {
+                        override fun templateFinished(template: Template, brokenOff: Boolean) {
                             if (!brokenOff) {
                                 postProcess(declaration)
                             }

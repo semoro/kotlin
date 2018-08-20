@@ -41,7 +41,8 @@ internal enum class OptionsParser {
                         "derivedClasses" -> isDerivedClasses = true
                         "functionUsages" -> isMethodsUsages = true
                         "propertyUsages" -> isFieldsUsages = true
-                        else -> throw IllegalStateException("Invalid option: " + s)
+                        "expected" -> searchExpected = true
+                        else -> throw IllegalStateException("Invalid option: $s")
                     }
                 }
             }
@@ -63,7 +64,11 @@ internal enum class OptionsParser {
                             isIncludeOverloadUsages = true
                             isUsages = true
                         }
-                        else -> throw IllegalStateException("Invalid option: " + s)
+                        "expected" -> {
+                            searchExpected = true
+                            isUsages = true
+                        }
+                        else -> throw IllegalStateException("Invalid option: $s")
                     }
                 }
             }
@@ -80,7 +85,8 @@ internal enum class OptionsParser {
                         "overrides" -> searchOverrides = true
                         "skipRead" -> isReadAccess = false
                         "skipWrite" -> isWriteAccess = false
-                        else -> throw IllegalStateException("Invalid option: " + s)
+                        "expected" -> searchExpected = true
+                        else -> throw IllegalStateException("Invalid option: $s")
                     }
                 }
             }
@@ -100,7 +106,7 @@ internal enum class OptionsParser {
                         "implementingClasses" -> isImplementingClasses = true
                         "methodUsages" -> isMethodsUsages = true
                         "fieldUsages" -> isFieldsUsages = true
-                        else -> throw IllegalStateException("Invalid option: " + s)
+                        else -> throw IllegalStateException("Invalid option: $s")
                     }
                 }
             }
@@ -118,7 +124,7 @@ internal enum class OptionsParser {
                             isOverridingMethods = true
                             isImplementingMethods = true
                         }
-                        else -> throw IllegalStateException("Invalid option: " + s)
+                        else -> throw IllegalStateException("Invalid option: $s")
                     }
                 }
             }
@@ -126,17 +132,39 @@ internal enum class OptionsParser {
     },
     JAVA_FIELD {
         override fun parse(text: String, project: Project): FindUsagesOptions {
-            return JavaVariableFindUsagesOptions(project)
+            return JavaVariableFindUsagesOptions(project).apply {
+                for (s in InTextDirectivesUtils.findListWithPrefixes(text, "// OPTIONS: ")) {
+                    if (parseCommonOptions(this, s)) continue
+
+                    when (s) {
+                        "skipRead" -> isReadAccess = false
+                        "skipWrite" -> isWriteAccess = false
+                        else -> throw IllegalStateException("Invalid option: `$s`")
+                    }
+                }
+            }
         }
     },
     JAVA_PACKAGE {
         override fun parse(text: String, project: Project): FindUsagesOptions {
-            return JavaPackageFindUsagesOptions(project)
+            return JavaPackageFindUsagesOptions(project).apply {
+                for (s in InTextDirectivesUtils.findListWithPrefixes(text, "// OPTIONS: ")) {
+                    if (parseCommonOptions(this, s)) continue
+
+                    throw IllegalStateException("Invalid option: `$s`")
+                }
+            }
         }
     },
     DEFAULT {
         override fun parse(text: String, project: Project): FindUsagesOptions {
-            return FindUsagesOptions(project)
+            return FindUsagesOptions(project).apply {
+                for (s in InTextDirectivesUtils.findListWithPrefixes(text, "// OPTIONS: ")) {
+                    if (parseCommonOptions(this, s)) continue
+
+                    throw IllegalStateException("Invalid option: `$s`")
+                }
+            }
         }
     };
 
@@ -144,22 +172,32 @@ internal enum class OptionsParser {
 
     companion object {
         protected fun parseCommonOptions(options: JavaFindUsagesOptions, s: String): Boolean {
-            when (s) {
-                "usages" -> {
-                    options.isUsages = true
-                    return true
-                }
+            if (parseCommonOptions(options as FindUsagesOptions, s)) {
+                return true
+            }
+
+            return when (s) {
                 "skipImports" -> {
                     options.isSkipImportStatements = true
-                    return true
+                    true
+                }
+                else -> false
+            }
+        }
+
+
+        protected fun parseCommonOptions(options: FindUsagesOptions, s: String): Boolean {
+            return when (s) {
+                "usages" -> {
+                    options.isUsages = true
+                    true
                 }
                 "textOccurrences" -> {
                     options.isSearchForTextOccurrences = true
-                    return true
+                    true
                 }
-                else -> return false
+                else -> false
             }
-
         }
 
         fun getParserByPsiElementClass(klass: Class<out PsiElement>): OptionsParser? {

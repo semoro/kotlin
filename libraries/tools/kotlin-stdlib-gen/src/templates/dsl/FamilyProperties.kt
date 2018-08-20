@@ -32,8 +32,9 @@ object DocExtensions {
     val Family.collection: String
         get() = when (this) {
             CharSequences -> "char sequence"
-            ArraysOfObjects, ArraysOfPrimitives, InvariantArraysOfObjects -> "array"
-            Strings, Sequences, Maps, Lists, Sets, Ranges -> name.singularize().decapitalize()
+            ArraysOfObjects, ArraysOfPrimitives, InvariantArraysOfObjects, ArraysOfUnsigned -> "array"
+            Ranges, RangesOfPrimitives -> "range"
+            Strings, Sequences, Maps, Lists, Sets -> name.singularize().decapitalize()
             else -> "collection"
         }
 
@@ -41,6 +42,14 @@ object DocExtensions {
         get() = when (this) {
             Sequences -> "sequence"
             else -> "list"
+        }
+
+    val PrimitiveType?.zero: String
+        get() = when (this) {
+            null -> "`null`"
+            PrimitiveType.Boolean -> "`false`"
+            PrimitiveType.Char -> "null char (`\\u0000`)"
+            else -> "zero"
         }
 
     fun textWhen(condition: Boolean, text: () -> String): String = if (condition) text() else ""

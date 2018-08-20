@@ -5,16 +5,29 @@
 
 package org.jetbrains.kotlin.codegen
 
+import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
+import org.jetbrains.kotlin.utils.sure
 import org.jetbrains.org.objectweb.asm.*
 import org.jetbrains.org.objectweb.asm.Opcodes.*
 import java.io.File
 
 abstract class AbstractBytecodeListingTest : CodegenTestCase() {
     override fun doMultiFileTest(wholeFile: File, files: List<TestFile>, javaFilesDir: File?) {
-        val txtFile = File(wholeFile.parentFile, wholeFile.nameWithoutExtension + ".txt")
+
         compile(files, javaFilesDir)
         val actualTxt = BytecodeListingTextCollectingVisitor.getText(classFileFactory, withSignatures = isWithSignatures(wholeFile))
+
+        val prefixes =
+            if (coroutinesPackage == DescriptorUtils.COROUTINES_PACKAGE_FQ_NAME_RELEASE.asString()) {
+                listOf("_1_3", "")
+            } else listOf("")
+
+        val txtFile =
+            prefixes.firstNotNullResult { File(wholeFile.parentFile, wholeFile.nameWithoutExtension + "$it.txt").takeIf(File::exists) }
+                .sure { "No testData file exists: ${wholeFile.nameWithoutExtension}.txt" }
+
         KotlinTestUtils.assertEqualsToFile(txtFile, actualTxt) {
             it.replace("COROUTINES_PACKAGE", coroutinesPackage)
         }
@@ -28,7 +41,7 @@ abstract class AbstractBytecodeListingTest : CodegenTestCase() {
     }
 }
 
-class BytecodeListingTextCollectingVisitor(val filter: Filter, val withSignatures: Boolean) : ClassVisitor(ASM5) {
+class BytecodeListingTextCollectingVisitor(val filter: Filter, val withSignatures: Boolean, api: Int = ASM5) : ClassVisitor(api) {
     companion object {
         @JvmOverloads
         fun getText(
@@ -147,8 +160,12 @@ class BytecodeListingTextCollectingVisitor(val filter: Filter, val withSignature
         val parameterAnnotations = hashMapOf<Int, MutableList<String>>()
 
         handleModifiers(access, methodAnnotations)
+        val methodParamCount = Type.getArgumentTypes(desc).size
 
         return object : MethodVisitor(ASM5) {
+            private var visibleAnnotableParameterCount = methodParamCount
+            private var invisibleAnnotableParameterCount = methodParamCount
+
             override fun visitAnnotation(desc: String, visible: Boolean): AnnotationVisitor? {
                 val type = Type.getType(desc).className
                 methodAnnotations += "@$type "
@@ -157,7 +174,9 @@ class BytecodeListingTextCollectingVisitor(val filter: Filter, val withSignature
 
             override fun visitParameterAnnotation(parameter: Int, desc: String, visible: Boolean): AnnotationVisitor? {
                 val type = Type.getType(desc).className
-                parameterAnnotations.getOrPut(parameter, { arrayListOf() }).add("@$type ")
+                parameterAnnotations.getOrPut(
+                    parameter + methodParamCount - (if (visible) visibleAnnotableParameterCount else invisibleAnnotableParameterCount),
+                    { arrayListOf() }).add("@$type ")
                 return super.visitParameterAnnotation(parameter, desc, visible)
             }
 
@@ -171,6 +190,15 @@ class BytecodeListingTextCollectingVisitor(val filter: Filter, val withSignature
                         Declaration("${signatureIfRequired}method $name($parameterWithAnnotations): $returnType", methodAnnotations)
                 )
                 super.visitEnd()
+            }
+
+            @Suppress("NOTHING_TO_OVERRIDE")
+            override fun visitAnnotableParameterCount(parameterCount: Int, visible: Boolean) {
+                if (visible)
+                    visibleAnnotableParameterCount = parameterCount
+                else {
+                    invisibleAnnotableParameterCount = parameterCount
+                }
             }
         }
     }

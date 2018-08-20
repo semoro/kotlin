@@ -1,43 +1,32 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.backend.jvm.lower
 
+import org.jetbrains.kotlin.backend.common.CommonBackendContext
 import org.jetbrains.kotlin.backend.common.FileLoweringPass
-import org.jetbrains.kotlin.codegen.JvmCodegenUtil
-import org.jetbrains.kotlin.descriptors.PropertyAccessorDescriptor
-import org.jetbrains.kotlin.descriptors.PropertyGetterDescriptor
+import org.jetbrains.kotlin.backend.common.lower.createIrBuilder
+import org.jetbrains.kotlin.backend.common.lower.irBlock
+import org.jetbrains.kotlin.backend.common.makePhase
 import org.jetbrains.kotlin.ir.IrStatement
-import org.jetbrains.kotlin.ir.declarations.IrFile
-import org.jetbrains.kotlin.ir.declarations.IrProperty
-import org.jetbrains.kotlin.ir.expressions.IrCall
-import org.jetbrains.kotlin.ir.expressions.IrExpression
-import org.jetbrains.kotlin.ir.expressions.impl.IrGetFieldImpl
-import org.jetbrains.kotlin.ir.expressions.impl.IrSetFieldImpl
+import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.expressions.*
+import org.jetbrains.kotlin.ir.expressions.impl.*
+import org.jetbrains.kotlin.ir.types.classifierOrFail
+import org.jetbrains.kotlin.ir.util.hasAnnotation
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
-import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
+import org.jetbrains.kotlin.load.java.JvmAbi.JVM_FIELD_ANNOTATION_FQ_NAME
 
-class ConstAndJvmFieldPropertiesLowering : IrElementTransformerVoid(), FileLoweringPass {
+class ConstAndJvmFieldPropertiesLowering(val context: CommonBackendContext) : IrElementTransformerVoid(), FileLoweringPass {
     override fun lower(irFile: IrFile) {
         irFile.transformChildrenVoid(this)
     }
 
     override fun visitProperty(declaration: IrProperty): IrStatement {
-        if (JvmCodegenUtil.isConstOrHasJvmFieldAnnotation(declaration.descriptor)) {
+        if (declaration.isConst || declaration.backingField?.hasAnnotation(JVM_FIELD_ANNOTATION_FQ_NAME) == true) {
             /*Safe or need copy?*/
             declaration.getter = null
             declaration.setter = null
@@ -46,42 +35,75 @@ class ConstAndJvmFieldPropertiesLowering : IrElementTransformerVoid(), FileLower
     }
 
     override fun visitCall(expression: IrCall): IrExpression {
-        val descriptor = expression.descriptor as? PropertyAccessorDescriptor ?: return super.visitCall(expression)
+        val irSimpleFunction = (expression.symbol.owner as? IrSimpleFunction) ?: return super.visitCall(expression)
+        val irProperty = irSimpleFunction.correspondingProperty ?: return super.visitCall(expression)
 
-        val property = descriptor.correspondingProperty
-        if (JvmCodegenUtil.isConstOrHasJvmFieldAnnotation(property)) {
-            return if (descriptor is PropertyGetterDescriptor) {
-                substituteGetter(descriptor, expression)
+        if (irProperty.isConst) {
+            (irProperty.backingField!!.initializer!!.expression as IrConst<*>).let { return it }
+        }
+
+        if (irProperty.backingField?.hasAnnotation(JVM_FIELD_ANNOTATION_FQ_NAME) == true) {
+            return if (expression is IrGetterCallImpl) {
+                substituteGetter(irProperty, expression)
             } else {
-                substituteSetter(descriptor, expression)
+                assert(expression is IrSetterCallImpl)
+                substituteSetter(irProperty, expression)
             }
-        } else if (property is SyntheticJavaPropertyDescriptor) {
-            expression.dispatchReceiver = expression.extensionReceiver
-            expression.extensionReceiver = null
         }
         return super.visitCall(expression)
     }
 
-    private fun substituteSetter(descriptor: PropertyAccessorDescriptor, expression: IrCall): IrSetFieldImpl {
-        return IrSetFieldImpl(
+    private fun substituteSetter(irProperty: IrProperty, expression: IrCall): IrExpression {
+        val backingField = irProperty.backingField!!
+        val receiver = expression.dispatchReceiver?.let { super.visitExpression(it) }
+        val setExpr = IrSetFieldImpl(
             expression.startOffset,
             expression.endOffset,
-            descriptor.correspondingProperty,
-            expression.dispatchReceiver,
-            expression.getValueArgument(descriptor.valueParameters.lastIndex)!!,
+            backingField.symbol,
+            receiver,
+            super.visitExpression(expression.getValueArgument(expression.valueArgumentsCount - 1)!!),
+            expression.type,
             expression.origin,
-            expression.superQualifier
+            expression.superQualifierSymbol
         )
+        return buildSubstitution(backingField.isStatic, setExpr, receiver)
     }
 
-    private fun substituteGetter(descriptor: PropertyGetterDescriptor, expression: IrCall): IrGetFieldImpl {
-        return IrGetFieldImpl(
+    private fun substituteGetter(irProperty: IrProperty, expression: IrCall): IrExpression {
+        val backingField = irProperty.backingField!!
+        val receiver = expression.dispatchReceiver?.let { super.visitExpression(it) }
+        val getExpr = IrGetFieldImpl(
             expression.startOffset,
             expression.endOffset,
-            descriptor.correspondingProperty,
-            expression.dispatchReceiver,
+            backingField.symbol,
+            expression.type,
+            receiver,
             expression.origin,
-            expression.superQualifier
+            expression.superQualifierSymbol
         )
+        return buildSubstitution(backingField.isStatic, getExpr, receiver)
+    }
+
+    private fun buildSubstitution(needBlock: Boolean, setOrGetExpr: IrFieldAccessExpression, receiver: IrExpression?): IrExpression {
+        if (receiver != null && needBlock) {
+            // Evaluate `dispatchReceiver` for the sake of its side effects, then return `setOrGetExpr`.
+            return context.createIrBuilder(setOrGetExpr.symbol, setOrGetExpr.startOffset, setOrGetExpr.endOffset).irBlock(setOrGetExpr) {
+                // `coerceToUnit()` is private in InsertImplicitCasts, have to reproduce it here
+                val receiverVoid = IrTypeOperatorCallImpl(
+                    receiver.startOffset, receiver.endOffset,
+                    context.irBuiltIns.unitType,
+                    IrTypeOperator.IMPLICIT_COERCION_TO_UNIT,
+                    context.irBuiltIns.unitType, context.irBuiltIns.unitType.classifierOrFail,
+                    receiver
+                )
+
+                +receiverVoid
+                setOrGetExpr.receiver = null
+                +setOrGetExpr
+            }
+        } else {
+            // Just `setOrGetExpr` (`dispatchReceiver` is evaluated as a subexpression thereof)
+            return setOrGetExpr
+        }
     }
 }

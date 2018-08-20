@@ -198,6 +198,11 @@ public class WriteSignatureTestGenerated extends AbstractWriteSignatureTest {
         public void testPropertyReferenceGet() throws Exception {
             runTest("compiler/testData/writeSignature/callableReference/propertyReferenceGet.kt");
         }
+
+        @TestMetadata("suspendFunctionReference.kt")
+        public void testSuspendFunctionReference() throws Exception {
+            runTest("compiler/testData/writeSignature/callableReference/suspendFunctionReference.kt");
+        }
     }
 
     @TestMetadata("compiler/testData/writeSignature/constructor")
@@ -570,6 +575,24 @@ public class WriteSignatureTestGenerated extends AbstractWriteSignatureTest {
         @TestMetadata("simpleSignatureWithInlineClassTypesAsReference.kt")
         public void testSimpleSignatureWithInlineClassTypesAsReference() throws Exception {
             runTest("compiler/testData/writeSignature/inlineClasses/simpleSignatureWithInlineClassTypesAsReference.kt");
+        }
+    }
+
+    @TestMetadata("compiler/testData/writeSignature/java8")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Java8 extends AbstractWriteSignatureTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, TargetBackend.ANY, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInJava8() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/writeSignature/java8"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("mutableMapRemove.kt")
+        public void testMutableMapRemove() throws Exception {
+            runTest("compiler/testData/writeSignature/java8/mutableMapRemove.kt");
         }
     }
 

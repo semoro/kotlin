@@ -25,6 +25,8 @@ import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.TestActionEvent
 import junit.framework.ComparisonFailure
 import junit.framework.TestCase
+import org.jetbrains.kotlin.analyzer.common.CommonPlatform
+import org.jetbrains.kotlin.idea.project.forcedTargetPlatform
 import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
@@ -32,7 +34,6 @@ import org.jetbrains.kotlin.js.resolve.JsPlatform
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.TargetPlatform
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform
-import org.jetbrains.kotlin.resolve.targetPlatform
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
@@ -91,10 +92,10 @@ abstract class AbstractCodeInsightActionTest : KotlinLightCodeInsightFixtureTest
                 val targetPlatform = when (targetPlatformName) {
                     "JVM" -> JvmPlatform
                     "JavaScript" -> JsPlatform
-                    "Common" -> TargetPlatform.Common
+                    "Common" -> CommonPlatform
                     else -> error("Unexpected platform name: $targetPlatformName")
                 }
-                mainPsiFile.targetPlatform = targetPlatform
+                mainPsiFile.forcedTargetPlatform = targetPlatform
             }
 
             val action = createAction(fileText)
@@ -122,7 +123,7 @@ abstract class AbstractCodeInsightActionTest : KotlinLightCodeInsightFixtureTest
             KotlinTestUtils.assertEqualsToFile(conflictFile, e.message!!)
         }
         finally {
-            mainPsiFile?.targetPlatform = null
+            mainPsiFile?.forcedTargetPlatform = null
             ConfigLibraryUtil.unconfigureLibrariesByDirective(myModule, fileText)
         }
     }

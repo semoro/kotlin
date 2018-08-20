@@ -45,6 +45,7 @@ import org.jetbrains.kotlin.idea.quickfix.utils.findInspectionFile
 import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.configureCompilerOptions
+import org.jetbrains.kotlin.idea.test.rollbackCompilerOptions
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.testFramework.runWriteAction
@@ -127,11 +128,10 @@ abstract class AbstractQuickFixMultiFileTest : KotlinLightCodeInsightFixtureTest
                 multifileText,
                 object : KotlinTestUtils.TestFileFactoryNoModules<TestFile>() {
                     override fun create(fileName: String, text: String, directives: Map<String, String>): TestFile {
-                        if (text.startsWith("// FILE")) {
-                            // Drop the first line
-                            return TestFile(fileName, StringUtil.substringAfter(text, "\n")!!)
+                        val linesWithoutDirectives = text.lines().filter {
+                            !it.startsWith("// LANGUAGE_VERSION") && !it.startsWith("// FILE")
                         }
-                        return TestFile(fileName, text)
+                        return TestFile(fileName, linesWithoutDirectives.joinToString(separator = "\n"))
                     }
                 }, "")
 
@@ -144,6 +144,7 @@ abstract class AbstractQuickFixMultiFileTest : KotlinLightCodeInsightFixtureTest
         }
 
         configureMultiFileTest(subFiles, beforeFile)
+        configureCompilerOptions(multifileText, project, module)
 
         CommandProcessor.getInstance().executeCommand(project, {
             try {
@@ -167,6 +168,10 @@ abstract class AbstractQuickFixMultiFileTest : KotlinLightCodeInsightFixtureTest
                     TestCase.assertNotNull(".after file should exist", afterFile)
                     if (afterText != afterFile!!.content) {
                         val actualTestFile = StringBuilder()
+                        if (multifileText.startsWith("// LANGUAGE_VERSION")) {
+                            actualTestFile.append(multifileText.lineSequence().first())
+                        }
+
                         actualTestFile.append("// FILE: ").append(beforeFile.path).append("\n").append(beforeFile.content)
                         for (file in subFiles) {
                             actualTestFile.append("// FILE: ").append(file.path).append("\n").append(file.content)
@@ -196,7 +201,7 @@ abstract class AbstractQuickFixMultiFileTest : KotlinLightCodeInsightFixtureTest
     private fun doTest(beforeFileName: String) {
         val mainFile = File(beforeFileName)
         val originalFileText = FileUtil.loadFile(mainFile, true)
-        configureCompilerOptions(originalFileText, project, module)
+        val configured = configureCompilerOptions(originalFileText, project, module)
 
         val mainFileDir = mainFile.parentFile!!
 
@@ -261,6 +266,11 @@ abstract class AbstractQuickFixMultiFileTest : KotlinLightCodeInsightFixtureTest
             catch (e: Throwable) {
                 e.printStackTrace()
                 TestCase.fail(getTestName(true))
+            }
+            finally {
+                if (configured) {
+                    rollbackCompilerOptions(project, module)
+                }
             }
         }, "", "")
     }

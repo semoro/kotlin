@@ -6,23 +6,29 @@
 package org.jetbrains.kotlin.codegen.inline
 
 import org.jetbrains.kotlin.backend.jvm.codegen.IrExpressionLambda
-import org.jetbrains.kotlin.builtins.isFunctionType
 import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.ClosureCodegen
 import org.jetbrains.kotlin.codegen.StackValue
 import org.jetbrains.kotlin.codegen.coroutines.continuationAsmType
+import org.jetbrains.kotlin.codegen.coroutines.getOrCreateJvmSuspendFunctionView
 import org.jetbrains.kotlin.codegen.inline.FieldRemapper.Companion.foldName
+import org.jetbrains.kotlin.codegen.inline.coroutines.CoroutineTransformer
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods
 import org.jetbrains.kotlin.codegen.optimization.ApiVersionCallsPreprocessingMethodTransformer
 import org.jetbrains.kotlin.codegen.optimization.FixStackWithLabelNormalizationMethodTransformer
+import org.jetbrains.kotlin.codegen.optimization.common.ControlFlowGraph
 import org.jetbrains.kotlin.codegen.optimization.common.InsnSequence
 import org.jetbrains.kotlin.codegen.optimization.common.asSequence
 import org.jetbrains.kotlin.codegen.optimization.common.isMeaningful
 import org.jetbrains.kotlin.codegen.optimization.fixStack.peek
 import org.jetbrains.kotlin.codegen.optimization.fixStack.top
+import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.ParameterDescriptor
-import org.jetbrains.kotlin.resolve.isInlineClassType
+import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
+import org.jetbrains.kotlin.load.java.JvmAbi
+import org.jetbrains.kotlin.resolve.jvm.AsmTypes
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes.OBJECT_TYPE
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.utils.SmartList
 import org.jetbrains.kotlin.utils.SmartSet
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
@@ -31,7 +37,8 @@ import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
-import org.jetbrains.org.objectweb.asm.commons.RemappingMethodAdapter
+import org.jetbrains.org.objectweb.asm.commons.LocalVariablesSorter
+import org.jetbrains.org.objectweb.asm.commons.MethodRemapper
 import org.jetbrains.org.objectweb.asm.tree.*
 import org.jetbrains.org.objectweb.asm.tree.analysis.*
 import org.jetbrains.org.objectweb.asm.util.Printer
@@ -103,13 +110,16 @@ class MethodInliner(
                 API, transformedNode.access, transformedNode.name, transformedNode.desc,
                 transformedNode.signature, transformedNode.exceptions?.toTypedArray()
         )
-        val visitor = RemapVisitor(
-                resultNode, remapper, nodeRemapper,
-                /*copy annotation and attributes*/
-                isTransformingAnonymousObject
-        )
+
+        val visitor = RemapVisitor(resultNode, remapper, nodeRemapper)
+
         try {
-            transformedNode.accept(visitor)
+            transformedNode.accept(
+                if (isTransformingAnonymousObject) {
+                    /*keep annotations and attributes during anonymous object transformations*/
+                    visitor
+                } else MethodBodyVisitor(visitor)
+            )
         }
         catch (e: Throwable) {
             throw wrapException(e, transformedNode, "couldn't inline method call")
@@ -126,7 +136,7 @@ class MethodInliner(
 
         processReturns(resultNode, labelOwner, remapReturn, end)
         //flush transformed node to output
-        resultNode.accept(MethodBodyVisitor(adapter, true))
+        resultNode.accept(SkipMaxAndEndVisitor(adapter))
 
         sourceMapper.endMapping()
         return result
@@ -140,11 +150,16 @@ class MethodInliner(
         val iterator = transformations.iterator()
 
         val remapper = TypeRemapper.createFrom(currentTypeMapping)
-        val remappingMethodAdapter = RemappingMethodAdapter(
+
+        // MethodRemapper doesn't extends LocalVariablesSorter, but RemappingMethodAdapter does.
+        // So wrapping with LocalVariablesSorter to keep old behavior
+        // TODO: investigate LocalVariablesSorter removing (see also same code in RemappingClassBuilder.java)
+        val remappingMethodAdapter = MethodRemapper(
+            LocalVariablesSorter(
                 resultNode.access,
                 resultNode.desc,
-                resultNode,
-                AsmTypeRemapper(remapper, result)
+                resultNode
+            ), AsmTypeRemapper(remapper, result)
         )
 
         val markerShift = calcMarkerShift(parameters, node)
@@ -168,7 +183,7 @@ class MethodInliner(
                     val transformer = transformationInfo!!.createTransformer(
                         childInliningContext,
                         isSameModule,
-                        findFakeContinuationConstructorClassName(node)
+                        CoroutineTransformer.findFakeContinuationConstructorClassName(node)
                     )
 
                     val transformResult = transformer.doTransform(nodeRemapper)
@@ -215,12 +230,42 @@ class MethodInliner(
                         return
                     }
 
+                    // in case of inlining suspend lambda reference as ordinary parameter of inline function:
+                    //   suspend fun foo (...) ...
+                    //   inline fun inlineMe(c: (...) -> ...) ...
+                    //   builder {
+                    //     inlineMe(::foo)
+                    //   }
+                    // we should create additional parameter for continuation.
+                    var coroutineDesc = desc
+                    val actualInvokeDescriptor: FunctionDescriptor
+                    if (info.invokeMethodDescriptor.isSuspend) {
+                        val coroutineInvokeMethodDescriptor = getOrCreateJvmSuspendFunctionView(
+                            info.invokeMethodDescriptor,
+                            inliningContext.state
+                        )
+                        actualInvokeDescriptor = coroutineInvokeMethodDescriptor
+                        val coroutineInvokeDesc = typeMapper.mapAsmMethod(coroutineInvokeMethodDescriptor).descriptor
+                        // And here we expect invoke(...Ljava/lang/Object;) be replaced with invoke(...Lkotlin/coroutines/Continuation;)
+                        // if this does not happen, insert fake continuation, since we could not have one yet.
+                        val argumentTypes = Type.getArgumentTypes(desc)
+                        if (Type.getArgumentTypes(coroutineInvokeDesc).size != argumentTypes.size) {
+                            addFakeContinuationMarker(this)
+                            coroutineDesc = Type.getMethodDescriptor(Type.getReturnType(desc), *argumentTypes, AsmTypes.OBJECT_TYPE)
+                        }
+                    } else {
+                        actualInvokeDescriptor = info.invokeMethodDescriptor
+                    }
+
                     val valueParameters =
-                        listOfNotNull(info.invokeMethodDescriptor.extensionReceiverParameter) + info.invokeMethodDescriptor.valueParameters
+                        listOfNotNull(actualInvokeDescriptor.extensionReceiverParameter) + actualInvokeDescriptor.valueParameters
+
+                    val erasedInvokeFunction = ClosureCodegen.getErasedInvokeFunction(actualInvokeDescriptor)
+                    val invokeParameters = erasedInvokeFunction.valueParameters
 
                     val valueParamShift = Math.max(nextLocalIndex, markerShift)//NB: don't inline cause it changes
                     putStackValuesIntoLocalsForLambdaOnInvoke(
-                        listOf(*info.invokeMethod.argumentTypes), valueParameters, valueParamShift, this, desc
+                        listOf(*info.invokeMethod.argumentTypes), valueParameters, invokeParameters, valueParamShift, this, coroutineDesc
                     )
 
                     if (invokeCall.lambdaInfo.invokeMethodDescriptor.valueParameters.isEmpty()) {
@@ -262,8 +307,6 @@ class MethodInliner(
                     result.mergeWithNotChangeInfo(lambdaResult)
                     result.reifiedTypeParametersUsages.mergeAll(lambdaResult.reifiedTypeParametersUsages)
 
-                    //return value boxing/unboxing
-                    val erasedInvokeFunction = ClosureCodegen.getErasedInvokeFunction(info.invokeMethodDescriptor)
                     val bridge = typeMapper.mapAsmMethod(erasedInvokeFunction)
                     StackValue
                         .onStack(info.invokeMethod.returnType, info.invokeMethodDescriptor.returnType)
@@ -296,7 +339,7 @@ class MethodInliner(
                                 resultNode.desc.endsWith(")" + languageVersionSettings.continuationAsmType().descriptor)
 
                         for (capturedParamDesc in info.allRecapturedParameters) {
-                            if (capturedParamDesc.fieldName == THIS && isContinuationCreate) {
+                            if (capturedParamDesc.fieldName == AsmUtil.THIS && isContinuationCreate) {
                                 // Common inliner logic doesn't support cases when transforming anonymous object can
                                 // be instantiated by itself.
                                 // To support such cases workaround with 'oldInfo' is used.
@@ -304,7 +347,7 @@ class MethodInliner(
                                 // 'This' in outer context corresponds to outer instance in current
                                 visitFieldInsn(
                                     Opcodes.GETSTATIC, owner,
-                                    CAPTURED_FIELD_FOLD_PREFIX + THIS_0, capturedParamDesc.type.descriptor
+                                    CAPTURED_FIELD_FOLD_PREFIX + AsmUtil.CAPTURED_THIS_FIELD, capturedParamDesc.type.descriptor
                                 )
                             } else {
                                 visitFieldInsn(
@@ -369,15 +412,8 @@ class MethodInliner(
             node.signature, node.exceptions?.toTypedArray()
         )
 
-        val transformationVisitor = object : MethodVisitor(API, transformedNode) {
-            /*
-                Ignore simple @InlineOnly functions such as 'error()' or 'assert()' without lambda parameters,
-                as we likely to want to have a line number from the call site in a stack trace.
-             */
-            private val GENERATE_LINE_NUMBERS = GENERATE_SMAP && (inlineOnlySmapSkipper == null || run {
-                val callableDescriptor = inliningContext.root.sourceCompilerForInline.callableDescriptor
-                callableDescriptor != null && callableDescriptor.valueParameters.any { it.type.isFunctionType }
-            })
+        val transformationVisitor = object : InlineMethodInstructionAdapter(transformedNode) {
+            private val GENERATE_DEBUG_INFO = GENERATE_SMAP && inlineOnlySmapSkipper == null
 
             private val isInliningLambda = nodeRemapper.isInsideInliningLambda
 
@@ -409,7 +445,7 @@ class MethodInliner(
             }
 
             override fun visitLineNumber(line: Int, start: Label) {
-                if (isInliningLambda || GENERATE_LINE_NUMBERS) {
+                if (isInliningLambda || GENERATE_DEBUG_INFO) {
                     super.visitLineNumber(line, start)
                 }
             }
@@ -437,7 +473,7 @@ class MethodInliner(
             override fun visitLocalVariable(
                     name: String, desc: String, signature: String?, start: Label, end: Label, index: Int
             ) {
-                if (isInliningLambda || (GENERATE_SMAP && inlineOnlySmapSkipper == null)) {
+                if (isInliningLambda || GENERATE_DEBUG_INFO) {
                     val varSuffix = if (inliningContext.isRoot && !isFakeLocalVariableForInline(name)) INLINE_FUN_VAR_SUFFIX else ""
                     val varName = if (!varSuffix.isEmpty() && name == "this") name + "_" else name
                     super.visitLocalVariable(varName + varSuffix, desc, signature, start, end, getNewIndex(index))
@@ -615,26 +651,78 @@ class MethodInliner(
     private fun replaceContinuationAccessesWithFakeContinuationsIfNeeded(processingNode: MethodNode) {
         val lambdaInfo = inliningContext.lambdaInfo ?: return
         if (!lambdaInfo.invokeMethodDescriptor.isSuspend) return
+        val sources = analyzeMethodNodeBeforeInline(processingNode)
+        val cfg = ControlFlowGraph.build(processingNode)
         val aload0s = processingNode.instructions.asSequence().filter { it.opcode == Opcodes.ALOAD && it.safeAs<VarInsnNode>()?.`var` == 0 }
-        // Expected pattern here:
-        //     ALOAD 0
-        //     ICONST_0
-        //     INVOKESTATIC InlineMarker.mark
-        //     INVOKE* suspendingFunction(..., Continuation;)Ljava/lang/Object;
-        val continuationAsParameterAload0s =
-            aload0s.filter { it.next?.next?.let(::isBeforeSuspendMarker) == true && isSuspendCall(it.next?.next?.next) }
-        replaceContinuationsWithFakeOnes(continuationAsParameterAload0s, processingNode)
+
+        val visited = hashSetOf<AbstractInsnNode>()
+        fun findMeaningfulSuccs(insn: AbstractInsnNode): Collection<AbstractInsnNode> {
+            if (!visited.add(insn)) return emptySet()
+            val res = hashSetOf<AbstractInsnNode>()
+            for (succIndex in cfg.getSuccessorsIndices(insn)) {
+                val succ = processingNode.instructions[succIndex]
+                if (succ.isMeaningful) res.add(succ)
+                else res.addAll(findMeaningfulSuccs(succ))
+            }
+            return res
+        }
+
+        // After inlining suspendCoroutineUninterceptedOrReturn there will be suspension point, which is not a MethodInsnNode.
+        // So, it is incorrect to expect MethodInsnNodes only
+        val suspensionPoints = processingNode.instructions.asSequence()
+            .filter { isBeforeSuspendMarker(it) }
+            .flatMap { findMeaningfulSuccs(it).asSequence() }
+            .filter { it is MethodInsnNode }
+
+        val toReplace = hashSetOf<AbstractInsnNode>()
+        for (suspensionPoint in suspensionPoints) {
+            assert(suspensionPoint is MethodInsnNode) {
+                "suspensionPoint shall be MethodInsnNode, but instead $suspensionPoint"
+            }
+            suspensionPoint as MethodInsnNode
+            assert(Type.getReturnType(suspensionPoint.desc) == OBJECT_TYPE) {
+                "suspensionPoint shall return $OBJECT_TYPE, but returns ${Type.getReturnType(suspensionPoint.desc)}"
+            }
+            val frame = sources[processingNode.instructions.indexOf(suspensionPoint)] ?: continue
+            val paramTypes = Type.getArgumentTypes(suspensionPoint.desc)
+            if (suspensionPoint.name.endsWith(JvmAbi.DEFAULT_PARAMS_IMPL_SUFFIX)) {
+                // Expected pattern here:
+                //     ALOAD 0
+                //     (ICONST or other integers creating instruction)
+                //     (ACONST_NULL or ALOAD)
+                //     ICONST_0
+                //     INVOKESTATIC InlineMarker.mark
+                //     INVOKE* suspendingFunction$default(..., Continuation;ILjava/lang/Object)Ljava/lang/Object;
+                assert(paramTypes.size >= 3) {
+                    "${suspensionPoint.name}${suspensionPoint.desc} shall have 3+ parameters"
+                }
+            } else {
+                // Expected pattern here:
+                //     ALOAD 0
+                //     ICONST_0
+                //     INVOKESTATIC InlineMarker.mark
+                //     INVOKE* suspendingFunction(..., Continuation;)Ljava/lang/Object;
+                assert(paramTypes.isNotEmpty()) {
+                    "${suspensionPoint.name}${suspensionPoint.desc} shall have 1+ parameters"
+                }
+            }
+            paramTypes.reversed().asSequence().withIndex()
+                .filter { it.value == languageVersionSettings.continuationAsmType() || it.value == OBJECT_TYPE }
+                .flatMap { frame.getStack(frame.stackSize - it.index - 1).insns.asSequence() }
+                .filter { it in aload0s }.let { toReplace.addAll(it) }
+        }
+
         // Expected pattern here:
         //     ALOAD 0
         //     ASTORE N
         // This pattern may occur after multiple inlines
-        val continuationToStoreAload0s = aload0s.filter { it.next?.opcode == Opcodes.ASTORE }
-        replaceContinuationsWithFakeOnes(continuationToStoreAload0s, processingNode)
+        // Note, that this is not a suspension point, thus we check it separately
+        toReplace.addAll(aload0s.filter { it.next?.opcode == Opcodes.ASTORE })
         // Expected pattern here:
         //     ALOAD 0
         //     INVOKEINTERFACE kotlin/jvm/functions/FunctionN.invoke (...,Ljava/lang/Object;)Ljava/lang/Object;
-        val continuationAsLambdaParameterAload0s = aload0s.filter { isLambdaCall(it.next) }
-        replaceContinuationsWithFakeOnes(continuationAsLambdaParameterAload0s, processingNode)
+        toReplace.addAll(aload0s.filter { isLambdaCall(it.next) })
+        replaceContinuationsWithFakeOnes(toReplace, processingNode)
     }
 
     private fun isLambdaCall(invoke: AbstractInsnNode?): Boolean {
@@ -647,7 +735,7 @@ class MethodInliner(
     }
 
     private fun replaceContinuationsWithFakeOnes(
-        continuations: Sequence<AbstractInsnNode>,
+        continuations: Collection<AbstractInsnNode>,
         node: MethodNode
     ) {
         for (toReplace in continuations) {
@@ -923,6 +1011,7 @@ class MethodInliner(
         private fun analyzeMethodNodeBeforeInline(node: MethodNode): Array<Frame<SourceValue>?> {
             val analyzer = object : Analyzer<SourceValue>(SourceInterpreter()) {
                 override fun newFrame(nLocals: Int, nStack: Int): Frame<SourceValue> {
+
                     return object : Frame<SourceValue>(nLocals, nStack) {
                         @Throws(AnalyzerException::class)
                         override fun execute(insn: AbstractInsnNode, interpreter: Interpreter<SourceValue>) {
@@ -1002,6 +1091,7 @@ class MethodInliner(
         private fun putStackValuesIntoLocalsForLambdaOnInvoke(
             directOrder: List<Type>,
             directOrderOfArguments: List<ParameterDescriptor>,
+            directOrderOfInvokeParameters: List<ValueParameterDescriptor>,
             shift: Int,
             iv: InstructionAdapter,
             descriptor: String
@@ -1013,18 +1103,26 @@ class MethodInliner(
 
             var currentShift = shift + directOrder.sumBy { it.size }
 
-            val safeToUseArgumentKotlinType = directOrder.size == directOrderOfArguments.size
-            directOrder.asReversed().forEachIndexed { index, type ->
+            val safeToUseArgumentKotlinType =
+                directOrder.size == directOrderOfArguments.size && directOrderOfArguments.size == directOrderOfInvokeParameters.size
+
+            for (index in directOrder.lastIndex downTo 0) {
+                val type = directOrder[index]
                 currentShift -= type.size
                 val typeOnStack = actualParams[index]
-                if (typeOnStack != type) {
-                    val argumentType = if (safeToUseArgumentKotlinType)
-                        directOrderOfArguments[index].type.takeIf { it.isInlineClassType() }
-                    else
-                        null
-                    // if argument type had inline class type then after substitution it will also have the same type,
-                    // but probably boxed, which is OK because in terms of Kotlin types this is the same type
-                    StackValue.onStack(typeOnStack, argumentType).put(type, argumentType, iv)
+
+                val argumentKotlinType: KotlinType?
+                val invokeParameterKotlinType: KotlinType?
+                if (safeToUseArgumentKotlinType) {
+                    argumentKotlinType = directOrderOfArguments[index].type
+                    invokeParameterKotlinType = directOrderOfInvokeParameters[index].type
+                } else {
+                    argumentKotlinType = null
+                    invokeParameterKotlinType = null
+                }
+
+                if (typeOnStack != type || invokeParameterKotlinType != argumentKotlinType) {
+                    StackValue.onStack(typeOnStack, invokeParameterKotlinType).put(type, argumentKotlinType, iv)
                 }
                 iv.store(currentShift, type)
             }

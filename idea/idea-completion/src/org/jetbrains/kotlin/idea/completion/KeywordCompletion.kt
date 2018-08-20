@@ -55,10 +55,12 @@ object KeywordCompletion {
 
     private val COMPOUND_KEYWORDS = mapOf<KtKeywordToken, KtKeywordToken>(
             COMPANION_KEYWORD to OBJECT_KEYWORD,
+            DATA_KEYWORD to CLASS_KEYWORD,
             ENUM_KEYWORD to CLASS_KEYWORD,
             ANNOTATION_KEYWORD to CLASS_KEYWORD,
             SEALED_KEYWORD to CLASS_KEYWORD,
-            LATEINIT_KEYWORD to VAR_KEYWORD
+            LATEINIT_KEYWORD to VAR_KEYWORD,
+            CONST_KEYWORD to VAL_KEYWORD
     )
 
     private val KEYWORD_CONSTRUCTS = mapOf<KtKeywordToken, String>(

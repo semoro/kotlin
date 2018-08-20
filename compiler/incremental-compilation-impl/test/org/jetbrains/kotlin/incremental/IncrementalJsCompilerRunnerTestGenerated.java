@@ -291,6 +291,11 @@ public class IncrementalJsCompilerRunnerTestGenerated extends AbstractIncrementa
             runTest("jps-plugin/testData/incremental/pureKotlin/inlinePropertyOnTopLevel/");
         }
 
+        @TestMetadata("inlineSuspendFunctionChanged")
+        public void testInlineSuspendFunctionChanged() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/inlineSuspendFunctionChanged/");
+        }
+
         @TestMetadata("inlineTwoFunctionsOneChanged")
         public void testInlineTwoFunctionsOneChanged() throws Exception {
             runTest("jps-plugin/testData/incremental/pureKotlin/inlineTwoFunctionsOneChanged/");
@@ -359,6 +364,11 @@ public class IncrementalJsCompilerRunnerTestGenerated extends AbstractIncrementa
         @TestMetadata("ourClassReferenced")
         public void testOurClassReferenced() throws Exception {
             runTest("jps-plugin/testData/incremental/pureKotlin/ourClassReferenced/");
+        }
+
+        @TestMetadata("overloadInlined")
+        public void testOverloadInlined() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/overloadInlined/");
         }
 
         @TestMetadata("packageConstantChanged")
@@ -549,6 +559,11 @@ public class IncrementalJsCompilerRunnerTestGenerated extends AbstractIncrementa
         @TestMetadata("returnTypeChanged")
         public void testReturnTypeChanged() throws Exception {
             runTest("jps-plugin/testData/incremental/pureKotlin/returnTypeChanged/");
+        }
+
+        @TestMetadata("secondaryConstructorInlined")
+        public void testSecondaryConstructorInlined() throws Exception {
+            runTest("jps-plugin/testData/incremental/pureKotlin/secondaryConstructorInlined/");
         }
 
         @TestMetadata("simpleClassDependency")

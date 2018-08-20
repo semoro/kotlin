@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.backend.common.CodegenUtil
 import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.context.*
 import org.jetbrains.kotlin.codegen.state.GenerationState
+import org.jetbrains.kotlin.config.isReleaseCoroutines
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.incremental.KotlinLookupLocation
 import org.jetbrains.kotlin.incremental.components.LookupLocation
@@ -36,8 +37,6 @@ interface SourceCompilerForInline {
     val state: GenerationState
 
     val callElement: Any
-
-    val callableDescriptor: CallableDescriptor?
 
     val lookupLocation: LookupLocation
 
@@ -94,10 +93,8 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
 
     override val lookupLocation = KotlinLookupLocation(callElement)
 
-    override val callableDescriptor: CallableDescriptor?
-        get() = (this.context as? MethodContext)?.functionDescriptor
 
-    override val callElementText by lazy {
+    override val callElementText: String by lazy {
         callElement.text
     }
 
@@ -175,24 +172,30 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
         val strategy = when (expression) {
             is KtCallableReferenceExpression -> {
                 val resolvedCall = expression.callableReference.getResolvedCallWithAssert(state.bindingContext)
-                val receiverType = JvmCodegenUtil.getBoundCallableReferenceReceiver(resolvedCall)?.type?.let(state.typeMapper::mapType)
+                val receiverKotlinType = JvmCodegenUtil.getBoundCallableReferenceReceiver(resolvedCall)?.type
+                val receiverType = receiverKotlinType?.let(state.typeMapper::mapType)
+                val boundReceiverJvmKotlinType = receiverType?.let { JvmKotlinType(receiverType, receiverKotlinType) }
 
                 if (isLambda && lambdaInfo!!.isPropertyReference) {
                     val asmType = state.typeMapper.mapClass(lambdaInfo.classDescriptor)
                     val info = lambdaInfo.propertyReferenceInfo
                     PropertyReferenceCodegen.PropertyReferenceGenerationStrategy(
-                        true, info!!.getFunction, info.target, asmType, receiverType,
+                        true, info!!.getFunction, info.target, asmType,
+                        boundReceiverJvmKotlinType,
                         lambdaInfo.functionWithBodyOrCallableReference, state, true
                     )
                 } else {
-                    FunctionReferenceGenerationStrategy(state, descriptor, resolvedCall, receiverType, null, true)
+                    FunctionReferenceGenerationStrategy(state, descriptor, resolvedCall, boundReceiverJvmKotlinType, null, true)
                 }
             }
             is KtFunctionLiteral -> ClosureGenerationStrategy(state, expression as KtDeclarationWithBody)
             else -> FunctionGenerationStrategy.FunctionDefault(state, expression as KtDeclarationWithBody)
         }
 
-        FunctionCodegen.generateMethodBody(adapter, descriptor, context, jvmMethodSignature, strategy, parentCodegen)
+        FunctionCodegen.generateMethodBody(
+            adapter, descriptor, context, jvmMethodSignature, strategy, parentCodegen, state.jvmDefaultMode,
+            state.languageVersionSettings.isReleaseCoroutines()
+        )
 
         if (isLambda) {
             codegen.propagateChildReifiedTypeParametersUsages(parentCodegen.reifiedTypeParametersUsages)
@@ -207,7 +210,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
         mappings: List<FileMapping>
     ): SMAP {
         val containingFile = declaration.containingFile
-        CodegenUtil.getLineNumberForElement(containingFile, true) ?: error("Couldn't extract line count in " + containingFile)
+        CodegenUtil.getLineNumberForElement(containingFile, true) ?: error("Couldn't extract line count in $containingFile")
 
         return SMAP(mappings)
     }
@@ -265,7 +268,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
         val element = DescriptorToSourceUtils.descriptorToDeclaration(callableDescriptor)
 
         if (!(element is KtNamedFunction || element is KtPropertyAccessor)) {
-            throw IllegalStateException("Couldn't find declaration for function " + callableDescriptor)
+            throw IllegalStateException("Couldn't find declaration for function $callableDescriptor")
         }
         val inliningFunction = element as KtDeclarationWithBody?
 
@@ -290,7 +293,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
                 false
             )
             if (element !is KtNamedFunction) {
-                throw IllegalStateException("Property accessors with default parameters not supported " + callableDescriptor)
+                throw IllegalStateException("Property accessors with default parameters not supported $callableDescriptor")
             }
             FunctionCodegen.generateDefaultImplBody(
                 methodContext, callableDescriptor, maxCalcAdapter, DefaultParameterValueLoader.DEFAULT,
@@ -353,7 +356,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
                     frameMap.enterTemp(Type.INT_TYPE)
                 }
 
-                finallyCodegen.generateFinallyBlocksIfNeeded(extension.returnType, extension.finallyIntervalEnd.label)
+                finallyCodegen.generateFinallyBlocksIfNeeded(extension.returnType, null, extension.finallyIntervalEnd.label)
 
                 //Exception table for external try/catch/finally blocks will be generated in original codegen after exiting this method
                 insertNodeBefore(finallyNode, intoNode, curInstr)
@@ -420,7 +423,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
                 return PackageContext(descriptor, state.rootContext, null, sourceFile)
             }
 
-            val container = descriptor.containingDeclaration ?: error("No container for descriptor: " + descriptor)
+            val container = descriptor.containingDeclaration ?: error("No container for descriptor: $descriptor")
             val parent = getContext(
                 container,
                 descriptor,
@@ -458,7 +461,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
                     parent.intoFunction(descriptor)
                 }
                 else -> {
-                    throw IllegalStateException("Couldn't build context for " + descriptor)
+                    throw IllegalStateException("Couldn't build context for $descriptor")
                 }
             }
 

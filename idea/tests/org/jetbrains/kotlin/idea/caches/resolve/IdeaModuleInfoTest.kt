@@ -27,6 +27,7 @@ import com.intellij.openapi.roots.libraries.Library
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
+import com.intellij.psi.PsiManager
 import com.intellij.testFramework.ModuleTestCase
 import com.intellij.testFramework.PlatformTestCase
 import com.intellij.testFramework.PsiTestUtil
@@ -39,6 +40,7 @@ import org.jetbrains.kotlin.idea.framework.CommonLibraryKind
 import org.jetbrains.kotlin.idea.framework.JSLibraryKind
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase.*
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
+import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.util.addDependency
 import org.jetbrains.kotlin.test.util.jarRoot
 import org.jetbrains.kotlin.test.util.projectLibrary
@@ -338,13 +340,7 @@ class IdeaModuleInfoTest : ModuleTestCase() {
             dependencies().contains(a.production)
             dependencies().contains(a.test)
             !dependencies().contains(b.production)
-            dependencies().firstIsInstance<ScriptDependenciesInfo.ForFile>()
         }
-    }
-
-    override fun setUp() {
-        super.setUp()
-        VfsRootAccess.allowRootAccess("C:/Work/Projects/kotlin/")
     }
 
     fun testScriptDependenciesForProject() {
@@ -430,7 +426,9 @@ class IdeaModuleInfoTest : ModuleTestCase() {
     ) = ModuleRootModificationUtil.addDependency(this, other, dependencyScope, exported)
 
     private val VirtualFile.moduleInfo: IdeaModuleInfo
-        get() = getModuleInfoByVirtualFile(project, this)!!
+        get() {
+            return PsiManager.getInstance(project).findFile(this)!!.getModuleInfo()
+        }
 
     private val Module.production: ModuleProductionSourceInfo
         get() = productionSourceInfo()!!
@@ -482,8 +480,16 @@ class IdeaModuleInfoTest : ModuleTestCase() {
         kind = JSLibraryKind
     )
 
+    override fun setUp() {
+        super.setUp()
+
+        VfsRootAccess.allowRootAccess(KotlinTestUtils.getHomeDirectory())
+    }
+
     override fun tearDown() {
         clearSdkTable(testRootDisposable)
+
+        VfsRootAccess.disallowRootAccess(KotlinTestUtils.getHomeDirectory())
 
         super.tearDown()
     }

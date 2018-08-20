@@ -11,25 +11,29 @@ import kotlin.collections.CollectionsKt;
 import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.backend.common.CodegenUtil;
+import org.jetbrains.kotlin.builtins.functions.FunctionInvokeDescriptor;
 import org.jetbrains.kotlin.codegen.binding.CalculatedClosure;
 import org.jetbrains.kotlin.codegen.context.CodegenContext;
 import org.jetbrains.kotlin.codegen.context.FacadePartWithSourceFile;
 import org.jetbrains.kotlin.codegen.context.MethodContext;
 import org.jetbrains.kotlin.codegen.context.RootContext;
+import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
+import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.descriptors.JavaCallableMemberDescriptor;
 import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor;
-import org.jetbrains.kotlin.load.kotlin.FileBasedKotlinClass;
-import org.jetbrains.kotlin.load.kotlin.KotlinJvmBinaryClass;
-import org.jetbrains.kotlin.load.kotlin.KotlinJvmBinarySourceElement;
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityUtilsKt;
 import org.jetbrains.kotlin.metadata.jvm.deserialization.ModuleMapping;
+import org.jetbrains.kotlin.name.FqName;
+import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.Call;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.KtFunction;
+import org.jetbrains.kotlin.psi.KtSuperTypeListEntry;
 import org.jetbrains.kotlin.psi.codeFragmentUtil.CodeFragmentUtilKt;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
@@ -40,17 +44,19 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
 import org.jetbrains.kotlin.types.KotlinType;
+import org.jetbrains.kotlin.util.OperatorNameConventions;
 
 import java.io.File;
 
+import static org.jetbrains.kotlin.codegen.coroutines.CoroutineCodegenUtilKt.SUSPEND_FUNCTION_CREATE_METHOD_NAME;
 import static org.jetbrains.kotlin.descriptors.ClassKind.ANNOTATION_CLASS;
 import static org.jetbrains.kotlin.descriptors.ClassKind.INTERFACE;
 import static org.jetbrains.kotlin.descriptors.Modality.ABSTRACT;
 import static org.jetbrains.kotlin.descriptors.Modality.FINAL;
 import static org.jetbrains.kotlin.resolve.BindingContext.DELEGATED_PROPERTY_CALL;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.isCompanionObject;
-import static org.jetbrains.kotlin.resolve.annotations.AnnotationUtilKt.hasJvmDefaultAnnotation;
-import static org.jetbrains.kotlin.resolve.jvm.annotations.AnnotationUtilKt.hasJvmFieldAnnotation;
+import static org.jetbrains.kotlin.resolve.jvm.annotations.JvmAnnotationUtilKt.hasJvmDefaultAnnotation;
+import static org.jetbrains.kotlin.resolve.jvm.annotations.JvmAnnotationUtilKt.hasJvmFieldAnnotation;
 
 public class JvmCodegenUtil {
 
@@ -68,7 +74,7 @@ public class JvmCodegenUtil {
         return !hasJvmDefaultAnnotation(descriptor);
     }
 
-    public static boolean isJvmInterface(DeclarationDescriptor descriptor) {
+    public static boolean isJvmInterface(@Nullable DeclarationDescriptor descriptor) {
         if (descriptor instanceof ClassDescriptor) {
             ClassKind kind = ((ClassDescriptor) descriptor).getKind();
             return kind == INTERFACE || kind == ANNOTATION_CLASS;
@@ -81,10 +87,10 @@ public class JvmCodegenUtil {
     }
 
     public static boolean isConst(@NotNull CalculatedClosure closure) {
-        return closure.getCaptureThis() == null &&
-                    closure.getCaptureReceiverType() == null &&
-                    closure.getCaptureVariables().isEmpty() &&
-                    !closure.isSuspend();
+        return closure.getCapturedOuterClassDescriptor() == null &&
+               closure.getCapturedReceiverFromOuterContext() == null &&
+               closure.getCaptureVariables().isEmpty() &&
+               !closure.isSuspend();
     }
 
     private static boolean isCallInsideSameClassAsFieldRepresentingProperty(
@@ -153,6 +159,33 @@ public class JvmCodegenUtil {
         return propertyDescriptor.isConst() || hasJvmFieldAnnotation(propertyDescriptor);
     }
 
+    public static boolean couldUseDirectAccessToCompanionObject(
+            @NotNull ClassDescriptor companionObjectDescriptor,
+            @NotNull MethodContext contextBeforeInline
+    ) {
+        if (!Visibilities.isPrivate(companionObjectDescriptor.getVisibility())) {
+            // Non-private companion object can be directly accessed anywhere it's allowed by the front-end.
+            return true;
+        }
+
+        if (isDebuggerContext(contextBeforeInline)) {
+            return true;
+        }
+
+        CodegenContext context = contextBeforeInline.getFirstCrossInlineOrNonInlineContext();
+        if (context.isInlineMethodContext()) {
+            // Inline method can be called from a nested class.
+            return false;
+        }
+
+        // Private companion object is directly accessible only from the corresponding class
+        return context.getContextDescriptor().getContainingDeclaration() == companionObjectDescriptor.getContainingDeclaration();
+    }
+
+    public static String getCompanionObjectAccessorName(@NotNull ClassDescriptor companionObjectDescriptor) {
+        return "access$" + companionObjectDescriptor.getName();
+    }
+
     public static boolean couldUseDirectAccessToProperty(
             @NotNull PropertyDescriptor property,
             boolean forGetter,
@@ -165,8 +198,8 @@ public class JvmCodegenUtil {
         if (KotlinTypeMapper.isAccessor(property)) return false;
 
         CodegenContext context = contextBeforeInline.getFirstCrossInlineOrNonInlineContext();
-        // Inline functions or inline classes can't use direct access because a field may not be visible at the call site
-        if (context.isInlineMethodContext() || (context.getEnclosingClass() != null && context.getEnclosingClass().isInline())) {
+        // Inline functions can't use direct access because a field may not be visible at the call site
+        if (context.isInlineMethodContext()) {
             return false;
         }
 
@@ -212,10 +245,10 @@ public class JvmCodegenUtil {
         if (DescriptorPsiUtilsKt.hasBody(accessor)) return false;
 
         // If the accessor is private or final, it can't be overridden in the subclass and thus we can use direct access
-        return Visibilities.isPrivate(property.getVisibility()) || accessor.getModality() == FINAL;
+        return Visibilities.isPrivate(accessor.getVisibility()) || accessor.getModality() == FINAL;
     }
 
-    private static boolean isDebuggerContext(@NotNull CodegenContext context) {
+    public static boolean isDebuggerContext(@NotNull CodegenContext context) {
         KtFile file = DescriptorToSourceUtils.getContainingFile(context.getContextDescriptor());
         return file != null && CodeFragmentUtilKt.getSuppressDiagnosticsInDebugMode(file);
     }
@@ -227,7 +260,7 @@ public class JvmCodegenUtil {
     ) {
         //for compilation against sources
         if (closure != null) {
-            return closure.getCaptureThis();
+            return closure.getCapturedOuterClassDescriptor();
         }
 
         //for compilation against binaries
@@ -257,7 +290,13 @@ public class JvmCodegenUtil {
 
     @NotNull
     public static String getModuleName(ModuleDescriptor module) {
-        return StringsKt.removeSurrounding(module.getName().asString(), "<", ">");
+        Name name = module.getStableName();
+        if (name == null) {
+            // Defensive fallback to possibly unstable name, to not fail with exception
+            return StringsKt.removeSurrounding(module.getName().asString(), "<", ">");
+        } else {
+            return StringsKt.removeSurrounding(name.asString(), "<", ">");
+        }
     }
 
     @NotNull
@@ -310,11 +349,44 @@ public class JvmCodegenUtil {
                !JvmAbi.isMappedIntrinsicCompanionObject((ClassDescriptor) companionObject);
     }
 
-    public static boolean hasBackingField(
-            @NotNull PropertyDescriptor descriptor, @NotNull OwnerKind kind, @NotNull BindingContext bindingContext
+    public static boolean isNonIntrinsicPrivateCompanionObjectInInterface(@NotNull DeclarationDescriptorWithVisibility companionObject) {
+        return isCompanionObjectInInterfaceNotIntrinsic(companionObject) &&
+               Visibilities.isPrivate(companionObject.getVisibility());
+    }
+
+    public static boolean isDeclarationOfBigArityFunctionInvoke(@Nullable DeclarationDescriptor descriptor) {
+        return descriptor instanceof FunctionInvokeDescriptor && ((FunctionInvokeDescriptor) descriptor).hasBigArity();
+    }
+
+    public static boolean isDeclarationOfBigArityCreateCoroutineMethod(@Nullable DeclarationDescriptor descriptor) {
+        return descriptor instanceof SimpleFunctionDescriptor && descriptor.getName().asString().equals(SUSPEND_FUNCTION_CREATE_METHOD_NAME) &&
+               ((SimpleFunctionDescriptor) descriptor).getValueParameters().size() >= FunctionInvokeDescriptor.BIG_ARITY - 1 &&
+               descriptor.getContainingDeclaration() instanceof AnonymousFunctionDescriptor && ((AnonymousFunctionDescriptor) descriptor.getContainingDeclaration()).isSuspend();
+    }
+
+    public static boolean isOverrideOfBigArityFunctionInvoke(@Nullable DeclarationDescriptor descriptor) {
+        return descriptor instanceof FunctionDescriptor &&
+               descriptor.getName().equals(OperatorNameConventions.INVOKE) &&
+               CollectionsKt.any(
+                       DescriptorUtils.getAllOverriddenDeclarations((FunctionDescriptor) descriptor),
+                       JvmCodegenUtil::isDeclarationOfBigArityFunctionInvoke
+               );
+    }
+
+    @Nullable
+    public static ClassDescriptor getSuperClass(
+            @NotNull KtSuperTypeListEntry specifier,
+            @NotNull GenerationState state,
+            @NotNull BindingContext bindingContext
     ) {
-        return !isJvmInterface(descriptor.getContainingDeclaration()) &&
-               kind != OwnerKind.DEFAULT_IMPLS &&
-               !Boolean.FALSE.equals(bindingContext.get(BindingContext.BACKING_FIELD_REQUIRED, descriptor));
+        ClassDescriptor superClass = CodegenUtil.getSuperClassBySuperTypeListEntry(specifier, bindingContext);
+
+        assert superClass != null || state.getClassBuilderMode() == ClassBuilderMode.LIGHT_CLASSES
+                : "ClassDescriptor should not be null:" + specifier.getText();
+        return superClass;
+    }
+
+    public static boolean isPolymorphicSignature(@NotNull FunctionDescriptor descriptor) {
+        return descriptor.getAnnotations().hasAnnotation(new FqName("java.lang.invoke.MethodHandle.PolymorphicSignature"));
     }
 }

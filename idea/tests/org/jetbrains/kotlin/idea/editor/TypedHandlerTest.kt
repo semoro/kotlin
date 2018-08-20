@@ -584,6 +584,62 @@ class TypedHandlerTest : LightCodeInsightTestCase() {
                 """)
     }
 
+    fun testContinueWithElvis() {
+        doCharTypeTest(
+            ':',
+            """
+                |fun test(): Any? = null
+                |fun some() {
+                |    test()
+                |    ?<caret>
+                |}
+            """,
+            """
+                |fun test(): Any? = null
+                |fun some() {
+                |    test()
+                |            ?:<caret>
+                |}
+            """
+        )
+    }
+
+    fun testContinueWithOr() {
+        doCharTypeTest(
+            '|',
+            """
+                |fun some() {
+                |    if (true
+                |    |<caret>)
+                |}
+            """,
+            """
+                |fun some() {
+                |    if (true
+                |            ||<caret>)
+                |}
+            """
+        )
+    }
+
+    fun testContinueWithAnd() {
+        doCharTypeTest(
+            '&',
+            """
+                |fun some() {
+                |    val test = true
+                |    &<caret>
+                |}
+            """,
+            """
+                |fun some() {
+                |    val test = true
+                |            &&<caret>
+                |}
+            """
+        )
+    }
+
     fun testSpaceAroundRange() {
         doCharTypeTest(
                 '.',
@@ -713,6 +769,28 @@ class TypedHandlerTest : LightCodeInsightTestCase() {
                 enableSmartEnterWithTabs()
         )
     }
+
+    fun testAutoIndentInWhenClause() {
+        doCharTypeTest(
+            '\n',
+            """
+            |fun test() {
+            |    when (2) {
+            |        is Int -><caret>
+            |    }
+            |}
+            """,
+            """
+            |fun test() {
+            |    when (2) {
+            |        is Int ->
+            |            <caret>
+            |    }
+            |}
+            """
+        )
+    }
+
 
     fun testMoveThroughGT() {
         LightPlatformCodeInsightTestCase.configureFromFileText("a.kt", "val a: List<Set<Int<caret>>>")

@@ -22,6 +22,7 @@ import com.intellij.ide.DataManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -40,9 +41,9 @@ import com.intellij.refactoring.util.occurrences.ExpressionOccurrenceManager
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
 import com.intellij.testFramework.fixtures.JavaCodeInsightTestFixture
 import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
-import org.jetbrains.kotlin.compatibility.projectDisposableEx
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils
+import org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager
 import org.jetbrains.kotlin.idea.refactoring.checkConflictsInteractively
 import org.jetbrains.kotlin.idea.refactoring.chooseMembers
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractClass.ExtractSuperInfo
@@ -66,6 +67,7 @@ import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCaseBase
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
+import org.jetbrains.kotlin.parsing.KotlinParserDefinition
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
@@ -73,7 +75,6 @@ import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.util.findElementByCommentPrefix
 import java.io.File
-import java.lang.AssertionError
 import java.util.*
 import kotlin.test.assertEquals
 
@@ -298,7 +299,7 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
     }
 
     protected fun doExtractSuperTest(path: String, isInterface: Boolean) {
-        doTest(path) { file ->
+        doTest(path, true) { file ->
             file as KtFile
 
             markMembersInfo(file)
@@ -306,6 +307,8 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
             val targetParent = file.findElementByCommentPrefix("// SIBLING:")?.parent ?: file.parent!!
             val fileText = file.text
             val className = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// NAME:")!!
+            val targetFileName = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// TARGET_FILE_NAME:")
+                    ?: "$className.${KotlinFileType.EXTENSION}"
             val editor = fixture.editor
             val originalClass = file.findElementAt(editor.caretModel.offset)?.getStrictParentOfType<KtClassOrObject>()!!
             val memberInfos = chooseMembers(extractClassMembers(originalClass))
@@ -315,7 +318,7 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
                         originalClass,
                         memberInfos,
                         targetParent,
-                        "$className.${KotlinFileType.EXTENSION}",
+                        targetFileName,
                         className,
                         isInterface,
                         DocCommentPolicy<PsiComment>(DocCommentPolicy.ASIS)
@@ -332,7 +335,11 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
     protected fun doTest(path: String, checkAdditionalAfterdata: Boolean = false, action: (PsiFile) -> Unit) {
         val mainFile = File(path)
 
-        PluginTestCaseBase.addJdk(myFixture.projectDisposableEx, PluginTestCaseBase::mockJdk)
+        PluginTestCaseBase.addJdk(myFixture.projectDisposable, PluginTestCaseBase::mockJdk)
+
+        if (mainFile.extension == KotlinParserDefinition.STD_SCRIPT_SUFFIX) {
+            ScriptDependenciesManager.updateScriptDependenciesSynchronously(VfsUtil.findFileByIoFile(mainFile, true)!!, project)
+        }
 
         fixture.testDataPath = "${KotlinTestUtils.getHomeDirectory()}/${mainFile.parent}"
 

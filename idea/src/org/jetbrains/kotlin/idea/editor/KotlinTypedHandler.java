@@ -43,11 +43,9 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.text.CharArrayUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.KtNodeTypes;
+import org.jetbrains.kotlin.kdoc.lexer.KDocTokens;
 import org.jetbrains.kotlin.lexer.KtTokens;
-import org.jetbrains.kotlin.psi.KtClassOrObject;
-import org.jetbrains.kotlin.psi.KtFile;
-import org.jetbrains.kotlin.psi.KtQualifiedExpression;
-import org.jetbrains.kotlin.psi.KtSimpleNameStringTemplateEntry;
+import org.jetbrains.kotlin.psi.*;
 
 public class KotlinTypedHandler extends TypedHandlerDelegate {
     private final static TokenSet CONTROL_FLOW_EXPRESSIONS = TokenSet.create(
@@ -100,6 +98,7 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
                 }
 
                 if (iterator.atEnd() || !(SUPPRESS_AUTO_INSERT_CLOSE_BRACE_AFTER.contains(iterator.getTokenType()))) {
+                    AutoPopupController.getInstance(project).autoPopupParameterInfo(editor, null);
                     return Result.CONTINUE;
                 }
 
@@ -129,6 +128,7 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
 
             case '@':
                 autoPopupLabelLookup(project, editor);
+                autoPopupKDocTag(project, editor);
                 return Result.CONTINUE;
 
             case ':':
@@ -152,7 +152,9 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
         if (KtTokens.COMMENTS.contains(tokenType)
             || tokenType == KtTokens.REGULAR_STRING_PART
             || tokenType == KtTokens.OPEN_QUOTE
-            || tokenType == KtTokens.CHARACTER_LITERAL) return;
+            || tokenType == KtTokens.CHARACTER_LITERAL) {
+            return;
+        }
 
         AutoPopupController.getInstance(project).autoPopupParameterInfo(editor, null);
     }
@@ -179,6 +181,16 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
         });
     }
 
+    private static void autoPopupKDocTag(Project project, final Editor editor) {
+        AutoPopupController.getInstance(project).autoPopupMemberLookup(editor, (PsiFile file) -> {
+            int offset = editor.getCaretModel().getOffset();
+            PsiElement lastElement = file.findElementAt(offset - 1);
+            if (lastElement == null) return false;
+
+            return lastElement.getNode().getElementType() == KDocTokens.TEXT;
+        });
+    }
+
     private static void autoPopupLabelLookup(Project project, final Editor editor) {
         AutoPopupController.getInstance(project).autoPopupMemberLookup(editor, new Condition<PsiFile>() {
             @Override
@@ -189,7 +201,9 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
                 if (!endsWith(chars, offset, "this@")
                     && !endsWith(chars, offset, "return@")
                     && !endsWith(chars, offset, "break@")
-                    && !endsWith(chars, offset, "continue@")) return false;
+                    && !endsWith(chars, offset, "continue@")) {
+                    return false;
+                }
 
                 PsiElement lastElement = file.findElementAt(offset - 1);
                 if (lastElement == null) return false;
@@ -235,18 +249,29 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
             int offset = editor.getCaretModel().getOffset();
             PsiElement previousElement = file.findElementAt(offset - 1);
             if (previousElement instanceof LeafPsiElement
-                    && ((LeafPsiElement) previousElement).getElementType() == KtTokens.LONG_TEMPLATE_ENTRY_START) {
+                && ((LeafPsiElement) previousElement).getElementType() == KtTokens.LONG_TEMPLATE_ENTRY_START) {
                 editor.getDocument().insertString(offset, "}");
                 return Result.STOP;
             }
         }
         else if (c == ':') {
-            if (autoIndentCase(editor, project, file, KtClassOrObject.class)) {
+            if (autoIndentCase(editor, project, file, KtClassOrObject.class) ||
+                autoIndentCase(editor, project, file, KtOperationReferenceExpression.class)) {
                 return Result.STOP;
             }
         }
         else if (c == '.') {
             if (autoIndentCase(editor, project, file, KtQualifiedExpression.class)) {
+                return Result.STOP;
+            }
+        }
+        else if (c == '|') {
+            if (autoIndentCase(editor, project, file, KtOperationReferenceExpression.class)) {
+                return Result.STOP;
+            }
+        }
+        else if (c == '&') {
+            if (autoIndentCase(editor, project, file, KtOperationReferenceExpression.class)) {
                 return Result.STOP;
             }
         }
@@ -256,6 +281,7 @@ public class KotlinTypedHandler extends TypedHandlerDelegate {
 
     /**
      * Copied from
+     *
      * @see com.intellij.codeInsight.editorActions.TypedHandler#indentBrace(Project, Editor, char)
      */
     private static void indentBrace(@NotNull final Project project, @NotNull final Editor editor, char braceChar) {

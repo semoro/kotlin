@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 description = "kotlinp"
 
@@ -7,14 +8,21 @@ plugins {
 }
 
 val shadows by configurations.creating
-shadows.extendsFrom(configurations.getByName("compile"))
 
 dependencies {
-    compile(project(":kotlinx-metadata"))
-    compile(project(":kotlinx-metadata-jvm"))
+    compileOnly(project(":kotlinx-metadata"))
+    compileOnly(project(":kotlinx-metadata-jvm"))
     compile("org.ow2.asm:asm:6.0")
+
+    testCompileOnly(project(":kotlinx-metadata"))
+    testCompileOnly(project(":kotlinx-metadata-jvm"))
     testCompile(commonDep("junit:junit"))
     testCompile(projectTests(":generators:test-generator"))
+
+    testRuntime(project(":kotlinx-metadata-jvm", configuration = "runtime"))
+
+    shadows(project(":kotlinx-metadata-jvm", configuration = "runtime"))
+    shadows("org.ow2.asm:asm:6.0")
 }
 
 sourceSets {
@@ -32,7 +40,7 @@ val shadowJar by task<ShadowJar> {
     classifier = "shadow"
     version = null
     configurations = listOf(shadows)
-    from(the<JavaPluginConvention>().sourceSets.getByName("main").output)
+    from(mainSourceSet.output)
     manifest {
         attributes["Main-Class"] = "org.jetbrains.kotlin.kotlinp.Main"
     }
@@ -41,5 +49,16 @@ val shadowJar by task<ShadowJar> {
 tasks {
     "assemble" {
         dependsOn(shadowJar)
+    }
+    "test" {
+        // These dependencies are needed because ForTestCompileRuntime loads jars from dist
+        dependsOn(":kotlin-reflect:dist")
+        dependsOn(":kotlin-script-runtime:dist")
+    }
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions {
+        freeCompilerArgs += listOf("-Xuse-experimental=kotlin.Experimental")
     }
 }

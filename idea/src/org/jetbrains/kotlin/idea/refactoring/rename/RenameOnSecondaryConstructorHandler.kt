@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.refactoring.rename
 
+import org.jetbrains.kotlin.statistics.KotlinStatisticsTrigger
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.editor.Editor
@@ -26,12 +27,11 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.rename.RenameHandler
 import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.statistics.KotlinIdeRefactoringTrigger
 
 
 class RenameOnSecondaryConstructorHandler : RenameHandler {
-    override fun isAvailableOnDataContext(dataContext: DataContext?): Boolean {
-        if (dataContext == null) return false
-
+    override fun isAvailableOnDataContext(dataContext: DataContext): Boolean {
         val editor = CommonDataKeys.EDITOR.getData(dataContext) ?: return false
         val file = CommonDataKeys.PSI_FILE.getData(dataContext) ?: return false
 
@@ -42,10 +42,11 @@ class RenameOnSecondaryConstructorHandler : RenameHandler {
         return element != null
     }
 
-    override fun isRenaming(dataContext: DataContext?): Boolean = isAvailableOnDataContext(dataContext)
+    override fun isRenaming(dataContext: DataContext): Boolean = isAvailableOnDataContext(dataContext)
 
     override fun invoke(project: Project, editor: Editor, file: PsiFile, dataContext: DataContext?) {
         CodeInsightUtils.showErrorHint(project, editor, "Rename is not applicable to secondary constructors", "Rename", null)
+        KotlinStatisticsTrigger.trigger(KotlinIdeRefactoringTrigger::class.java, this::class.java.name)
     }
 
     override fun invoke(project: Project, elements: Array<out PsiElement>, dataContext: DataContext?) {

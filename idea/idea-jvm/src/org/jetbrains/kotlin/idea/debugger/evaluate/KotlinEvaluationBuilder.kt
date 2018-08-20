@@ -26,6 +26,8 @@ import com.intellij.diagnostic.LogMessageEx
 import com.intellij.openapi.diagnostic.Attachment
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.CharsetToolkit
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiDocumentManager
@@ -34,6 +36,7 @@ import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.impl.PsiFileFactoryImpl
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.LightVirtualFile
+import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.util.ExceptionUtil
 import com.sun.jdi.*
 import com.sun.jdi.request.EventRequest
@@ -44,6 +47,7 @@ import org.jetbrains.eval4j.jdi.asJdiValue
 import org.jetbrains.eval4j.jdi.asValue
 import org.jetbrains.eval4j.jdi.makeInitialFrame
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns
+import org.jetbrains.kotlin.builtins.jvm.JavaToKotlinClassMap
 import org.jetbrains.kotlin.caches.resolve.KotlinCacheService
 import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding
@@ -52,6 +56,7 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.findClassAcrossModuleDependencies
+import org.jetbrains.kotlin.descriptors.impl.SyntheticFieldDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Severity
@@ -60,16 +65,16 @@ import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.idea.caches.resolve.util.getJavaClassDescriptor
 import org.jetbrains.kotlin.idea.core.quoteSegmentsIfNeeded
 import org.jetbrains.kotlin.idea.debugger.DebuggerUtils
-import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.CompiledDataDescriptor
-import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.ParametersDescriptor
+import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.*
 import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.ClassToLoad
 import org.jetbrains.kotlin.idea.debugger.evaluate.compilingEvaluator.loadClassesSafely
+import org.jetbrains.kotlin.idea.debugger.getBackingFieldName
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.ExtractionResult
 import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriorityWithPCE
+import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.attachment.attachmentByPsiFile
 import org.jetbrains.kotlin.idea.util.attachment.mergeAttachments
-import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.codeFragmentUtil.debugTypeInfo
 import org.jetbrains.kotlin.psi.codeFragmentUtil.suppressDiagnosticsInDebugMode
@@ -78,6 +83,8 @@ import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
 import org.jetbrains.kotlin.resolve.AnalyzingUtils
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingTrace
+import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
+import org.jetbrains.kotlin.resolve.isInlineClassType
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import org.jetbrains.org.objectweb.asm.*
 import org.jetbrains.org.objectweb.asm.Opcodes.ASM5
@@ -133,6 +140,10 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             return context.debugProcess.virtualMachineProxy.mirrorOfVoid()
         }
 
+        if (DumbService.getInstance(codeFragment.project).isDumb) {
+            throw EvaluateExceptionUtil.createEvaluateException("Code fragment evaluation is not available in the dumb mode")
+        }
+
         var isCompiledDataFromCache = true
         try {
             val compiledData = KotlinDebuggerCaches.getOrCreateCompiledData(codeFragment, sourcePosition, context) {
@@ -144,15 +155,15 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             val classLoaderRef = loadClassesSafely(context, compiledData.classes)
 
             val result = if (classLoaderRef != null) {
-                evaluateWithCompilation(context, compiledData, classLoaderRef) ?: runEval4j(context, compiledData)
+                evaluateWithCompilation(context, compiledData, classLoaderRef) ?: runEval4j(context, compiledData, classLoaderRef)
             }
             else {
-                runEval4j(context, compiledData)
+                runEval4j(context, compiledData, classLoaderRef)
             }
 
             // If bytecode was taken from cache and exception was thrown - recompile bytecode and run eval4j again
             if (isCompiledDataFromCache && result is ExceptionThrown && result.kind == ExceptionThrown.ExceptionKind.BROKEN_CODE) {
-                return runEval4j(context, extractAndCompile(codeFragment, sourcePosition, context)).toJdiValue(context)
+                return runEval4j(context, extractAndCompile(codeFragment, sourcePosition, context), classLoaderRef).toJdiValue(context)
             }
 
             return if (result is InterpreterResult) {
@@ -161,12 +172,14 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 result
             }
         }
-        catch(e: EvaluateException) {
+        catch (e: EvaluateException) {
             throw e
         }
-        catch(e: ProcessCanceledException) {
-            LOG.debug(e)
+        catch (e: ProcessCanceledException) {
             exception(e)
+        }
+        catch (e: Eval4JInterpretingException) {
+            exception(e.cause)
         }
         catch (e: Exception) {
             val isSpecialException = isSpecialException(e)
@@ -177,7 +190,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             val text = runReadAction { codeFragment.context?.text ?: "null" }
             val attachments = arrayOf(attachmentByPsiFile(sourcePosition.file),
                                       attachmentByPsiFile(codeFragment),
-                                      Attachment("breakpoint.info", "line: ${sourcePosition.line}"),
+                                      Attachment("breakpoint.info", "line: ${runReadAction { sourcePosition.line }}"),
                                       Attachment("context.info", text))
 
             LOG.error(LogMessageEx.createEvent(
@@ -210,12 +223,20 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 
     companion object {
         private fun extractAndCompile(codeFragment: KtCodeFragment, sourcePosition: SourcePosition, context: EvaluationContextImpl): CompiledDataDescriptor {
-            codeFragment.checkForErrors()
+            val (bindingContext) = codeFragment.checkForErrors()
+
+            if (codeFragment.wrapToStringIfNeeded(bindingContext)) {
+                // Repeat analysis with toString() added
+                codeFragment.checkForErrors()
+            }
 
             val extractionResult = getFunctionForExtractedFragment(codeFragment, sourcePosition.file, sourcePosition.line)
                                    ?: throw IllegalStateException("Code fragment cannot be extracted to function: ${codeFragment.text}")
-            val parametersDescriptor = extractionResult.getParametersForDebugger(codeFragment)
-            val extractedFunction = extractionResult.declaration as KtNamedFunction
+            val (parametersDescriptor, extractedFunction) = try {
+                extractionResult.getParametersForDebugger(codeFragment, context) to extractionResult.declaration as KtNamedFunction
+            } finally {
+                Disposer.dispose(extractionResult)
+            }
 
             if (LOG.isDebugEnabled) {
                 LOG.debug("Extracted function:\n" + runReadAction { extractedFunction.text })
@@ -240,6 +261,29 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                     additionalFiles,
                     sourcePosition,
                     parametersDescriptor)
+        }
+
+        private fun KtCodeFragment.wrapToStringIfNeeded(bindingContext: BindingContext): Boolean {
+            if (this !is KtExpressionCodeFragment) {
+                return false
+            }
+
+            val contentElement = runReadAction { getContentElement() }
+            val expressionType = bindingContext[BindingContext.EXPRESSION_TYPE_INFO, contentElement]?.type
+            if (contentElement != null && expressionType?.isInlineClassType() == true) {
+                val newExpression = runReadAction {
+                    val expressionText = contentElement.text
+                    KtPsiFactory(project).createExpression("($expressionText).toString()")
+                }
+                runInEdtAndWait {
+                    project.executeWriteCommand("Wrap with 'toString()'") {
+                        contentElement.replace(newExpression)
+                    }
+                }
+                return true
+            }
+
+            return false
         }
 
         private fun getClassName(fileName: String): String {
@@ -272,6 +316,11 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 val mainClassValue = (eval.loadClass(Type.getObjectType(mainClassAsmNode.name), classLoader) as? ObjectValue)
                 val mainClass = (mainClassValue?.value as? ClassObjectReference)?.reflectedType() as? ClassType ?: return null
 
+                // Preload all classes
+                compiledData.classes.asSequence()
+                    .filter { !it.isMainClass() }
+                    .forEach { eval.loadClass(Type.getObjectType(it.className), classLoader) }
+
                 return vm.executeWithBreakpointsDisabled {
                     // Prepare the main class
 
@@ -293,7 +342,11 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             }
         }
 
-        private fun runEval4j(context: EvaluationContextImpl, compiledData: CompiledDataDescriptor): InterpreterResult {
+        private fun runEval4j(
+            context: EvaluationContextImpl,
+            compiledData: CompiledDataDescriptor,
+            classLoader: ClassLoaderReference?
+        ): InterpreterResult {
             val virtualMachine = context.debugProcess.virtualMachineProxy.virtualMachine
             var resultValue: InterpreterResult? = null
 
@@ -302,7 +355,8 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 
             ClassReader(mainClassBytecode).accept(object : ClassVisitor(ASM5) {
                 override fun visitMethod(access: Int, name: String, desc: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
-                    if (name == GENERATED_FUNCTION_NAME) {
+                    // Maybe just take the single method from the class, as it is done in 'evaluateWithCompilation'
+                    if (name == GENERATED_FUNCTION_NAME || name.startsWith(GENERATED_FUNCTION_NAME + "-")) {
                         val argumentTypes = Type.getArgumentTypes(desc)
                         val args = context.getArgumentsForEval4j(compiledData.parameters, argumentTypes)
 
@@ -310,7 +364,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                             override fun visitEnd() {
                                 virtualMachine.executeWithBreakpointsDisabled {
                                     val eval = JDIEval(virtualMachine,
-                                                       context.classLoader,
+                                                       classLoader ?: context.classLoader,
                                                        context.suspendContext.thread?.threadReference!!,
                                                        context.suspendContext.getInvokePolicy())
 
@@ -387,7 +441,10 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             return sharedVar?.asJdiValue(vm, sharedVar.asmType) ?: jdiValue.asJdiValue(vm, jdiValue.asmType)
         }
 
-        private fun ExtractionResult.getParametersForDebugger(fragment: KtCodeFragment): ParametersDescriptor {
+        private fun ExtractionResult.getParametersForDebugger(
+            fragment: KtCodeFragment,
+            context: EvaluationContextImpl
+        ): List<Parameter> {
             return runReadAction {
                 val valuesForLabels = HashMap<String, Value>()
 
@@ -403,10 +460,10 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                     })
                 }
 
-                val parameters = ParametersDescriptor()
+                val parameters = mutableListOf<Parameter>()
                 val receiver = config.descriptor.receiverParameter
                 if (receiver != null) {
-                    parameters.add(THIS_NAME, receiver.getParameterType(true))
+                    parameters += Parameter(THIS_NAME, receiver.getParameterType(true))
                 }
 
                 for (param in config.descriptor.parameters) {
@@ -415,23 +472,48 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                         param.argumentText.startsWith("::") -> param.argumentText.substring(2)
                         else -> param.argumentText
                     }
-                    parameters.add(paramName, param.getParameterType(true), valuesForLabels[paramName])
+
+                    val paramDescriptor = param.originalDescriptor
+                    if (paramDescriptor is SyntheticFieldDescriptor) {
+                        val backingFieldName = paramDescriptor.propertyDescriptor.getBackingFieldName()
+                        if (backingFieldName != null) {
+                            val thisObject = context.suspendContext.frameProxy?.thisObject()
+                            val field = thisObject?.referenceType()?.fieldByName(backingFieldName)
+
+                            val parameter = if (thisObject != null && field != null) {
+                                Parameter(backingFieldName, param.getParameterType(true), thisObject.getValue(field).asValue())
+                            } else {
+                                Parameter(
+                                    backingFieldName, paramDescriptor.builtIns.unitType,
+                                    error = EvaluateException("Can't find a backing field for property ${paramDescriptor.name}")
+                                )
+                            }
+
+                            parameters += parameter
+                            continue
+                        }
+                    }
+
+                    parameters += Parameter(paramName, param.getParameterType(true), valuesForLabels[paramName])
                 }
+
                 parameters
             }
         }
 
-        private fun EvaluationContextImpl.getArgumentsForEval4j(parameters: ParametersDescriptor, parameterTypes: Array<Type>): List<Value> {
+        private fun EvaluationContextImpl.getArgumentsForEval4j(
+            parameters: List<Parameter>,
+            parameterTypes: Array<Type>
+        ): List<Value> {
             val frameVisitor = FrameVisitor(this)
-            return parameters.zip(parameterTypes).map {
-                val result = if (it.first.value != null) {
-                    it.first.value!!
-                }
-                else {
-                    frameVisitor.findValue(it.first.callText, it.second, checkType = false, failIfNotFound = true)!!
-                }
+            return parameters.zip(parameterTypes).map { (parameter, type) ->
+                parameter.error?.let { throw it }
+
+                val result = parameter.value
+                    ?: frameVisitor.findValue(parameter.callText, type, checkType = false, failIfNotFound = true)!!
+
                 if (LOG.isDebugEnabled) {
-                    LOG.debug("Parameter for eval4j: name = ${it.first.callText}, type = ${it.second}, value = $result")
+                    LOG.debug("Parameter for eval4j: name = ${parameter.callText}, type = $type, value = $result")
                 }
                 result
             }
@@ -441,7 +523,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 codeFragment: KtCodeFragment,
                 extractedFunction: KtNamedFunction,
                 context: EvaluationContextImpl,
-                parameters: ParametersDescriptor
+                parameters: List<Parameter>
         ): ClassFileFactory {
             return runReadAction {
                 val fileForDebugger = createFileForDebugger(codeFragment, extractedFunction)
@@ -558,7 +640,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 }
 
 private val template = """
-@file:JvmName("$GENERATED_CLASS_NAME")
+@file:kotlin.jvm.JvmName("$GENERATED_CLASS_NAME")
 !PACKAGE!
 
 !IMPORT_LIST!

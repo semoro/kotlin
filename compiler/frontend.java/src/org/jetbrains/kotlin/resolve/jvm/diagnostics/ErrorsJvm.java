@@ -1,23 +1,12 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.resolve.jvm.diagnostics;
 
 import com.intellij.psi.PsiElement;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.kotlin.descriptors.CallableDescriptor;
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
 import org.jetbrains.kotlin.diagnostics.*;
 import org.jetbrains.kotlin.name.FqName;
@@ -123,25 +112,21 @@ public interface ErrorsJvm {
 
     DiagnosticFactory0<KtDeclaration> NON_JVM_DEFAULT_OVERRIDES_JAVA_DEFAULT = DiagnosticFactory0.create(WARNING, DECLARATION_SIGNATURE);
 
-    enum NullabilityInformationSource {
-        KOTLIN {
-            @NotNull
-            @Override
-            public String toString() {
-                return "Kotlin";
-            }
-        },
-        JAVA {
-            @NotNull
-            @Override
-            public String toString() {
-                return "Java";
-            }
-        }
-    }
+    DiagnosticFactory0<KtAnnotationEntry> EXPLICIT_METADATA_IS_DISALLOWED = DiagnosticFactory0.create(ERROR);
 
-    DiagnosticFactory2<KtElement, NullabilityInformationSource, NullabilityInformationSource> NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS
+    DiagnosticFactory2<KtElement, KotlinType, KotlinType> NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS
             = DiagnosticFactory2.create(WARNING);
+
+    DiagnosticFactory1<KtElement, KotlinType> RECEIVER_NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS
+            = DiagnosticFactory1.create(WARNING);
+
+    DiagnosticFactory1<KtAnnotationEntry, String> ANNOTATION_TARGETS_NON_EXISTENT_ACCESSOR = DiagnosticFactory1.create(WARNING);
+
+    DiagnosticFactory1<PsiElement, String> SUSPENSION_POINT_INSIDE_MONITOR = DiagnosticFactory1.create(ERROR);
+    DiagnosticFactory1<PsiElement, CallableDescriptor> SUSPENSION_POINT_INSIDE_SYNCHRONIZED = DiagnosticFactory1.create(ERROR);
+
+    DiagnosticFactory0<PsiElement> CONCURRENT_HASH_MAP_CONTAINS_OPERATOR = DiagnosticFactory0.create(WARNING);
+    DiagnosticFactory0<PsiElement> CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR = DiagnosticFactory0.create(ERROR);
 
     @SuppressWarnings("UnusedDeclaration")
     Object _initializer = new Object() {

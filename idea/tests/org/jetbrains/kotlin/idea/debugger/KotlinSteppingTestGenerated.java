@@ -242,6 +242,11 @@ public class KotlinSteppingTestGenerated extends AbstractKotlinSteppingTest {
             runTest("idea/testData/debugger/tinyApp/src/stepping/stepInto/functionReference.kt");
         }
 
+        @TestMetadata("inlineClass.kt")
+        public void testInlineClass() throws Exception {
+            runTest("idea/testData/debugger/tinyApp/src/stepping/stepInto/inlineClass.kt");
+        }
+
         @TestMetadata("inlineDex.kt")
         public void testInlineDex() throws Exception {
             runTest("idea/testData/debugger/tinyApp/src/stepping/stepInto/inlineDex.kt");
@@ -265,6 +270,11 @@ public class KotlinSteppingTestGenerated extends AbstractKotlinSteppingTest {
         @TestMetadata("samAdapter.kt")
         public void testSamAdapter() throws Exception {
             runTest("idea/testData/debugger/tinyApp/src/stepping/stepInto/samAdapter.kt");
+        }
+
+        @TestMetadata("sameFileNames.kt")
+        public void testSameFileNames() throws Exception {
+            runTest("idea/testData/debugger/tinyApp/src/stepping/stepInto/sameFileNames.kt");
         }
 
         @TestMetadata("siSuspendFun.kt")
@@ -446,6 +456,11 @@ public class KotlinSteppingTestGenerated extends AbstractKotlinSteppingTest {
         @TestMetadata("inlineInObjectDex.kt")
         public void testInlineInObjectDex() throws Exception {
             runTest("idea/testData/debugger/tinyApp/src/stepping/stepOver/inlineInObjectDex.kt");
+        }
+
+        @TestMetadata("kt24343.kt")
+        public void testKt24343() throws Exception {
+            runTest("idea/testData/debugger/tinyApp/src/stepping/stepOver/kt24343.kt");
         }
 
         @TestMetadata("noParameterLambdaArgumentCallInInline.kt")
@@ -1065,16 +1080,6 @@ public class KotlinSteppingTestGenerated extends AbstractKotlinSteppingTest {
         @TestMetadata("inlineInObjectSameFileDex.kt")
         public void testInlineInObjectSameFileDex() throws Exception {
             runTest("idea/testData/debugger/tinyApp/src/stepping/custom/inlineInObjectSameFileDex.kt");
-        }
-
-        @TestMetadata("inlineOnlyLambdas.kt")
-        public void testInlineOnlyLambdas() throws Exception {
-            runTest("idea/testData/debugger/tinyApp/src/stepping/custom/inlineOnlyLambdas.kt");
-        }
-
-        @TestMetadata("inlineOnlyLambdasStepping.kt")
-        public void testInlineOnlyLambdasStepping() throws Exception {
-            runTest("idea/testData/debugger/tinyApp/src/stepping/custom/inlineOnlyLambdasStepping.kt");
         }
 
         @TestMetadata("inlineProperties.kt")

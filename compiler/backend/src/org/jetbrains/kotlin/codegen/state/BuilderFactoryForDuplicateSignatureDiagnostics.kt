@@ -10,6 +10,8 @@ import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.codegen.ClassBuilderFactory
 import org.jetbrains.kotlin.codegen.ClassBuilderMode
 import org.jetbrains.kotlin.codegen.SignatureCollectingClassBuilderFactory
+import org.jetbrains.kotlin.config.JvmTarget
+import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
@@ -26,6 +28,7 @@ import java.util.*
 
 private val EXTERNAL_SOURCES_KINDS = arrayOf(
         JvmDeclarationOriginKind.CLASS_MEMBER_DELEGATION_TO_DEFAULT_IMPL,
+        JvmDeclarationOriginKind.DEFAULT_IMPL_DELEGATION_TO_SUPERINTERFACE_DEFAULT_IMPL,
         JvmDeclarationOriginKind.DELEGATION,
         JvmDeclarationOriginKind.BRIDGE
 )
@@ -46,13 +49,15 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
     bindingContext: BindingContext,
     private val diagnostics: DiagnosticSink,
     moduleName: String,
-    isReleaseCoroutines: Boolean,
-    shouldGenerate: (JvmDeclarationOrigin) -> Boolean
+    languageVersionSettings: LanguageVersionSettings,
+    shouldGenerate: (JvmDeclarationOrigin) -> Boolean,
+    isIrBackend: Boolean
 ) : SignatureCollectingClassBuilderFactory(builderFactory, shouldGenerate) {
 
     // Avoid errors when some classes are not loaded for some reason
     private val typeMapper = KotlinTypeMapper(
-        bindingContext, ClassBuilderMode.LIGHT_CLASSES, IncompatibleClassTracker.DoNothing, moduleName, false, isReleaseCoroutines
+        bindingContext, ClassBuilderMode.LIGHT_CLASSES, IncompatibleClassTracker.DoNothing, moduleName, JvmTarget.DEFAULT,
+        languageVersionSettings, isIrBackend
     )
     private val reportDiagnosticsTasks = ArrayList<() -> Unit>()
 

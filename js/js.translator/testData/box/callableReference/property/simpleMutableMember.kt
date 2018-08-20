@@ -1,5 +1,4 @@
-// IGNORE_BACKEND: JS_IR
-// EXPECTED_REACHABLE_NODES: 1120
+// EXPECTED_REACHABLE_NODES: 1292
 // This test was adapted from compiler/testData/codegen/box/callableReference/property/.
 package foo
 

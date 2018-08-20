@@ -50,14 +50,15 @@ fun Project.preloadedDeps(vararg artifactBaseNames: String, baseDir: File = File
 }
 
 fun Project.ideaUltimatePreloadedDeps(vararg artifactBaseNames: String, subdir: String? = null): ConfigurableFileCollection {
-    val ultimateDepsDir = File(rootDir, "ultimate", "dependencies")
+    val ultimateDepsDir = fileFrom(rootDir, "ultimate", "dependencies")
     return if (ultimateDepsDir.isDirectory) preloadedDeps(*artifactBaseNames, baseDir = ultimateDepsDir, subdir = subdir)
     else files()
 }
 
 fun Project.kotlinDep(artifactBaseName: String, version: String): String = "org.jetbrains.kotlin:kotlin-$artifactBaseName:$version"
 
-fun DependencyHandler.projectDist(name: String): ProjectDependency = project(name, configuration = "distJar").apply { isTransitive = false }
+@Deprecated("Depend on the default configuration instead", ReplaceWith("project(name)"))
+fun DependencyHandler.projectDist(name: String): ProjectDependency = project(name)
 fun DependencyHandler.projectTests(name: String): ProjectDependency = project(name, configuration = "tests-jar")
 fun DependencyHandler.projectRuntimeJar(name: String): ProjectDependency = project(name, configuration = "runtimeJar")
 fun DependencyHandler.projectArchives(name: String): ProjectDependency = project(name, configuration = "archives")
@@ -123,3 +124,26 @@ fun AbstractCopyTask.fromEmbeddedComponents() {
         }
     }
 }
+
+// TODO: it seems incomplete, find and add missing dependencies
+val testDistProjects = listOf(
+    "", // for root project
+    ":kotlin-stdlib:jvm-minimal-for-test",
+    ":kotlin-compiler",
+    ":kotlin-script-runtime",
+    ":kotlin-stdlib",
+    ":kotlin-stdlib-jre7",
+    ":kotlin-stdlib-jre8",
+    ":kotlin-stdlib-jdk7",
+    ":kotlin-stdlib-jdk8",
+    ":kotlin-stdlib-js",
+    ":kotlin-reflect",
+    ":kotlin-test:kotlin-test-jvm",
+    ":kotlin-test:kotlin-test-junit",
+    ":kotlin-test:kotlin-test-js",
+    ":kotlin-preloader",
+    ":plugins:android-extensions-compiler",
+    ":kotlin-ant",
+    ":kotlin-annotations-jvm",
+    ":kotlin-annotations-android"
+)

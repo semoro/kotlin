@@ -126,6 +126,16 @@ public class JavaAgainstKotlinSourceCheckerTestGenerated extends AbstractJavaAga
             runTest("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/KotlinAnnotations.kt");
         }
 
+        @TestMetadata("MyFunctionType.kt")
+        public void testMyFunctionType() throws Exception {
+            runTest("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/MyFunctionType.kt");
+        }
+
+        @TestMetadata("OverridesAmbiguity.kt")
+        public void testOverridesAmbiguity() throws Exception {
+            runTest("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/OverridesAmbiguity.kt");
+        }
+
         @TestMetadata("ReturnInnerClasses.kt")
         public void testReturnInnerClasses() throws Exception {
             runTest("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/ReturnInnerClasses.kt");
@@ -202,6 +212,11 @@ public class JavaAgainstKotlinSourceCheckerTestGenerated extends AbstractJavaAga
         @TestMetadata("NoNotNullOnParameterInOverride.kt")
         public void testNoNotNullOnParameterInOverride() throws Exception {
             runTest("idea/testData/kotlinAndJavaChecker/javaWithKotlin/NoNotNullOnParameterInOverride.kt");
+        }
+
+        @TestMetadata("OverrideInEnumEntry.kt")
+        public void testOverrideInEnumEntry() throws Exception {
+            runTest("idea/testData/kotlinAndJavaChecker/javaWithKotlin/OverrideInEnumEntry.kt");
         }
     }
 }

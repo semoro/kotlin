@@ -24,8 +24,14 @@ val urls = listOf(
         "http://www.w3.org/TR/geometry-1/" to "org.w3c.dom",
         "http://www.w3.org/TR/cssom-view/" to "org.w3c.dom",
         "http://www.w3.org/TR/uievents/" to "org.w3c.dom.events",
+        "http://www.w3.org/TR/pointerevents/" to "org.w3c.dom.pointerevents",
+
         "https://drafts.csswg.org/cssom/" to "org.w3c.dom.css",
+        "https://www.w3.org/TR/css-masking-1/" to "org.w3c.css.masking",
+
+        "https://w3c.github.io/mediacapture-main/" to "org.w3c.dom.mediacapture",
         "http://www.w3.org/TR/DOM-Parsing/" to "org.w3c.dom.parsing",
+        "https://w3c.github.io/clipboard-apis" to "org.w3c.dom.clipboard",
         "https://raw.githubusercontent.com/whatwg/url/master/url.html" to "org.w3c.dom.url",
 
         "https://www.w3.org/TR/SVG2/single-page.html" to "org.w3c.dom.svg",
@@ -89,4 +95,91 @@ val kotlinBuiltinInterfaces = mapOf(
                 primaryConstructor = null,
                 secondaryConstructors = emptyList()
                 )
+)
+
+val eventSpecifierMapper = mapOf<String, String>(
+    "onbeforeunload" to "BeforeUnloadEvent",
+
+    "ondrag" to "DragEvent",
+    "ondragend" to "DragEvent",
+    "ondragenter" to "DragEvent",
+    "ondragexit" to "DragEvent",
+    "ondragleave" to "DragEvent",
+    "ondragover" to "DragEvent",
+    "ondragstart" to "DragEvent",
+    "ondrop" to "DragEvent",
+
+    "oncopy" to "ClipboardEvent",
+    "oncut" to "ClipboardEvent",
+    "onpaste" to "ClipboardEvent",
+
+
+    "onfetch" to "FetchEvent",
+
+    "onblur" to "FocusEvent",
+    "onfocus" to "FocusEvent",
+
+    "onhashchange" to "HashChangeEvent",
+
+    "oninput" to "InputEvent",
+
+    "onkeydown" to "KeyboardEvent",
+    "onkeypress" to "KeyboardEvent",
+    "onkeyup" to "KeyboardEvent",
+
+    "onmessage" to "MessageEvent",
+
+    "onclick" to "MouseEvent",
+    "oncontextmenu" to "MouseEvent",
+    "ondblclick" to "MouseEvent",
+    "onmousedown" to "MouseEvent",
+    "onmouseenter" to "MouseEvent",
+    "onmouseleave" to "MouseEvent",
+    "onmousemove" to "MouseEvent",
+    "onmouseout" to "MouseEvent",
+    "onmouseover" to "MouseEvent",
+    "onmouseup" to "MouseEvent",
+
+    "onnotificationclick" to "NotificationEvent",
+    "onnotificationclose" to "NotificationEvent",
+
+    "onpagehide" to "PageTransitionEvent",
+    "onpageshow" to "PageTransitionEvent",
+
+    "ongotpointercapture" to "PointerEvent",
+    "onlostpointercapture" to "PointerEvent",
+    "onpointercancel" to "PointerEvent",
+    "onpointerdown" to "PointerEvent",
+    "onpointerenter" to "PointerEvent",
+    "onpointerleave" to "PointerEvent",
+    "onpointermove" to "PointerEvent",
+    "onpointerout" to "PointerEvent",
+    "onpointerover" to "PointerEvent",
+    "onpointerup" to "PointerEvent",
+
+    "onpopstate" to "PopStateEvent",
+
+    "onloadstart" to "ProgressEvent",
+    "onprogress" to "ProgressEvent",
+
+    "onunhandledrejection" to "PromiseRejectionEvent",
+
+    "onstorage" to "StorageEvent",
+
+    "onwheel" to "WheelEvent"
+)
+
+
+data class EventMapKey(val name: String, val context: String)
+
+val eventSpecifierMapperWithContext = mapOf<EventMapKey, String>(
+    EventMapKey("onaddtrack", "MediaStream") to "MediaStreamTrackEvent",
+    EventMapKey("onremovetrack", "MediaStream") to "MediaStreamTrackEvent",
+
+    EventMapKey("onaddtrack", "AudioTrackList") to "TrackEvent",
+    EventMapKey("onaddtrack", "TextTrackList") to "TrackEvent",
+    EventMapKey("onaddtrack", "VideoTrackList") to "TrackEvent",
+    EventMapKey("onremovetrack", "AudioTrackList") to "TrackEvent",
+    EventMapKey("onremovetrack", "TextTrackList") to "TrackEvent",
+    EventMapKey("onremovetrack", "VideoTrackList") to "TrackEvent"
 )

@@ -1,3 +1,4 @@
+// IGNORE_BACKEND: JVM_IR
 // WITH_RUNTIME
 // WITH_COROUTINES
 // COMMON_COROUTINES_TEST
@@ -6,7 +7,7 @@ import COROUTINES_PACKAGE.*
 import COROUTINES_PACKAGE.intrinsics.*
 import kotlin.test.assertEquals
 
-suspend fun ArrayList<Int>.yield(v: Int): Unit = suspendCoroutineOrReturn { x ->
+suspend fun ArrayList<Int>.yield(v: Int): Unit = suspendCoroutineUninterceptedOrReturn { x ->
     this.add(v)
     x.resume(Unit)
     COROUTINE_SUSPENDED

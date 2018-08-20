@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.scripting.compiler.plugin
 
+import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import java.io.File
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOptionProcessingException
@@ -77,7 +78,7 @@ class ScriptingCommandLineProcessor : CommandLineProcessor {
             LEGACY_SCRIPT_RESOLVER_ENVIRONMENT_OPTION
         )
 
-    override fun processOption(option: CliOption, value: String, configuration: CompilerConfiguration) = when (option) {
+    override fun processOption(option: AbstractCliOption, value: String, configuration: CompilerConfiguration) = when (option) {
         DISABLE_SCRIPTING_PLUGIN_OPTION -> {
             configuration.put(
                 ScriptingConfigurationKeys.DISABLE_SCRIPTING_PLUGIN_OPTION,
@@ -111,11 +112,14 @@ class ScriptingCommandLineProcessor : CommandLineProcessor {
             val currentEnv = configuration.getMap(ScriptingConfigurationKeys.LEGACY_SCRIPT_RESOLVER_ENVIRONMENT_OPTION).toMutableMap()
             // parses key/value pairs in the form <key>=<value>, where
             //   <key> - is a single word (\w+ pattern)
-            //   <value> - optionally quoted string with allowed escaped chars (only double-quote and backslash chars are supported)
+            //   <value> - optionally quoted string with allowed escaped chars (only double-quote, comma and backslash chars are supported)
             // TODO: implement generic unescaping
+            // TODO: consider switching to simple parser - current approach is too complicated already and doesn't handle quoted commas (unless they are escaped)
             val envParseRe = """(\w+)=(?:"([^"\\]*(\\.[^"\\]*)*)"|([^\s]*))""".toRegex()
-            val unescapeRe = """\\(["\\])""".toRegex()
-            for (envParam in value.split(',')) {
+            val unescapeRe = """\\(["\\,])""".toRegex()
+            val splitRe = """(?:\\.|[^,\\]++)*""".toRegex()
+            val splitMatches = splitRe.findAll(value)
+            for (envParam in splitMatches.map { it.value }.filter { it.isNotBlank() }) {
                 val match = envParseRe.matchEntire(envParam)
                 if (match == null || match.groupValues.size < 4 || match.groupValues[1].isBlank()) {
                     throw CliOptionProcessingException("Unable to parse script-resolver-environment argument $envParam")
@@ -125,6 +129,6 @@ class ScriptingCommandLineProcessor : CommandLineProcessor {
             }
             configuration.put(ScriptingConfigurationKeys.LEGACY_SCRIPT_RESOLVER_ENVIRONMENT_OPTION, currentEnv)
         }
-        else -> throw CliOptionProcessingException("Unknown option: ${option.name}")
+        else -> throw CliOptionProcessingException("Unknown option: ${option.optionName}")
     }
 }

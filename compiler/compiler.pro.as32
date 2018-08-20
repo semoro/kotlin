@@ -198,6 +198,10 @@ messages/**)
     *** SKIP_FRAMES;
 }
 
+-keepclassmembers class com.intellij.openapi.project.Project {
+    ** getBasePath();
+}
+
 # for kotlin-android-extensions in maven
 -keep class com.intellij.openapi.module.ModuleServiceManager { public *; }
 
@@ -216,9 +220,13 @@ messages/**)
 
 # for kapt
 -keep class com.intellij.openapi.project.Project { *; }
+-keepclassmembers class com.intellij.util.PathUtil {
+    public static java.lang.String getJarPathForClass(java.lang.Class);
+}
+
+-keepclassmembers class com.intellij.util.PathUtil {
+    public static java.lang.String getJarPathForClass(java.lang.Class);
+}
 
 # remove when KT-18563 would be fixed
 -keep class org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt { *; }
-
-# for imports dumper in compiler
--keep class kotlinx.serialization.** { *; }

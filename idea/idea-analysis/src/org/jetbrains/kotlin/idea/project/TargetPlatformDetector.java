@@ -23,11 +23,11 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.kotlin.platform.DefaultIdeTargetPlatformKindProvider;
 import org.jetbrains.kotlin.psi.KtCodeFragment;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
 import org.jetbrains.kotlin.resolve.TargetPlatform;
-import org.jetbrains.kotlin.resolve.TargetPlatformKt;
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform;
 
 public class TargetPlatformDetector {
@@ -39,7 +39,7 @@ public class TargetPlatformDetector {
 
     @NotNull
     public static TargetPlatform getPlatform(@NotNull KtFile file) {
-        TargetPlatform explicitPlatform = TargetPlatformKt.getTargetPlatform(file);
+        TargetPlatform explicitPlatform = PlatformKt.getForcedTargetPlatform(file);
         if (explicitPlatform != null) return explicitPlatform;
 
         if (file instanceof KtCodeFragment) {
@@ -63,8 +63,7 @@ public class TargetPlatformDetector {
             }
         }
 
-        LOG.info("Using default platform for file: " + file.getName());
-        return JvmPlatform.INSTANCE;
+        return DefaultIdeTargetPlatformKindProvider.Companion.getDefaultCompilerPlatform();
     }
 
     @NotNull

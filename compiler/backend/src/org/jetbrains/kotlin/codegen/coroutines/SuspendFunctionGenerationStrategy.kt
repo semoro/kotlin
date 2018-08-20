@@ -28,10 +28,10 @@ import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.tree.MethodNode
 
-class SuspendFunctionGenerationStrategy(
+open class SuspendFunctionGenerationStrategy(
         state: GenerationState,
-        private val originalSuspendDescriptor: FunctionDescriptor,
-        private val declaration: KtFunction,
+        protected val originalSuspendDescriptor: FunctionDescriptor,
+        protected val declaration: KtFunction,
         private val containingClassInternalName: String,
         private val constructorCallNormalizationMode: JVMConstructorCallNormalizationMode
 ) : FunctionGenerationStrategy.CodegenBased(state) {
@@ -66,11 +66,13 @@ class SuspendFunctionGenerationStrategy(
         return CoroutineTransformerMethodVisitor(
             mv, access, name, desc, null, null, containingClassInternalName, this::classBuilderForCoroutineState,
             isForNamedFunction = true,
-            lineNumber = CodegenUtil.getLineNumberForElement(declaration, false) ?: 0,
+            element = declaration,
+            diagnostics = state.diagnostics,
             shouldPreserveClassInitialization = constructorCallNormalizationMode.shouldPreserveClassInitialization,
             needDispatchReceiver = originalSuspendDescriptor.dispatchReceiverParameter != null,
             internalNameForDispatchReceiver = containingClassInternalNameOrNull(),
-            languageVersionSettings = languageVersionSettings
+            languageVersionSettings = languageVersionSettings,
+            sourceFile = declaration.containingFile.name
         )
     }
 

@@ -1,24 +1,13 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.backend.jvm.descriptors
 
 import org.jetbrains.kotlin.backend.common.descriptors.KnownClassDescriptor
 import org.jetbrains.kotlin.backend.common.descriptors.KnownPackageFragmentDescriptor
-import org.jetbrains.kotlin.backend.common.descriptors.SharedVariablesManager
+import org.jetbrains.kotlin.backend.common.ir.SharedVariablesManager
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.descriptors.*
@@ -27,19 +16,37 @@ import org.jetbrains.kotlin.descriptors.impl.ClassConstructorDescriptorImpl
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
 import org.jetbrains.kotlin.descriptors.impl.PropertyDescriptorImpl
 import org.jetbrains.kotlin.ir.IrStatement
+import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationOriginImpl
 import org.jetbrains.kotlin.ir.declarations.IrVariable
+import org.jetbrains.kotlin.ir.declarations.impl.IrConstructorImpl
+import org.jetbrains.kotlin.ir.declarations.impl.IrFieldImpl
 import org.jetbrains.kotlin.ir.declarations.impl.IrVariableImpl
+import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrSetVariable
 import org.jetbrains.kotlin.ir.expressions.impl.*
+import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
+import org.jetbrains.kotlin.ir.symbols.IrFieldSymbol
 import org.jetbrains.kotlin.ir.symbols.IrVariableSymbol
+import org.jetbrains.kotlin.ir.symbols.impl.IrConstructorSymbolImpl
+import org.jetbrains.kotlin.ir.symbols.impl.IrFieldSymbolImpl
+import org.jetbrains.kotlin.ir.symbols.impl.IrVariableSymbolImpl
+import org.jetbrains.kotlin.ir.symbols.impl.createFunctionSymbol
+import org.jetbrains.kotlin.ir.types.impl.IrUninitializedType
+import org.jetbrains.kotlin.ir.types.toIrType
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.types.*
 
-class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesManager {
+private val SHARED_VARIABLE_ORIGIN = object : IrDeclarationOriginImpl("SHARED_VARIABLE_ORIGIN") {}
+
+class JvmSharedVariablesManager(
+    val builtIns: KotlinBuiltIns,
+    val irBuiltIns: IrBuiltIns
+) : SharedVariablesManager {
     private val kotlinJvmInternalPackage = KnownPackageFragmentDescriptor(builtIns.builtInsModule, FqName("kotlin.jvm.internal"))
     private val refNamespaceClass =
         KnownClassDescriptor.createClass(Name.identifier("Ref"), kotlinJvmInternalPackage, listOf(builtIns.anyType))
@@ -53,6 +60,8 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
                 returnType = refType
             }
 
+        val refConstructorSymbol = IrConstructorSymbolImpl(refConstructor)
+
         val elementField: PropertyDescriptor =
             PropertyDescriptorImpl.create(
                 refClass, Annotations.EMPTY, Modality.FINAL, Visibilities.PUBLIC, true,
@@ -60,6 +69,10 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
                 /* lateInit = */ false, /* isConst = */ false, /* isExpect = */ false, /* isActual = */ false,
                 /* isExternal = */ false, /* isDelegated = */ false
             ).initialize(type, dispatchReceiverParameter = refClass.thisAsReceiverParameter)
+
+        val elementFieldSymbol = IrFieldSymbolImpl(elementField)
+        val elementFieldDeclaration =
+            IrFieldImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, SHARED_VARIABLE_ORIGIN, elementFieldSymbol, type.toIrType()!!)
     }
 
     private val primitiveRefDescriptorProviders: Map<PrimitiveType, PrimitiveRefDescriptorsProvider> =
@@ -117,6 +130,11 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
                 dispatchReceiverParameter = genericRefClass.thisAsReceiverParameter
             )
 
+        val genericElementFieldSymbol = IrFieldSymbolImpl(genericElementField)
+        val elementFieldDeclaration =
+            IrFieldImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, SHARED_VARIABLE_ORIGIN, genericElementFieldSymbol, irBuiltIns.anyType)
+
+
         fun getRefType(valueType: KotlinType) =
             KotlinTypeFactory.simpleNotNullType(
                 Annotations.EMPTY,
@@ -134,12 +152,19 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
             getSharedVariableType(variableDescriptor.type),
             false, false, variableDescriptor.isLateInit, variableDescriptor.source
         )
+        val sharedVariableSymbol = IrVariableSymbolImpl(sharedVariableDescriptor)
 
         val valueType = originalDeclaration.descriptor.type
         val primitiveRefDescriptorsProvider = primitiveRefDescriptorProviders[getPrimitiveType(valueType)]
 
         val refConstructor =
             primitiveRefDescriptorsProvider?.refConstructor ?: objectRefDescriptorsProvider.getSubstitutedRefConstructor(valueType)
+
+        val refConstructorSymbol =
+            primitiveRefDescriptorsProvider?.refConstructorSymbol ?: createFunctionSymbol(refConstructor) as IrConstructorSymbol
+
+        val refConstructorDeclaration = if (refConstructorSymbol.isBound) refConstructorSymbol.owner else
+            IrConstructorImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, SHARED_VARIABLE_ORIGIN, refConstructorSymbol, IrUninitializedType)
 
         val refConstructorTypeArguments =
             if (primitiveRefDescriptorsProvider != null) null
@@ -148,12 +173,14 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
 
         val refConstructorCall = IrCallImpl(
             originalDeclaration.startOffset, originalDeclaration.endOffset,
-            refConstructor, refConstructorTypeArguments
+            refConstructor.constructedClass.defaultType.toIrType()!!,
+            refConstructorSymbol, refConstructor,
+            refConstructorTypeArguments?.size ?: 0
         )
         return IrVariableImpl(
             originalDeclaration.startOffset, originalDeclaration.endOffset, originalDeclaration.origin,
-            sharedVariableDescriptor, refConstructorCall
-        )
+            sharedVariableSymbol, sharedVariableDescriptor.type.toIrType()!!
+        ).apply { initializer = refConstructorCall }
     }
 
     override fun defineSharedValue(
@@ -165,50 +192,45 @@ class JvmSharedVariablesManager(val builtIns: KotlinBuiltIns) : SharedVariablesM
         val valueType = originalDeclaration.descriptor.type
         val primitiveRefDescriptorsProvider = primitiveRefDescriptorProviders[getPrimitiveType(valueType)]
 
-        val elementPropertyDescriptor =
-            primitiveRefDescriptorsProvider?.elementField ?: objectRefDescriptorsProvider.genericElementField
+        val elementPropertySymbol =
+            primitiveRefDescriptorsProvider?.elementFieldSymbol ?: objectRefDescriptorsProvider.genericElementFieldSymbol
 
         val sharedVariableInitialization = IrSetFieldImpl(
             initializer.startOffset, initializer.endOffset,
-            elementPropertyDescriptor,
+            elementPropertySymbol,
             IrGetValueImpl(initializer.startOffset, initializer.endOffset, sharedVariableDeclaration.symbol),
-            initializer
+            initializer,
+            originalDeclaration.type
         )
 
         return IrCompositeImpl(
-            originalDeclaration.startOffset, originalDeclaration.endOffset, builtIns.unitType, null,
+            originalDeclaration.startOffset, originalDeclaration.endOffset, irBuiltIns.unitType, null,
             listOf(sharedVariableDeclaration, sharedVariableInitialization)
         )
     }
 
-    private fun getElementFieldDescriptor(valueType: KotlinType): PropertyDescriptor {
+    private fun getElementFieldSymbol(valueType: KotlinType): IrFieldSymbol {
         val primitiveRefDescriptorsProvider = primitiveRefDescriptorProviders[getPrimitiveType(valueType)]
 
-        return primitiveRefDescriptorsProvider?.elementField ?: objectRefDescriptorsProvider.genericElementField
+        return primitiveRefDescriptorsProvider?.elementFieldSymbol ?: objectRefDescriptorsProvider.genericElementFieldSymbol
     }
 
     override fun getSharedValue(sharedVariableSymbol: IrVariableSymbol, originalGet: IrGetValue): IrExpression =
         IrGetFieldImpl(
             originalGet.startOffset, originalGet.endOffset,
-            getElementFieldDescriptor(originalGet.descriptor.type),
-            IrGetValueImpl(
-                originalGet.startOffset,
-                originalGet.endOffset,
-                sharedVariableSymbol
-            ),
+            getElementFieldSymbol(originalGet.descriptor.type),
+            originalGet.type,
+            IrGetValueImpl(originalGet.startOffset, originalGet.endOffset, sharedVariableSymbol),
             originalGet.origin
         )
 
     override fun setSharedValue(sharedVariableSymbol: IrVariableSymbol, originalSet: IrSetVariable): IrExpression =
         IrSetFieldImpl(
             originalSet.startOffset, originalSet.endOffset,
-            getElementFieldDescriptor(originalSet.descriptor.type),
-            IrGetValueImpl(
-                originalSet.startOffset,
-                originalSet.endOffset,
-                sharedVariableSymbol
-            ),
+            getElementFieldSymbol(originalSet.descriptor.type),
+            IrGetValueImpl(originalSet.startOffset, originalSet.endOffset, sharedVariableSymbol),
             originalSet.value,
+            originalSet.type,
             originalSet.origin
         )
 

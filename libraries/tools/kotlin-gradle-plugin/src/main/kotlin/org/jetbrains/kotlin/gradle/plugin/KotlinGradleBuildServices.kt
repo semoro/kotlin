@@ -20,14 +20,11 @@ import org.gradle.BuildAdapter
 import org.gradle.BuildResult
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.logging.Logging
-import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
-import com.intellij.openapi.vfs.impl.ZipHandler
-import com.intellij.openapi.vfs.impl.jar.CoreJarFileSystem
 import org.jetbrains.kotlin.compilerRunner.DELETED_SESSION_FILE_PREFIX
 import org.jetbrains.kotlin.compilerRunner.GradleCompilerRunner
-import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
-import org.jetbrains.kotlin.gradle.utils.isWindows
-import org.jetbrains.kotlin.incremental.relativeToRoot
+import org.jetbrains.kotlin.gradle.logging.TaskLoggers
+import org.jetbrains.kotlin.gradle.logging.kotlinDebug
+import org.jetbrains.kotlin.gradle.utils.relativeToRoot
 import org.jetbrains.kotlin.utils.addToStdlib.sumByLong
 import java.lang.management.ManagementFactory
 
@@ -64,7 +61,6 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
     }
 
     private val log = Logging.getLogger(this.javaClass)
-    private val cleanup = CompilerServicesCleanup()
     private var startMemory: Long? = null
     private val shouldReportMemoryUsage = System.getProperty(SHOULD_REPORT_MEMORY_USAGE_PROPERTY) != null
 
@@ -72,22 +68,11 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
     // but it is called before any plugin can attach build listener
     fun buildStarted() {
         startMemory = getUsedMemoryKb()
+        TaskLoggers.clear()
     }
 
     override fun buildFinished(result: BuildResult) {
         val gradle = result.gradle!!
-        val kotlinCompilerCalled = gradle.rootProject
-                .allprojects
-                .flatMap { it.tasks }
-                .any { it is AbstractKotlinCompile<*> && it.compilerCalled }
-
-        if (kotlinCompilerCalled) {
-            log.kotlinDebug("Cleanup after kotlin")
-            cleanup(gradle.gradleVersion)
-        }
-        else {
-            log.kotlinDebug("Skipping kotlin cleanup since compiler wasn't called")
-        }
         GradleCompilerRunner.clearBuildModulesInfo()
 
         val rootProject = gradle.rootProject
@@ -115,6 +100,7 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
             log.lifecycle("[KOTLIN][PERF] Used memory after build: $endMem kb (difference since build start: ${"%+d".format(endMem - startMem)} kb)")
         }
 
+        TaskLoggers.clear()
         gradle.removeListener(this)
         instance = null
         log.kotlinDebug(DISPOSE_MESSAGE)
@@ -126,36 +112,13 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
         log.lifecycle(FORCE_SYSTEM_GC_MESSAGE)
         val gcCountBefore = getGcCount()
         System.gc()
-        while (getGcCount() == gcCountBefore) {}
+        while (getGcCount() == gcCountBefore) {
+        }
 
         val rt = Runtime.getRuntime()
         return (rt.totalMemory() - rt.freeMemory()) / 1024
     }
 
     private fun getGcCount(): Long =
-            ManagementFactory.getGarbageCollectorMXBeans().sumByLong { Math.max(0, it.collectionCount) }
-}
-
-
-internal class CompilerServicesCleanup() {
-    private val log = Logging.getLogger(this.javaClass)
-
-    operator fun invoke(gradleVersion: String) {
-        log.kotlinDebug("compiler services cleanup")
-
-        // clearing jar cache to avoid problems like KT-9440 (unable to clean/rebuild a project due to locked jar file)
-        // problem is known to happen only on windows - the reason (seems) related to http://bugs.java.com/view_bug.do?bug_id=6357433
-        // clean cache only when running on windows
-        if (isWindows) {
-            cleanJarCache()
-        }
-
-        (KotlinCoreEnvironment.applicationEnvironment?.jarFileSystem as? CoreJarFileSystem)?.clearHandlersCache()
-    }
-
-    private fun cleanJarCache() {
-        log.kotlinDebug("Clean JAR cache")
-        ZipHandler.clearFileAccessorCache()
-        log.kotlinDebug("JAR cache cleared")
-    }
+        ManagementFactory.getGarbageCollectorMXBeans().sumByLong { Math.max(0, it.collectionCount) }
 }

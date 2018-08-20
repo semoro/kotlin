@@ -16,57 +16,32 @@
 
 package org.jetbrains.kotlin.backend.jvm
 
-import org.jetbrains.kotlin.backend.common.lower.*
-import org.jetbrains.kotlin.backend.common.runOnFilePostfix
-import org.jetbrains.kotlin.backend.jvm.lower.*
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.backend.common.BackendContext
+import org.jetbrains.kotlin.backend.common.CompilerPhase
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.util.PatchDeclarationParentsVisitor
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
-import org.jetbrains.kotlin.name.NameUtils
+
+fun makePatchParentsPhase(number: Int) = object : CompilerPhase<BackendContext, IrFile> {
+    override val name: String = "PatchParents$number"
+    override val description: String = "Patch parent references in IrFile, pass $number"
+    override val prerequisite: Set<CompilerPhase<BackendContext, *>> = emptySet()
+
+    override fun invoke(context: BackendContext, input: IrFile): IrFile {
+        input.acceptVoid(PatchDeclarationParentsVisitor())
+        return input
+    }
+}
 
 class JvmLower(val context: JvmBackendContext) {
     fun lower(irFile: IrFile) {
+        var state = irFile
         // TODO run lowering passes as callbacks in bottom-up visitor
-        FileClassLowering(context).lower(irFile)
-        KCallableNamePropertyLowering(context).lower(irFile)
 
-        LateinitLowering(context, true).lower(irFile)
-
-        ConstAndJvmFieldPropertiesLowering().lower(irFile)
-        PropertiesLowering().lower(irFile)
-        AnnotationLowering().runOnFilePostfix(irFile) //should be run before defaults lowering
-
-        //Should be before interface lowering
-        DefaultArgumentStubGenerator(context, false).runOnFilePostfix(irFile)
-        StaticDefaultFunctionLowering(context.state).runOnFilePostfix(irFile)
-
-        InterfaceLowering(context.state).runOnFilePostfix(irFile)
-        InterfaceDelegationLowering(context.state).runOnFilePostfix(irFile)
-        SharedVariablesLowering(context).runOnFilePostfix(irFile)
-        InnerClassesLowering(context).runOnFilePostfix(irFile)
-        InnerClassConstructorCallsLowering(context).runOnFilePostfix(irFile)
-
-        irFile.acceptVoid(PatchDeclarationParentsVisitor())
-        LocalDeclarationsLowering(
-            context,
-            object : LocalNameProvider {
-                override fun localName(descriptor: DeclarationDescriptor): String =
-                    NameUtils.sanitizeAsJavaIdentifier(super.localName(descriptor))
+        context.rootPhaseManager(irFile).apply {
+            for (jvmPhase in jvmPhases) {
+                state = phase(jvmPhase, context, state)
             }
-        ).runOnFilePostfix(irFile)
-
-        EnumClassLowering(context).runOnFilePostfix(irFile)
-        //Should be before SyntheticAccessorLowering cause of synthetic accessor for companion constructor
-        ObjectClassLowering(context).lower(irFile)
-        InitializersLowering(context, JvmLoweredDeclarationOrigin.CLASS_STATIC_INITIALIZER, true).runOnFilePostfix(irFile)
-        SingletonReferencesLowering(context).runOnFilePostfix(irFile)
-        SyntheticAccessorLowering(context).lower(irFile)
-        BridgeLowering(context).runOnFilePostfix(irFile)
-
-        TailrecLowering(context).runOnFilePostfix(irFile)
-
-        irFile.acceptVoid(PatchDeclarationParentsVisitor())
+        }
     }
 }

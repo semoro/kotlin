@@ -27,13 +27,13 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.refactoring.rename.RenameProcessor
+import org.jetbrains.kotlin.analyzer.common.CommonPlatform
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.idea.project.platform
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.js.resolve.JsPlatform
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
-import org.jetbrains.kotlin.resolve.TargetPlatform
 import org.jetbrains.kotlin.util.capitalizeDecapitalize.decapitalizeSmart
 import org.jetbrains.kotlin.utils.SmartList
 
@@ -42,7 +42,7 @@ class ConvertCamelCaseTestFunctionToSpacedIntention : SelfTargetingRangeIntentio
 ) {
     override fun applicabilityRange(element: KtNamedFunction): TextRange? {
         val platform = element.platform
-        if (platform == TargetPlatform.Common || platform == JsPlatform) return null
+        if (platform is CommonPlatform || platform is JsPlatform) return null
         val range = element.nameIdentifier?.textRange ?: return null
 
         val name = element.name ?: return null
@@ -114,13 +114,13 @@ class ConvertCamelCaseTestFunctionToSpacedIntention : SelfTargetingRangeIntentio
                         private var chosenId: String = newId
                         private var range: TextRange? = null
 
-                        override fun beforeTemplateFinished(state: TemplateState?, template: Template?) {
+                        override fun beforeTemplateFinished(state: TemplateState, template: Template?) {
                             val varName = (template as? TemplateImpl)?.getVariableNameAt(0) ?: return
                             chosenId = state?.getVariableValue(varName)?.text?.quoteIfNeeded() ?: return
                             range = state.getVariableRange(varName)
                         }
 
-                        override fun templateFinished(template: Template?, brokenOff: Boolean) {
+                        override fun templateFinished(template: Template, brokenOff: Boolean) {
                             range?.let {
                                 val doc = editor.document
                                 runWriteAction { doc.replaceString(it.startOffset, it.endOffset, oldId) }

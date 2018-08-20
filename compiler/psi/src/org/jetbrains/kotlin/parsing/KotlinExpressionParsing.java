@@ -849,14 +849,16 @@ public class KotlinExpressionParsing extends AbstractKotlinParsing {
         if (at(LPAR)) {
             advanceAt(LPAR);
 
-            PsiBuilder.Marker property = mark();
-            myKotlinParsing.parseModifierList(DEFAULT, TokenSet.create(EQ, RPAR));
+            PsiBuilder.Marker atWhenStart = mark();
+            myKotlinParsing.parseAnnotationsList(DEFAULT, TokenSet.create(EQ, RPAR));
             if (at(VAL_KEYWORD) || at(VAR_KEYWORD)) {
-                myKotlinParsing.parseLocalProperty(false);
-                property.done(PROPERTY);
+                IElementType declType = myKotlinParsing.parseProperty(KotlinParsing.PropertyParsingMode.LOCAL);
+
+                atWhenStart.done(declType);
+                atWhenStart.setCustomEdgeTokenBinders(PrecedingDocCommentsBinder.INSTANCE, TrailingCommentsBinder.INSTANCE);
             }
             else {
-                property.rollbackTo();
+                atWhenStart.drop();
                 parseExpression();
             }
 
@@ -1871,7 +1873,7 @@ public class KotlinExpressionParsing extends AbstractKotlinParsing {
         literal.done(OBJECT_LITERAL);
     }
 
-    private void parseOneTokenExpression(KtNodeType type) {
+    private void parseOneTokenExpression(IElementType type) {
         PsiBuilder.Marker mark = mark();
         advance();
         mark.done(type);

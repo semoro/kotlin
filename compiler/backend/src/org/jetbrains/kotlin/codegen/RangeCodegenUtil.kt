@@ -224,14 +224,6 @@ fun getClosedFloatingPointRangeElementType(rangeType: KotlinType): KotlinType? {
     return rangeType.arguments.singleOrNull()?.type
 }
 
-fun DeclarationDescriptor.isTopLevelInPackage(name: String, packageName: String): Boolean {
-    if (name != this.name.asString()) return false
-
-    val containingDeclaration = containingDeclaration as? PackageFragmentDescriptor ?: return false
-    val packageFqName = containingDeclaration.fqName.asString()
-    return packageName == packageFqName
-}
-
 fun getAsmRangeElementTypeForPrimitiveRangeOrProgression(rangeCallee: CallableDescriptor): Type {
     val rangeType = rangeCallee.returnType!!
 

@@ -49,6 +49,11 @@ public class StubBuilderTestGenerated extends AbstractStubBuilderTest {
         runTest("idea/testData/stubs/AnnotationOnLocalFunction.kt");
     }
 
+    @TestMetadata("AnnotationValues.kt")
+    public void testAnnotationValues() throws Exception {
+        runTest("idea/testData/stubs/AnnotationValues.kt");
+    }
+
     @TestMetadata("AnnotationWithValue.kt")
     public void testAnnotationWithValue() throws Exception {
         runTest("idea/testData/stubs/AnnotationWithValue.kt");
@@ -82,6 +87,11 @@ public class StubBuilderTestGenerated extends AbstractStubBuilderTest {
     @TestMetadata("Const.kt")
     public void testConst() throws Exception {
         runTest("idea/testData/stubs/Const.kt");
+    }
+
+    @TestMetadata("Contracts.kt")
+    public void testContracts() throws Exception {
+        runTest("idea/testData/stubs/Contracts.kt");
     }
 
     @TestMetadata("DanglingAnnotations.kt")

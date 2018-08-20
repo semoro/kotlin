@@ -5,32 +5,33 @@
 
 package org.jetbrains.kotlin.ir.backend.js.transformers.irToJs
 
-import org.jetbrains.kotlin.builtins.isFunctionTypeOrSubtype
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.ir.backend.js.utils.JsGenerationContext
 import org.jetbrains.kotlin.ir.backend.js.utils.Namer
+import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
-import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
+import org.jetbrains.kotlin.ir.types.IrDynamicType
+import org.jetbrains.kotlin.ir.util.isFunctionTypeOrSubtype
+import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.js.backend.ast.*
-import org.jetbrains.kotlin.types.typeUtil.isUnit
 import org.jetbrains.kotlin.util.OperatorNameConventions
 
+@Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
 class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsExpression, JsGenerationContext> {
 
-    private val neutralExpression: JsExpression = JsPrefixOperation(JsUnaryOperator.VOID, JsIntLiteral(1))
-
-    override fun visitContainerExpression(expression: IrContainerExpression, context: JsGenerationContext): JsExpression =
-        expression.statements.map { it.accept(this, context) }.fold(neutralExpression) { left, right ->
-            if (left != neutralExpression) JsBinaryOperation(JsBinaryOperator.COMMA, left, right) else right
-        }
+    override fun visitVararg(expression: IrVararg, context: JsGenerationContext): JsExpression {
+        assert(expression.elements.none { it is IrSpreadElement })
+        return JsArrayLiteral(expression.elements.map { it.accept(this, context) })
+    }
 
     override fun visitExpressionBody(body: IrExpressionBody, context: JsGenerationContext): JsExpression =
         body.expression.accept(this, context)
 
     override fun visitFunctionReference(expression: IrFunctionReference, context: JsGenerationContext): JsExpression {
-        val irFunction = expression.symbol.owner as IrFunction
+        val irFunction = expression.symbol.owner
         return irFunction.accept(IrFunctionToJsTransformer(), context).apply { name = null }
     }
 
@@ -43,12 +44,14 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
             is IrConstKind.Byte -> JsIntLiteral(kind.valueOf(expression).toInt())
             is IrConstKind.Short -> JsIntLiteral(kind.valueOf(expression).toInt())
             is IrConstKind.Int -> JsIntLiteral(kind.valueOf(expression))
-            is IrConstKind.Long,
-            is IrConstKind.Char -> super.visitConst(expression, context)
-            is IrConstKind.Float -> JsDoubleLiteral(kind.valueOf(expression).toDouble())
+            is IrConstKind.Long -> throw IllegalStateException("Long const should have been lowered at this point")
+            is IrConstKind.Char -> throw IllegalStateException("Char const should have been lowered at this point")
+            is IrConstKind.Float -> JsDoubleLiteral(toDoubleConst(kind.valueOf(expression)))
             is IrConstKind.Double -> JsDoubleLiteral(kind.valueOf(expression))
         }
     }
+
+    private fun toDoubleConst(f: Float) = if (f.isInfinite() || f.isNaN()) f.toDouble() else f.toString().toDouble()
 
     override fun visitStringConcatenation(expression: IrStringConcatenation, context: JsGenerationContext): JsExpression {
         // TODO revisit
@@ -62,6 +65,12 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
     }
 
     override fun visitGetField(expression: IrGetField, context: JsGenerationContext): JsExpression {
+        if (expression.symbol.isBound) {
+            val fieldParent = expression.symbol.owner.parent
+            if (fieldParent is IrClass && fieldParent.isInline) {
+                return expression.receiver!!.accept(this, context)
+            }
+        }
         val fieldName = context.getNameForSymbol(expression.symbol)
         return JsNameRef(fieldName, expression.receiver?.accept(this, context))
     }
@@ -71,13 +80,9 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
 
     override fun visitGetObjectValue(expression: IrGetObjectValue, context: JsGenerationContext) = when (expression.symbol.owner.kind) {
         ClassKind.OBJECT -> {
-            // TODO:
-            if (expression.type.isUnit()) JsNullLiteral()
-            else {
-                val className = context.getNameForSymbol(expression.symbol)
-                val getInstanceName = className.ident + "_getInstance"
-                JsInvocation(JsNameRef(getInstanceName))
-            }
+            val className = context.getNameForSymbol(expression.symbol)
+            val getInstanceName = className.ident + "_getInstance"
+            JsInvocation(JsNameRef(getInstanceName))
         }
         else -> TODO()
     }
@@ -103,6 +108,15 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
         val thisRef =
             if (fromPrimary) JsThisRef() else context.getNameForSymbol(context.currentFunction!!.valueParameters.last().symbol).makeRef()
         val arguments = translateCallArguments(expression, context)
+
+        val constructor = expression.symbol.owner
+        if (constructor.parentAsClass.isInline) {
+            assert(constructor.isPrimary) {
+                "Delegation to secondary inline constructors must be lowered into simple function calls"
+            }
+            return JsBinaryOperation(JsBinaryOperator.ASG, thisRef, arguments.single())
+        }
+
         return JsInvocation(callFuncRef, listOf(thisRef) + arguments)
     }
 
@@ -113,14 +127,11 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
             return it(expression, context)
         }
 
-        val dispatchReceiver = expression.dispatchReceiver
         val jsDispatchReceiver = expression.dispatchReceiver?.accept(this, context)
         val jsExtensionReceiver = expression.extensionReceiver?.accept(this, context)
         val arguments = translateCallArguments(expression, context)
 
-        if (dispatchReceiver != null &&
-            dispatchReceiver.type.isFunctionTypeOrSubtype && symbol.owner.name == OperatorNameConventions.INVOKE
-        ) {
+        if (isNativeInvoke(expression)) {
             return JsInvocation(jsDispatchReceiver!!, arguments)
         }
 
@@ -133,9 +144,20 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
         }
 
         return if (symbol is IrConstructorSymbol) {
-            JsNew(context.getNameForSymbol(symbol).makeRef(), arguments)
+            // Inline class primary constructor takes a single value of to
+            // initialize underlying property.
+            // TODO: Support initialization block
+            val klass = symbol.owner.parentAsClass
+            if (klass.isInline) {
+                assert(symbol.owner.isPrimary) {
+                    "Inline class secondary constructors must be lowered into static methods"
+                }
+                // Argument value constructs unboxed inline class instance
+                arguments.single()
+            } else {
+                JsNew(context.getNameForSymbol(symbol).makeRef(), arguments)
+            }
         } else {
-            // TODO sanitize name
             val symbolName = context.getNameForSymbol(symbol)
             val ref = if (jsDispatchReceiver != null) JsNameRef(symbolName, jsDispatchReceiver) else JsNameRef(symbolName)
             JsInvocation(ref, jsExtensionReceiver?.let { listOf(jsExtensionReceiver) + arguments } ?: arguments)
@@ -145,5 +167,23 @@ class IrElementToJsExpressionTransformer : BaseIrElementToJsNodeTransformer<JsEx
     override fun visitWhen(expression: IrWhen, context: JsGenerationContext): JsExpression {
         // TODO check when w/o else branch and empty when
         return expression.toJsNode(this, context, ::JsConditional)!!
+    }
+
+    override fun visitTypeOperator(expression: IrTypeOperatorCall, data: JsGenerationContext): JsExpression {
+        return when (expression.operator) {
+            IrTypeOperator.IMPLICIT_CAST -> expression.argument.accept(this, data)
+            else -> throw IllegalStateException("All type operator calls except IMPLICIT_CAST should be lowered at this point")
+        }
+    }
+
+    private fun isNativeInvoke(call: IrCall): Boolean {
+        val simpleFunction = call.symbol.owner as? IrSimpleFunction ?: return false
+        val receiverType = simpleFunction.dispatchReceiverParameter?.type ?: return false
+
+        if (simpleFunction.isSuspend) return false
+
+        if (receiverType is IrDynamicType) return call.origin == IrStatementOrigin.INVOKE
+
+        return simpleFunction.name == OperatorNameConventions.INVOKE && receiverType.isFunctionTypeOrSubtype()
     }
 }

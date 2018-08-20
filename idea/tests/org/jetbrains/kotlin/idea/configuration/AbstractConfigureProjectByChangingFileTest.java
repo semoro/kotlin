@@ -17,12 +17,17 @@
 package org.jetbrains.kotlin.idea.configuration;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.CharsetToolkit;
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaModule;
 import com.intellij.psi.search.FilenameIndex;
@@ -35,6 +40,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.core.script.ScriptDependenciesUpdaterKt;
 import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
+import org.jetbrains.plugins.groovy.GroovyFileType;
 
 import java.io.File;
 import java.io.IOException;
@@ -48,7 +54,16 @@ public abstract class AbstractConfigureProjectByChangingFileTest<C extends Kotli
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        ApplicationManager.getApplication().runWriteAction(
+                () -> FileTypeManager.getInstance().associateExtension(GroovyFileType.GROOVY_FILE_TYPE, "gradle")
+        );
         ScriptDependenciesUpdaterKt.setScriptDependenciesUpdaterDisabled(ApplicationManager.getApplication(), true);
+
+        // Ignore because of IdeaOpenApiClassFinder
+        VfsRootAccess.allowRootAccess(
+                getTestRootDisposable(),
+                PathManager.getJarPathForClass(PsiClass.class),
+                PathManager.getJarPathForClass(PsiElement.class));
     }
 
     @Override

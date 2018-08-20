@@ -112,6 +112,7 @@ private class ClassClsStubBuilder(
             relevantFlags.add(INNER)
             relevantFlags.add(DATA)
             relevantFlags.add(MODALITY)
+            relevantFlags.add(INLINE_CLASS)
         }
         val additionalModifiers = when (classKind) {
             ProtoBuf.Class.Kind.ENUM_CLASS -> listOf(KtTokens.ENUM_KEYWORD)
@@ -247,7 +248,7 @@ private class ClassClsStubBuilder(
     }
 
     private fun createNestedClassStub(classBody: StubElement<out PsiElement>, nestedClassId: ClassId) {
-        val (nameResolver, classProto, sourceElement) =
+        val (nameResolver, classProto, _, sourceElement) =
                 c.components.classDataFinder.findClassData(nestedClassId)
                         ?: c.components.virtualFileForDebug.let { rootFile ->
                             LOG.error(

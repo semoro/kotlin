@@ -7,8 +7,15 @@
 
 package kotlin
 
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+public inline class ULongArray
 @Suppress("NON_PUBLIC_PRIMARY_CONSTRUCTOR_OF_INLINE_CLASS")
-public inline class ULongArray internal constructor(private val storage: LongArray) : Collection<ULong> {
+@PublishedApi
+internal constructor(@PublishedApi internal val storage: LongArray) : Collection<ULong> {
+
+    /** Creates a new array of the specified [size], with all elements initialized to zero. */
+    public constructor(size: Int) : this(LongArray(size))
 
     /** Returns the array element at the given [index]. This method can be called using the index operator. */
     public operator fun get(index: Int): ULong = storage[index].toULong()
@@ -37,11 +44,14 @@ public inline class ULongArray internal constructor(private val storage: LongArr
     override fun isEmpty(): Boolean = this.storage.size == 0
 }
 
-public /*inline*/ fun ULongArray(size: Int, init: (Int) -> ULong): ULongArray {
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+@kotlin.internal.InlineOnly
+public inline fun ULongArray(size: Int, init: (Int) -> ULong): ULongArray {
     return ULongArray(LongArray(size) { index -> init(index).toLong() })
 }
 
-@Suppress("FORBIDDEN_VARARG_PARAMETER_TYPE")
-public fun ulongArrayOf(vararg elements: ULong): ULongArray {
-    return ULongArray(elements.size) { index -> elements[index] }
-}
+@SinceKotlin("1.3")
+@ExperimentalUnsignedTypes
+@kotlin.internal.InlineOnly
+public inline fun ulongArrayOf(vararg elements: ULong): ULongArray = elements

@@ -23,19 +23,24 @@ import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.ScriptDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
+import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache
+import org.jetbrains.kotlin.metadata.jvm.deserialization.JvmMetadataVersion
 import org.jetbrains.kotlin.modules.TargetId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtScript
 import org.jetbrains.kotlin.resolve.*
+import org.jetbrains.kotlin.resolve.deprecation.CoroutineCompatibilitySupport
+import org.jetbrains.kotlin.resolve.deprecation.DeprecationResolver
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOriginKind.*
 import org.jetbrains.kotlin.serialization.deserialization.DeserializationConfiguration
 import org.jetbrains.kotlin.storage.LockBasedStorageManager
+import org.jetbrains.kotlin.types.KotlinType
 import java.io.File
 
 class GenerationState private constructor(
@@ -51,7 +56,8 @@ class GenerationState private constructor(
     moduleName: String?,
     val outDirectory: File?,
     private val onIndependentPartCompilationEnd: GenerationStateEventCallback,
-    wantsDiagnostics: Boolean
+    wantsDiagnostics: Boolean,
+    val jvmBackendClassResolver: JvmBackendClassResolver
 ) {
 
     class Builder(
@@ -94,11 +100,16 @@ class GenerationState private constructor(
         fun wantsDiagnostics(v: Boolean) =
             apply { wantsDiagnostics = v }
 
+        var jvmBackendClassResolver: JvmBackendClassResolver = JvmBackendClassResolverForModuleWithDependencies(module); private set
+        fun jvmBackendClassResolver(v: JvmBackendClassResolver) =
+            apply { jvmBackendClassResolver = v }
+
         fun build() =
             GenerationState(
                 project, builderFactory, module, bindingContext, files, configuration,
                 generateDeclaredClassFilter, codegenFactory, targetId,
-                moduleName, outDirectory, onIndependentPartCompilationEnd, wantsDiagnostics
+                moduleName, outDirectory, onIndependentPartCompilationEnd, wantsDiagnostics,
+                jvmBackendClassResolver
             )
     }
 
@@ -131,7 +142,8 @@ class GenerationState private constructor(
     val deserializationConfiguration: DeserializationConfiguration =
         CompilerDeserializationConfiguration(configuration.languageVersionSettings)
 
-    val deprecationProvider = DeprecationResolver(LockBasedStorageManager.NO_LOCKS, configuration.languageVersionSettings)
+    val deprecationProvider =
+        DeprecationResolver(LockBasedStorageManager.NO_LOCKS, configuration.languageVersionSettings, CoroutineCompatibilitySupport.ENABLED)
 
     init {
         val icComponents = configuration.get(JVMConfigurationKeys.INCREMENTAL_COMPILATION_COMPONENTS)
@@ -165,7 +177,6 @@ class GenerationState private constructor(
     val languageVersionSettings = configuration.languageVersionSettings
 
     val target = configuration.get(JVMConfigurationKeys.JVM_TARGET) ?: JvmTarget.DEFAULT
-    val isJvm8Target: Boolean = target == JvmTarget.JVM_1_8
 
     val moduleName: String = moduleName ?: JvmCodegenUtil.getModuleName(module)
     val classBuilderMode: ClassBuilderMode = builderFactory.classBuilderMode
@@ -174,13 +185,16 @@ class GenerationState private constructor(
         filter = if (wantsDiagnostics) BindingTraceFilter.ACCEPT_ALL else BindingTraceFilter.NO_DIAGNOSTICS
     )
     val bindingContext: BindingContext = bindingTrace.bindingContext
+    val mainFunctionDetector = MainFunctionDetector(bindingContext, languageVersionSettings)
+    private val isIrBackend = configuration.get(JVMConfigurationKeys.IR) ?: false
     val typeMapper: KotlinTypeMapper = KotlinTypeMapper(
         this.bindingContext,
         classBuilderMode,
         IncompatibleClassTrackerImpl(extraJvmDiagnosticsTrace),
         this.moduleName,
-        isJvm8Target,
-        configuration.languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines)
+        target,
+        languageVersionSettings,
+        isIrBackend
     )
     val intrinsics: IntrinsicMethods = run {
         val shouldUseConsistentEquals = languageVersionSettings.supportsFeature(LanguageFeature.ThrowNpeOnExplicitEqualsForBoxedNull) &&
@@ -201,6 +215,7 @@ class GenerationState private constructor(
         var earlierScriptsForReplInterpreter: List<ScriptDescriptor>? = null
         var scriptResultFieldName: String? = null
         val shouldGenerateScriptResultValue: Boolean get() = scriptResultFieldName != null
+        var resultType: KotlinType? = null
         var hasResult: Boolean = false
     }
 
@@ -222,22 +237,34 @@ class GenerationState private constructor(
 
     val shouldInlineConstVals = languageVersionSettings.supportsFeature(LanguageFeature.InlineConstVals)
 
-    val constructorCallNormalizationMode = configuration.get(
-        JVMConfigurationKeys.CONSTRUCTOR_CALL_NORMALIZATION_MODE,
-        JVMConstructorCallNormalizationMode.DEFAULT
-    )
+    val constructorCallNormalizationMode =
+        configuration.get(JVMConfigurationKeys.CONSTRUCTOR_CALL_NORMALIZATION_MODE) ?: run {
+            if (languageVersionSettings.supportsFeature(LanguageFeature.NormalizeConstructorCalls))
+                JVMConstructorCallNormalizationMode.ENABLE
+            else
+                JVMConstructorCallNormalizationMode.DISABLE
+        }
+
+    val jvmDefaultMode = languageVersionSettings.getFlag(JvmAnalysisFlags.jvmDefaultMode)
+
+    val disableOptimization = configuration.get(JVMConfigurationKeys.DISABLE_OPTIMIZATION, false)
+
+    val metadataVersion = configuration.get(CommonConfigurationKeys.METADATA_VERSION) ?: JvmMetadataVersion.INSTANCE
 
     init {
-        val disableOptimization = configuration.get(JVMConfigurationKeys.DISABLE_OPTIMIZATION, false)
-
         this.interceptedBuilderFactory = builderFactory
             .wrapWith(
-                { OptimizationClassBuilderFactory(it, disableOptimization, constructorCallNormalizationMode) },
+                {
+                    if (classBuilderMode.generateBodies)
+                        OptimizationClassBuilderFactory(it, this)
+                    else
+                        it
+                },
                 {
                     BuilderFactoryForDuplicateSignatureDiagnostics(
-                        it, this.bindingContext, diagnostics, this.moduleName,
-                        isReleaseCoroutines = languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines),
-                        shouldGenerate = { !shouldOnlyCollectSignatures(it) }
+                        it, this.bindingContext, diagnostics, this.moduleName, this.languageVersionSettings,
+                        shouldGenerate = { !shouldOnlyCollectSignatures(it) },
+                        isIrBackend = isIrBackend
                     ).apply { duplicateSignatureFactory = this }
                 },
                 { BuilderFactoryForDuplicateClassNameDiagnostics(it, diagnostics) },
