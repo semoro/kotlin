@@ -184,14 +184,14 @@ class JKTypeElementImpl(override var type: JKType) : JKTypeElement, JKElementBas
 class JKClassTypeImpl(
     override val classReference: JKClassSymbol,
     override var parameters: List<JKType> = emptyList(),
-    override val nullability: Nullability = Nullability.Default
+    override var nullability: Nullability = Nullability.Default
 ) : JKClassType
 
 
 class JKUnresolvedClassType(
     val name: String,
     override var parameters: List<JKType>,
-    override val nullability: Nullability = Nullability.Default
+    override var nullability: Nullability = Nullability.Default
 ) : JKParametrizedType
 
 

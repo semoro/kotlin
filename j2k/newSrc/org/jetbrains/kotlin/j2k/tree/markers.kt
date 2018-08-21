@@ -56,7 +56,6 @@ interface JKParametrizedType : JKType {
 
 interface JKClassType : JKParametrizedType {
     val classReference: JKClassSymbol
-    override val nullability: Nullability
 }
 
 interface JKJavaPrimitiveType : JKType {

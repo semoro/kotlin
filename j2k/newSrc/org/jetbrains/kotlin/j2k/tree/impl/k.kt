@@ -17,12 +17,12 @@
 package org.jetbrains.kotlin.j2k.tree.impl
 
 import com.intellij.psi.JavaTokenType
+import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.utils.addToStdlib.cast
-import org.jetbrains.kotlin.j2k.ast.Nullability
 
 class JKKtPropertyImpl(
     modifierList: JKModifierList,
@@ -181,8 +181,9 @@ class JKKtAssignmentStatementImpl(
 }
 
 object JKContextType : JKType {
-    override val nullability: Nullability
+    override var nullability: Nullability
         get() = Nullability.Default
+    set(it){}
 }
 class JKKtConstructorImpl(
     name: JKNameIdentifier,
