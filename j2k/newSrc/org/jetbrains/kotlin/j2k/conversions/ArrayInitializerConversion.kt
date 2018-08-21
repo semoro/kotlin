@@ -39,16 +39,20 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
     }
 
     private fun buildArrayInitializer(dimensions: List<JKExpression>, type: JKType): JKExpression {
-        return when {
-            dimensions.size == 1 -> JKJavaMethodCallExpressionImpl(
-                if (type !is JKJavaPrimitiveType) context.symbolProvider.provideByFqName("kotlin/arrayOfNulls") else JKUnresolvedMethod(
-                    fqNameByType(type).replace('/', '.')//TODO
-                ),
+        if (dimensions.size == 1) {
+            val methodOrConstructorReference = if (type !is JKJavaPrimitiveType)
+                context.symbolProvider.provideByFqName("kotlin/arrayOfNulls")
+            else
+                JKUnresolvedMethod(fqNameByType(type).replace('/', '.')/*TODO resolve real reference*/)
+            return JKJavaMethodCallExpressionImpl(
+                methodOrConstructorReference,
                 JKExpressionListImpl(dimensions[0]),
                 if (type is JKJavaPrimitiveType) emptyList() else listOf(JKTypeElementImpl(type))
             )
-            dimensions[1] !is JKStubExpression -> JKJavaMethodCallExpressionImpl(
-                JKUnresolvedMethod("kotlin.Array"),//TODO
+        }
+        if (dimensions[1] !is JKStubExpression) {
+            return JKJavaMethodCallExpressionImpl(
+                JKUnresolvedMethod("kotlin.Array"),//TODO resolve real reference
                 JKExpressionListImpl(
                     dimensions[0],
                     JKLambdaExpressionImpl(
@@ -56,23 +60,20 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
                     )
                 )
             )
-            else -> JKJavaMethodCallExpressionImpl(
-                context.symbolProvider.provideByFqName("kotlin/arrayOfNulls"),
-                JKExpressionListImpl(dimensions[0]),
-                listOf(
-                    JKTypeElementImpl(
-                        Array(dimensions.size - 2) {
-                            JKClassTypeImpl(context.symbolProvider.provideByFqName("kotlin/Array"), nullability = Nullability.NotNull)
-                        }.fold(
-                            JKClassTypeImpl(
-                                context.symbolProvider.provideByFqName(fqNameByType(type)),
-                                if (type is JKJavaPrimitiveType) emptyList() else listOf(type),
-                                Nullability.NotNull
-                            )
-                        ) { a, b -> b.also { it.parameters = listOf(a) } })
-                )
-            )
         }
+        var resultType = JKClassTypeImpl(
+            context.symbolProvider.provideByFqName(fqNameByType(type)),
+            if (type is JKJavaPrimitiveType) emptyList() else listOf(type),
+            Nullability.NotNull
+        )
+        for (i in 0..dimensions.size - 3) {
+            resultType = JKClassTypeImpl(context.symbolProvider.provideByFqName("kotlin/Array"), listOf(resultType), Nullability.NotNull)
+        }
+        return JKJavaMethodCallExpressionImpl(
+            context.symbolProvider.provideByFqName("kotlin/arrayOfNulls"),
+            JKExpressionListImpl(dimensions[0]),
+            listOf(JKTypeElementImpl(resultType))
+        )
     }
 
     private fun fqNameByType(type: JKType): String = when (type) {
