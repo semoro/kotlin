@@ -271,9 +271,9 @@ class NewCodeBuilder {
         override fun visitMethodCallExpression(methodCallExpression: JKMethodCallExpression) {
             printer.printWithNoIndent(FqName(methodCallExpression.identifier.fqName).shortName().asString())
             if (methodCallExpression.typeArguments.isNotEmpty()) {
-                printer.printWithNoIndent("<")
-                renderList(methodCallExpression.typeArguments) { it.accept(this) }
-                printer.printWithNoIndent(">")
+                printer.par(ANGLE) {
+                    renderList(methodCallExpression.typeArguments) { it.accept(this) }
+                }
             }
             printer.par {
                 methodCallExpression.arguments.accept(this)
@@ -441,9 +441,9 @@ class NewCodeBuilder {
         }
 
         override fun visitBlockStatement(blockStatement: JKBlockStatement) {
-            printer.printWithNoIndent("{ ")
-            blockStatement.block.accept(this)
-            printer.printWithNoIndent(" }")
+            printer.par(CURVED) {
+                blockStatement.block.accept(this)
+            }
         }
 
         /*override fun visitParameter(parameter: JKParameter) {

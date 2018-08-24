@@ -7,7 +7,10 @@ package org.jetbrains.kotlin.j2k
 
 import com.intellij.psi.*
 import org.jetbrains.kotlin.j2k.conversions.resolveFqName
-import org.jetbrains.kotlin.j2k.tree.*
+import org.jetbrains.kotlin.j2k.tree.JKClass
+import org.jetbrains.kotlin.j2k.tree.JKDeclaration
+import org.jetbrains.kotlin.j2k.tree.JKField
+import org.jetbrains.kotlin.j2k.tree.JKMethod
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtClassOrObject
@@ -38,11 +41,10 @@ class JKSymbolProvider {
         }
     }
 
-    inline fun <reified T : JKSymbol> provideSymbol(reference: PsiReference): T {
+    internal inline fun <reified T : JKSymbol> provideSymbol(reference: PsiReference): T {
         val target = reference.resolve()
         if (target != null) return provideDirectSymbol(target) as T
-        return (if (T::class.java.isAssignableFrom(JKUnresolvedField::class.java)) JKUnresolvedField(reference)
-        else JKUnresolvedMethod(reference)) as T
+        return (if (isAssignable<T, JKUnresolvedField>()) JKUnresolvedField(reference) else JKUnresolvedMethod(reference)) as T
     }
 
     fun provideUniverseSymbol(psi: PsiElement, jk: JKDeclaration): JKSymbol = provideUniverseSymbol(psi).also {
@@ -81,15 +83,16 @@ class JKSymbolProvider {
         JKUniverseMethodSymbol(this).also { it.target = jk }
     } as JKMethodSymbol
 
-    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: ClassId, context: PsiElement = symbolsByPsi.keys.first()): T {
-        return resolveFqName(fqName, context)?.let(::provideDirectSymbol).safeAs<T>() ?: when {
-            isAssignable<T, JKUnresolvedMethod>() -> JKUnresolvedMethod(fqName.asString().replace('/', '.'))
-            isAssignable<T, JKUnresolvedField>() -> JKUnresolvedField(fqName.asString().replace('/', '.'))
+    internal inline fun <reified T : JKSymbol> provideByFqName(classId: ClassId, context: PsiElement = symbolsByPsi.keys.first()): T {
+        return resolveFqName(classId, context)?.let(::provideDirectSymbol).safeAs<T>() ?: when {
+            isAssignable<T, JKUnresolvedMethod>() -> JKUnresolvedMethod(classId.asSingleFqName().asString().replace('/', '.'))
+            isAssignable<T, JKUnresolvedField>() -> JKUnresolvedField(classId.asSingleFqName().asString().replace('/', '.'))
             else -> TODO()
         } as T
     }
 
-    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String): T = provideByFqName(ClassId.fromString(fqName))
+    internal inline fun <reified T : JKSymbol> provideByFqName(fqName: String, context: PsiElement = symbolsByPsi.keys.first()): T =
+        provideByFqName(ClassId.fromString(fqName), context)
 
     private inner class ElementVisitor : JavaElementVisitor() {
         override fun visitClass(aClass: PsiClass) {
@@ -110,5 +113,5 @@ class JKSymbolProvider {
         }
     }
 
-    private inline fun <reified A, reified B> isAssignable(): Boolean = A::class.java.isAssignableFrom(B::class.java)
+    internal inline fun <reified A, reified B> isAssignable(): Boolean = A::class.java.isAssignableFrom(B::class.java)
 }

@@ -13,7 +13,6 @@ import org.jetbrains.kotlin.builtins.jvm.JavaToKotlinClassMap
 import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
-import org.jetbrains.kotlin.j2k.tree.impl.JKClassSymbol
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassTypeImpl
 import org.jetbrains.kotlin.j2k.tree.impl.JKJavaPrimitiveTypeImpl.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKJavaVoidType
@@ -21,7 +20,6 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 
 class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicableConversionBase() {
-    private val unitSymbol = context.symbolProvider.provideByFqName<JKClassSymbol>(ClassId.topLevel(KotlinBuiltIns.FQ_NAMES.unit.toSafe()))
 
     private val typeFlavorCalculator = TypeFlavorCalculator(object : TypeFlavorConverterFacade {
         override val referenceSearcher: ReferenceSearcher
@@ -37,7 +35,7 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
 
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element is JKTypeElement) {
-            val newType = mapType(element.type)
+            val newType = mapType(element.type, element)
             element.type = newType
             if (element.type.nullability == Nullability.Default && newType is JKClassType) {
                 val newNullability = calculateNullability(element.parent)
@@ -48,13 +46,19 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
         return recurse(element)
     }
 
-    private fun mapType(type: JKType): JKType = when (type) {
+    private fun mapType(type: JKType, element: JKTreeElement): JKType = when (type) {
         is JKJavaPrimitiveType -> mapPrimitiveType(type)
-        is JKClassType -> mapClassType(type).also { it.parameters = it.parameters.map(::mapType) }
-        is JKJavaVoidType -> JKClassTypeImpl(unitSymbol, nullability = Nullability.NotNull)
+        is JKClassType -> mapClassType(type).also { it.parameters = it.parameters.map { i -> mapType(i, element) } }
+        is JKJavaVoidType -> JKClassTypeImpl(
+            context.symbolProvider.provideByFqName(
+                ClassId.topLevel(KotlinBuiltIns.FQ_NAMES.unit.toSafe()),
+                context.backAnnotator.invoke(element.parentOfType<JKClass>()!!)!!
+            ),
+            nullability = Nullability.NotNull
+        )
         is JKJavaArrayType -> JKClassTypeImpl(
             context.symbolProvider.provideByFqName(fqNameByType(type.type)),
-            if (type.type is JKJavaPrimitiveType) emptyList() else listOf(mapType(type.type)),
+            if (type.type is JKJavaPrimitiveType) emptyList() else listOf(mapType(type.type, element)),
             type.nullability
         )
         else -> type
