@@ -11,25 +11,20 @@ import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
+import org.jetbrains.kotlin.resolve.CollectionLiteralResolver
 
 
 class ArrayInitializerConversion(private val context: ConversionContext) : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         var newElement = element
         if (element is JKJavaNewArray) {
+            val arrayType = element.type.type
             newElement = JKJavaMethodCallExpressionImpl(
                 context.symbolProvider.provideByFqName(
-                    when (element.type.type) {
-                        JKJavaPrimitiveTypeImpl.BOOLEAN -> "kotlin/booleanArrayOf"
-                        JKJavaPrimitiveTypeImpl.BYTE -> "kotlin/byteArrayOf"
-                        JKJavaPrimitiveTypeImpl.CHAR -> "kotlin/charArrayOf"
-                        JKJavaPrimitiveTypeImpl.DOUBLE -> "kotlin/doubleArrayOf"
-                        JKJavaPrimitiveTypeImpl.FLOAT -> "kotlin/floatArrayOf"
-                        JKJavaPrimitiveTypeImpl.INT -> "kotlin/intArrayOf"
-                        JKJavaPrimitiveTypeImpl.LONG -> "kotlin/longArrayOf"
-                        JKJavaPrimitiveTypeImpl.SHORT -> "kotlin/shortArrayOf"
-                        else -> "kotlin/arrayOf"
-                    }
+                    if (arrayType is JKJavaPrimitiveType)
+                        CollectionLiteralResolver.PRIMITIVE_TYPE_TO_ARRAY[PrimitiveType.valueOf(arrayType.jvmPrimitiveType.name)]!!.asString()
+                    else
+                        CollectionLiteralResolver.ARRAY_OF_FUNCTION.asString()
                 ),
                 JKExpressionListImpl(element.initializer.also { element.initializer = emptyList() })
             )
@@ -69,7 +64,11 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
             Nullability.NotNull
         )
         for (i in 0 until dimensions.size - 2) {
-            resultType = JKClassTypeImpl(context.symbolProvider.provideByFqName("kotlin/Array"), listOf(resultType), Nullability.NotNull)
+            resultType = JKClassTypeImpl(
+                context.symbolProvider.provideByFqName(KotlinBuiltIns.FQ_NAMES.array.asString()),
+                listOf(resultType),
+                Nullability.NotNull
+            )
         }
         return JKJavaMethodCallExpressionImpl(
             context.symbolProvider.provideByFqName("kotlin/arrayOfNulls"),
