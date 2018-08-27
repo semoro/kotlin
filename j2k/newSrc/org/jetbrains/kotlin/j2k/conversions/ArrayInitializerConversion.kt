@@ -5,6 +5,8 @@
 
 package org.jetbrains.kotlin.j2k.conversions
 
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
@@ -43,7 +45,7 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
             val methodOrConstructorReference = if (type !is JKJavaPrimitiveType)
                 context.symbolProvider.provideByFqName("kotlin/arrayOfNulls")
             else
-                JKUnresolvedMethod(fqNameByType(type).replace('/', '.')/*TODO resolve real reference*/)
+                JKUnresolvedMethod(arrayFqName(type).replace('/', '.')/*TODO resolve real reference*/)
             return JKJavaMethodCallExpressionImpl(
                 methodOrConstructorReference,
                 JKExpressionListImpl(dimensions[0]),
@@ -62,11 +64,11 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
             )
         }
         var resultType = JKClassTypeImpl(
-            context.symbolProvider.provideByFqName(fqNameByType(type)),
+            context.symbolProvider.provideByFqName(arrayFqName(type)),
             if (type is JKJavaPrimitiveType) emptyList() else listOf(type),
             Nullability.NotNull
         )
-        for (i in 0..dimensions.size - 3) {
+        for (i in 0 until dimensions.size - 2) {
             resultType = JKClassTypeImpl(context.symbolProvider.provideByFqName("kotlin/Array"), listOf(resultType), Nullability.NotNull)
         }
         return JKJavaMethodCallExpressionImpl(
@@ -76,15 +78,7 @@ class ArrayInitializerConversion(private val context: ConversionContext) : Recur
         )
     }
 
-    private fun fqNameByType(type: JKType): String = when (type) {
-        JKJavaPrimitiveTypeImpl.BOOLEAN -> "kotlin/BooleanArray"
-        JKJavaPrimitiveTypeImpl.BYTE -> "kotlin/ByteArray"
-        JKJavaPrimitiveTypeImpl.CHAR -> "kotlin/CharArray"
-        JKJavaPrimitiveTypeImpl.DOUBLE -> "kotlin/DoubleArray"
-        JKJavaPrimitiveTypeImpl.FLOAT -> "kotlin/FloatArray"
-        JKJavaPrimitiveTypeImpl.INT -> "kotlin/IntArray"
-        JKJavaPrimitiveTypeImpl.LONG -> "kotlin/LongArray"
-        JKJavaPrimitiveTypeImpl.SHORT -> "kotlin/ShortArray"
-        else -> "kotlin/Array"
-    }
+    private fun arrayFqName(type: JKType): String = if (type is JKJavaPrimitiveType)
+        PrimitiveType.valueOf(type.jvmPrimitiveType.name).arrayTypeFqName.asString()
+    else KotlinBuiltIns.FQ_NAMES.array.asString()
 }

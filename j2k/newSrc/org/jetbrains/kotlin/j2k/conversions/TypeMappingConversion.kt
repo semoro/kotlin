@@ -9,12 +9,12 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiVariable
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.builtins.jvm.JavaToKotlinClassMap
 import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKClassTypeImpl
-import org.jetbrains.kotlin.j2k.tree.impl.JKJavaPrimitiveTypeImpl.*
 import org.jetbrains.kotlin.j2k.tree.impl.JKJavaVoidType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
@@ -57,7 +57,7 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
             nullability = Nullability.NotNull
         )
         is JKJavaArrayType -> JKClassTypeImpl(
-            context.symbolProvider.provideByFqName(fqNameByType(type.type)),
+            context.symbolProvider.provideByFqName(arrayFqName(type.type)),
             if (type.type is JKJavaPrimitiveType) emptyList() else listOf(mapType(type.type, element)),
             type.nullability
         )
@@ -83,15 +83,7 @@ class TypeMappingConversion(val context: ConversionContext) : RecursiveApplicabl
         }
     }
 
-    private fun fqNameByType(type: JKType): String = when (type) {
-        BOOLEAN -> "kotlin/BooleanArray"
-        BYTE -> "kotlin/ByteArray"
-        CHAR -> "kotlin/CharArray"
-        DOUBLE -> "kotlin/DoubleArray"
-        FLOAT -> "kotlin/FloatArray"
-        INT -> "kotlin/IntArray"
-        LONG -> "kotlin/LongArray"
-        SHORT -> "kotlin/ShortArray"
-        else -> "kotlin/Array"
-    }
+    private fun arrayFqName(type: JKType): String = if (type is JKJavaPrimitiveType)
+        PrimitiveType.valueOf(type.jvmPrimitiveType.name).arrayTypeFqName.asString()
+    else KotlinBuiltIns.FQ_NAMES.array.asString()
 }

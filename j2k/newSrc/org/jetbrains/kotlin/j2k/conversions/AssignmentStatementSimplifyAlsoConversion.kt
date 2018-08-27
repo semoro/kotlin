@@ -14,12 +14,10 @@ class AssignmentStatementSimplifyAlsoConversion : RecursiveApplicableConversionB
         if (element !is JKExpressionStatement) return recurse(element)
         val qualifiedExpression = element.expression as? JKQualifiedExpression ?: return recurse(element)
         val alsoCall = qualifiedExpression.selector as? JKKtAlsoCallExpression ?: return recurse(element)
-        var elementToReturn = element
-        if (alsoCall.statement !is JKBlockStatement) elementToReturn = alsoCall.statement.also {
+        return recurse(if (alsoCall.statement !is JKBlockStatement) alsoCall.statement.also {
             alsoCall.statement = JKExpressionStatementImpl(JKStubExpressionImpl())
             inlineVal(it, qualifiedExpression.receiver.also { qualifiedExpression.receiver = JKStubExpressionImpl() })
-        }
-        return recurse(elementToReturn)
+        } else element)
     }
 
     private fun inlineVal(statement: JKStatement, expression: JKExpression) {
