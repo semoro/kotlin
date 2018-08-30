@@ -87,7 +87,7 @@ class JKSymbolProvider {
         return resolveFqName(classId, context)?.let(::provideDirectSymbol).safeAs<T>() ?: when {
             isAssignable<T, JKUnresolvedMethod>() -> JKUnresolvedMethod(classId.asSingleFqName().asString().replace('/', '.'))
             isAssignable<T, JKUnresolvedField>() -> JKUnresolvedField(classId.asSingleFqName().asString().replace('/', '.'))
-            else -> TODO()
+            else -> JKUnresolvedClassSymbol(classId.asSingleFqName().asString().replace('/', '.'))
         } as T
     }
 

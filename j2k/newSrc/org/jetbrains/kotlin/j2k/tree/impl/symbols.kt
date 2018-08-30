@@ -141,3 +141,14 @@ class JKUnresolvedMethod(override val target: String) : JKMethodSymbol {
     override val name: String
         get() = target
 }
+
+class JKUnresolvedClassSymbol(override val target: String) : JKClassSymbol {
+
+    override val declaredIn: JKSymbol
+        get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
+    override val fqName: String?
+        get() = target
+
+    override val name: String
+        get() = target.substringAfterLast('.')
+}
