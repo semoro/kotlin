@@ -5,16 +5,12 @@
 
 package org.jetbrains.kotlin.j2k
 
-import org.jetbrains.kotlin.j2k.tree.JKArrayAccessExpression
 import org.jetbrains.kotlin.j2k.tree.JKElement
-import org.jetbrains.kotlin.j2k.tree.JKKtFieldAccessExpression
-import org.jetbrains.kotlin.j2k.tree.impl.JKArrayAccessExpressionImpl
-import org.jetbrains.kotlin.j2k.tree.impl.JKKtFieldAccessExpressionImpl
+import org.jetbrains.kotlin.j2k.tree.impl.JKElementBase
 
-fun <T : JKElement> T.copyTree(): T {
-    return when (this) {
-        is JKKtFieldAccessExpression -> JKKtFieldAccessExpressionImpl(identifier)
-        is JKArrayAccessExpression -> JKArrayAccessExpressionImpl(expression.copyTree(), indexExpression.copyTree())
+fun <T : JKElement> T.copyTree(): T =
+    when (this) {
+        is JKElementBase ->
+            this.deepClone() as T
         else -> TODO("Not supported+$this.toString()")
-    } as T
-}
+    }
