@@ -226,6 +226,10 @@ interface JKSwitchDefaultLabelStatement : JKStatement
 
 interface JKBreakStatement : JKStatement
 
+interface JKBreakWithLabelStatement : JKBreakStatement {
+    var label: JKNameIdentifier
+}
+
 interface JKIfStatement : JKStatement {
     var condition: JKExpression
     var thenBranch: JKStatement
