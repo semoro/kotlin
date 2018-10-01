@@ -213,17 +213,6 @@ interface JKDoWhileStatement : JKLoopStatement {
     var condition: JKExpression
 }
 
-interface JKSwitchStatement : JKStatement {
-    var expression: JKExpression
-    var block: JKBlock
-}
-
-interface JKSwitchLabelStatement : JKStatement {
-    var expression: JKExpression
-}
-
-interface JKSwitchDefaultLabelStatement : JKStatement
-
 interface JKBreakStatement : JKStatement
 
 interface JKBreakWithLabelStatement : JKBreakStatement {
@@ -257,4 +246,25 @@ interface JKDelegationConstructorCall : JKMethodCallExpression {
     override val identifier: JKMethodSymbol
     val expression: JKExpression
     override val arguments: JKExpressionList
+}
+
+
+
+interface JKSwitchStatement : JKStatement {
+    var expression: JKExpression
+    var cases: List<JKSwitchCase>
+}
+
+interface JKSwitchCase : JKTreeElement {
+    fun isDefault(): Boolean
+    var statements: List<JKStatement>
+}
+
+interface JKDefaultSwitchCase : JKSwitchCase {
+    override fun isDefault(): Boolean = true
+}
+
+interface JKLabelSwitchCase : JKSwitchCase {
+    override fun isDefault(): Boolean = false
+    var label: JKExpression
 }

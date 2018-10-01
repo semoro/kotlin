@@ -350,9 +350,28 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                 is PsiBlockStatement -> JKBlockStatementImpl(codeBlock.toJK())
                 is PsiWhileStatement -> JKWhileStatementImpl(with(expressionTreeMapper) { condition.toJK() }, body.toJK())
                 is PsiDoWhileStatement -> JKDoWhileStatementImpl(body.toJK(), with(expressionTreeMapper) { condition.toJK() })
-                is PsiSwitchStatement -> JKSwitchStatementImpl(with(expressionTreeMapper) { expression.toJK() }, body?.toJK() ?: TODO())
-                is PsiSwitchLabelStatement -> if (isDefaultCase) JKSwitchDefaultLabelStatementImpl() else
-                    JKSwitchLabelStatementImpl(with(expressionTreeMapper) { caseValue.toJK() })
+
+
+                is PsiSwitchStatement -> {
+                    val cases = mutableListOf<JKSwitchCase>()
+                    for (statement in this.body?.statements.orEmpty()) {
+                        when (statement) {
+                            is PsiSwitchLabelStatement ->
+                                cases += if (statement.isDefaultCase)
+                                    JKDefaultSwitchCaseImpl(emptyList())
+                                else
+                                    JKLabelSwitchCaseImpl(
+                                        with(expressionTreeMapper) { statement.caseValue.toJK() },
+                                        emptyList()
+                                    )
+
+                            else ->
+                                cases.lastOrNull()?.also { it.statements = it.statements + statement.toJK() } ?: TODO("Show error?")
+
+                        }
+                    }
+                    JKSwitchStatementImpl(with(expressionTreeMapper) { expression.toJK() }, cases)
+                }
                 is PsiBreakStatement -> {
                     if (labelIdentifier != null)
                         JKBreakWithLabelStatementImpl(JKNameIdentifierImpl(labelIdentifier!!.text))

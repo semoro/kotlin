@@ -270,20 +270,6 @@ class JKDoWhileStatementImpl(body: JKStatement, condition: JKExpression) : JKDoW
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitDoWhileStatement(this, data)
 }
 
-class JKSwitchStatementImpl(expression: JKExpression, block: JKBlock) : JKSwitchStatement, JKBranchElementBase() {
-    override var block by child(block)
-    override var expression by child(expression)
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitSwitchStatement(this, data)
-}
-
-class JKSwitchLabelStatementImpl(expression: JKExpression) : JKSwitchLabelStatement, JKBranchElementBase() {
-    override var expression by child(expression)
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitSwitchLabelStatement(this, data)
-}
-
-class JKSwitchDefaultLabelStatementImpl : JKSwitchDefaultLabelStatement, JKElementBase() {
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitSwitchDefaultLabelStatement(this, data)
-}
 
 class JKBreakStatementImpl : JKBreakStatement, JKElementBase() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitBreakStatement(this, data)
@@ -357,4 +343,28 @@ class JKDelegationConstructorCallImpl(
     override val arguments: JKExpressionList by child(arguments)
 
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitDelegationConstructorCall(this, data)
+}
+
+
+class JKSwitchStatementImpl(
+    expression: JKExpression,
+    cases: List<JKSwitchCase>
+) : JKSwitchStatement, JKBranchElementBase() {
+    override var expression: JKExpression by child(expression)
+    override var cases: List<JKSwitchCase> by children(cases)
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitSwitchStatement(this, data)
+}
+
+class JKDefaultSwitchCaseImpl(statements: List<JKStatement>) : JKDefaultSwitchCase, JKBranchElementBase() {
+    override var statements: List<JKStatement> by children(statements)
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitDefaultSwitchCase(this, data)
+}
+
+class JKLabelSwitchCaseImpl(
+    label: JKExpression,
+    statements: List<JKStatement>
+) : JKLabelSwitchCase, JKBranchElementBase() {
+    override var statements: List<JKStatement> by children(statements)
+    override var label: JKExpression by child(label)
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitLabelSwitchCase(this, data)
 }

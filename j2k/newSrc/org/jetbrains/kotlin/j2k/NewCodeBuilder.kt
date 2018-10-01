@@ -467,6 +467,30 @@ class NewCodeBuilder {
             printer.printWithNoIndent(" ")
             ktAssignmentStatement.expression.accept(this)
         }
+
+        override fun visitSwitchStatement(switchStatement: JKSwitchStatement) {
+            printer.printWithNoIndent("when(")
+            switchStatement.expression.accept(this)
+            printer.printWithNoIndent(")")
+            printer.block(multiline = true) {
+                switchStatement.cases.forEach { it.accept(this) }
+            }
+        }
+
+        override fun visitDefaultSwitchCase(defaultSwitchCase: JKDefaultSwitchCase) {
+            printer.print("else ->")
+            printer.indented {
+                defaultSwitchCase.statements.forEach { it.accept(this) }
+            }
+        }
+
+        override fun visitLabelSwitchCase(labelSwitchCase: JKLabelSwitchCase) {
+            labelSwitchCase.label.accept(this)
+            printer.printWithNoIndent(" -> ")
+            printer.indented {
+                labelSwitchCase.statements.forEach { it.accept(this) }
+            }
+        }
     }
 
     private enum class ParenthesisKind(val open: String, val close: String) {
