@@ -39,7 +39,7 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
 
     private val modifierMapper = ModifierMapper()
 
-    val backAnnotation = mutableMapOf<JKElement, PsiElement>()
+    val backAnnotation = mutableMapOf<JKElement, PsiElement>()//TODO preserve consistency
 
     private inner class ExpressionTreeMapper {
         fun PsiExpression?.toJK(): JKExpression {
@@ -71,6 +71,8 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                 else -> {
                     throw RuntimeException("Not supported: ${this::class}")
                 }
+            }.also {
+                if (this != null) backAnnotation[it] = this
             }
         }
 
@@ -353,24 +355,22 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
 
 
                 is PsiSwitchStatement -> {
-                    val cases = mutableListOf<JKSwitchCase>()
+                    val cases = mutableListOf<JKJavaSwitchCase>()
                     for (statement in this.body?.statements.orEmpty()) {
                         when (statement) {
                             is PsiSwitchLabelStatement ->
                                 cases += if (statement.isDefaultCase)
-                                    JKDefaultSwitchCaseImpl(emptyList())
+                                    JKJavaDefaultwitchCaseImpl(emptyList())
                                 else
-                                    JKLabelSwitchCaseImpl(
+                                    JKJavaLabelSwitchCaseImpl(
                                         with(expressionTreeMapper) { statement.caseValue.toJK() },
                                         emptyList()
                                     )
-
                             else ->
                                 cases.lastOrNull()?.also { it.statements = it.statements + statement.toJK() } ?: TODO("Show error?")
-
                         }
                     }
-                    JKSwitchStatementImpl(with(expressionTreeMapper) { expression.toJK() }, cases)
+                    JKJavaSwitchStatementImpl(with(expressionTreeMapper) { expression.toJK() }, cases)
                 }
                 is PsiBreakStatement -> {
                     if (labelIdentifier != null)
@@ -379,6 +379,8 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                         JKBreakStatementImpl()
                 }
                 else -> TODO("for ${this::class}")
+            }.also {
+                if (this != null) backAnnotation[it] = this
             }
         }
     }

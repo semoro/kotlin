@@ -247,24 +247,3 @@ interface JKDelegationConstructorCall : JKMethodCallExpression {
     val expression: JKExpression
     override val arguments: JKExpressionList
 }
-
-
-
-interface JKSwitchStatement : JKStatement {
-    var expression: JKExpression
-    var cases: List<JKSwitchCase>
-}
-
-interface JKSwitchCase : JKTreeElement {
-    fun isDefault(): Boolean
-    var statements: List<JKStatement>
-}
-
-interface JKDefaultSwitchCase : JKSwitchCase {
-    override fun isDefault(): Boolean = true
-}
-
-interface JKLabelSwitchCase : JKSwitchCase {
-    override fun isDefault(): Boolean = false
-    var label: JKExpression
-}

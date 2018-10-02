@@ -468,28 +468,45 @@ class NewCodeBuilder {
             ktAssignmentStatement.expression.accept(this)
         }
 
-        override fun visitSwitchStatement(switchStatement: JKSwitchStatement) {
+        override fun visitKtWhenStatement(ktWhenStatement: JKKtWhenStatement) {
             printer.printWithNoIndent("when(")
-            switchStatement.expression.accept(this)
+            ktWhenStatement.expression.accept(this)
             printer.printWithNoIndent(")")
             printer.block(multiline = true) {
-                switchStatement.cases.forEach { it.accept(this) }
+                ktWhenStatement.cases.forEach { it.accept(this) }
             }
         }
 
-        override fun visitDefaultSwitchCase(defaultSwitchCase: JKDefaultSwitchCase) {
-            printer.print("else ->")
-            printer.indented {
-                defaultSwitchCase.statements.forEach { it.accept(this) }
+        override fun visitKtWhenCase(ktWhenCase: JKKtWhenCase) {
+            printer.separated(", ", ktWhenCase.labels) {
+                it.accept(this)
             }
-        }
-
-        override fun visitLabelSwitchCase(labelSwitchCase: JKLabelSwitchCase) {
-            labelSwitchCase.label.accept(this)
             printer.printWithNoIndent(" -> ")
-            printer.indented {
-                labelSwitchCase.statements.forEach { it.accept(this) }
+            ktWhenCase.statement.accept(this)
+        }
+
+        override fun visitKtDefaultWhenLabel(ktDefaultWhenLabel: JKKtDefaultWhenLabel) {
+            printer.printWithNoIndent("else")
+        }
+
+        override fun visitKtValueWhenLabel(ktValueWhenLabel: JKKtValueWhenLabel) {
+            ktValueWhenLabel.expression.accept(this)
+        }
+
+        private fun <T> Printer.separated(separator: String, items: List<T>, apply: (T) -> Unit) {
+            for ((index, item) in items.withIndex()) {
+                if (index > 0) this.printWithNoIndent(separator)
+                apply(item)
             }
+        }
+
+        private fun Printer.blockOrStatement(statements: List<JKStatement>): Printer {
+            if (statements.size == 1)
+                statements.first().accept(this@Visitor)
+            else this.block(multiline = true) {
+                statements.forEach { it.accept(this@Visitor) }
+            }
+            return this
         }
     }
 
@@ -502,6 +519,8 @@ class NewCodeBuilder {
         return builder.toString()
     }
 }
+
+
 
 private inline fun <T> List<T>.headTail(): Pair<T?, List<T>?> {
     val head = this.firstOrNull()
