@@ -164,6 +164,13 @@ class NewCodeBuilder {
             printer.printlnWithNoIndent()
         }
 
+        override fun visitKtIsExpression(ktIsExpression: JKKtIsExpression) {
+            ktIsExpression.expression.accept(this)
+            printer.printWithNoIndent(" is ")
+            ktIsExpression.type.accept(this)
+        }
+
+
         override fun visitParameter(parameter: JKParameter) {
             printer.printWithNoIndent(parameter.name.value, ": ")
             parameter.type.accept(this)
@@ -327,6 +334,8 @@ class NewCodeBuilder {
                     (type.classReference as JKClassSymbol).fqName?.let { printer.printWithNoIndent(FqName(it).shortName().asString()) }
                 is JKUnresolvedClassType ->
                     printer.printWithNoIndent(type.name)
+                is JKStarProjectionType ->
+                    printer.printWithNoIndent("*")
                 else -> printer.printWithNoIndent("Unit /* TODO: ${type::class} */")
             }
             if (type is JKParametrizedType && type.parameters.isNotEmpty()) {

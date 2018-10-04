@@ -44,6 +44,7 @@ object ConversionsRunner {
             +ClassToObjectPromotionConversion()
             +PolyadicExpressionConversion()
             +BinaryExpressionConversion()
+            +InstanceofConversion()
         }
 
     fun doApply(trees: List<JKTreeElement>, context: ConversionContext) {

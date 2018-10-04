@@ -59,3 +59,8 @@ interface JKKtAlsoCallExpression : JKKtMethodCallExpression {
 interface JKKtFieldAccessExpression : JKFieldAccessExpression
 
 interface JKKtLiteralExpression : JKLiteralExpression
+
+interface JKKtIsExpression : JKExpression {
+    var expression: JKExpression
+    var type: JKTypeElement
+}

@@ -83,4 +83,5 @@ interface JKVisitor<out R, in D> {
     fun visitKtAlsoCallExpression(ktAlsoCallExpression: JKKtAlsoCallExpression, data: D): R = visitKtMethodCallExpression(ktAlsoCallExpression, data)
     fun visitKtFieldAccessExpression(ktFieldAccessExpression: JKKtFieldAccessExpression, data: D): R = visitFieldAccessExpression(ktFieldAccessExpression, data)
     fun visitKtLiteralExpression(ktLiteralExpression: JKKtLiteralExpression, data: D): R = visitLiteralExpression(ktLiteralExpression, data)
+    fun visitKtIsExpression(ktIsExpression: JKKtIsExpression, data: D): R = visitExpression(ktIsExpression, data)
 }

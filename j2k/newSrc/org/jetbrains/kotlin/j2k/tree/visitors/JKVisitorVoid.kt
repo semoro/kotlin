@@ -163,4 +163,6 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitKtFieldAccessExpression(ktFieldAccessExpression: JKKtFieldAccessExpression, data: Nothing?) = visitKtFieldAccessExpression(ktFieldAccessExpression)
     fun visitKtLiteralExpression(ktLiteralExpression: JKKtLiteralExpression) = visitLiteralExpression(ktLiteralExpression, null)
     override fun visitKtLiteralExpression(ktLiteralExpression: JKKtLiteralExpression, data: Nothing?) = visitKtLiteralExpression(ktLiteralExpression)
+    fun visitKtIsExpression(ktIsExpression: JKKtIsExpression) = visitExpression(ktIsExpression, null)
+    override fun visitKtIsExpression(ktIsExpression: JKKtIsExpression, data: Nothing?) = visitKtIsExpression(ktIsExpression)
 }
