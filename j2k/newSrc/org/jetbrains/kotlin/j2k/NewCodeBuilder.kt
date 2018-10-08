@@ -361,6 +361,17 @@ class NewCodeBuilder {
             }
         }
 
+        override fun visitJavaNewExpression(javaNewExpression: JKJavaNewExpression) {
+            printer.printWithNoIndent(FqName(javaNewExpression.constructorSymbol.fqName).shortName())//TODO import name somehow?
+            printer.printWithNoIndent("(")
+            //TODO use new sequence generator in future
+            for ((index, argument) in javaNewExpression.arguments.expressions.withIndex()) {
+                if (index > 0) printer.printWithNoIndent(", ")
+                argument.accept(this)
+            }
+            printer.printWithNoIndent(")")
+        }
+
         override fun visitTypeElement(typeElement: JKTypeElement) {
             val type = typeElement.type
 
