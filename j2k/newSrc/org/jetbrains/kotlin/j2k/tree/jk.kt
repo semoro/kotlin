@@ -47,7 +47,7 @@ interface JKClass : JKDeclaration, JKModifierListOwner, JKBranchElement {
     var classKind: ClassKind
 
     enum class ClassKind {
-        ABSTRACT, ANNOTATION, CLASS, ENUM, INTERFACE, OBJECT, COMPANION
+        ANNOTATION, CLASS, ENUM, INTERFACE, OBJECT, COMPANION
     }
 }
 
@@ -86,7 +86,7 @@ interface JKAccessModifier : JKModifier {
 
 interface JKModalityModifier : JKModifier {
     enum class Modality {
-        OPEN, FINAL, ABSTRACT
+        OPEN, FINAL, ABSTRACT, OVERRIDE
     }
 
     val modality: Modality
@@ -197,7 +197,7 @@ interface JKLoopStatement : JKStatement {
     var body: JKStatement
 }
 
-interface JKBlockStatement : JKStatement {
+interface JKBlockStatement : JKStatement, JKBranchElement {
     var block: JKBlock
 }
 

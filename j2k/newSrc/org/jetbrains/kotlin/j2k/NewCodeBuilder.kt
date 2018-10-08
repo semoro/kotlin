@@ -32,7 +32,6 @@ class NewCodeBuilder {
     val printer = Printer(builder)
 
     private fun classKindString(kind: JKClass.ClassKind): String = when (kind) {
-        JKClass.ClassKind.ABSTRACT -> "abstract class"
         JKClass.ClassKind.ANNOTATION -> "annotation class"
         JKClass.ClassKind.CLASS -> "class"
         JKClass.ClassKind.ENUM -> "enum class"
@@ -82,6 +81,7 @@ class NewCodeBuilder {
                     JKModalityModifier.Modality.OPEN -> "open"
                     JKModalityModifier.Modality.FINAL -> "final"
                     JKModalityModifier.Modality.ABSTRACT -> "abstract"
+                    JKModalityModifier.Modality.OVERRIDE -> "override"
                 }
             )
         }
@@ -120,7 +120,7 @@ class NewCodeBuilder {
             printer.printWithNoIndent(klass.name.value)
 
             val primaryConstructor = klass.primaryConstructor()
-            if (primaryConstructor != null) {
+            if (primaryConstructor != null && primaryConstructor.parameters.isNotEmpty()) {
                 renderParameterList(primaryConstructor.parameters)
             }
 
@@ -138,7 +138,7 @@ class NewCodeBuilder {
                 }
             }
 
-            if (klass.declarationList.isNotEmpty()) {
+            if (klass.declarationList.any { it !is JKKtPrimaryConstructor }) {
                 printer.block(multiline = true) {
                     klass.declarationList.forEach { it.accept(this) }
                 }
@@ -425,12 +425,20 @@ class NewCodeBuilder {
         }
 
         override fun visitLambdaExpression(lambdaExpression: JKLambdaExpression) {
-            printer.printWithNoIndent("{")
-            lambdaExpression.parameters.firstOrNull()?.accept(this)
-            lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
-            printer.printWithNoIndent(" -> ")
-            lambdaExpression.statement.accept(this)
-            printer.printWithNoIndent("}")
+            printer.par(CURVED_MULTILINE) {
+                lambdaExpression.parameters.firstOrNull()?.accept(this)
+                lambdaExpression.parameters.asSequence().drop(1).forEach { printer.printWithNoIndent(", "); it.accept(this) }
+                if (lambdaExpression.parameters.isNotEmpty()) {
+                    printer.printWithNoIndent(" -> ")
+                }
+
+                val statement = lambdaExpression.statement
+                if (statement is JKBlockStatement) {
+                    statement.block.statements.forEach { it.accept(this) }
+                } else {
+                    statement.accept(this)
+                }
+            }
         }
 
         override fun visitBlockStatement(blockStatement: JKBlockStatement) {
