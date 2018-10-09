@@ -29,6 +29,7 @@ class ModifiersConversion(private val context: ConversionContext) : RecursiveApp
             if (element is JKParameter) {
                 convertParameterModifiers(element)
             }
+            element.sortModifiers()
         }
         return recurse(element)
     }
@@ -76,6 +77,25 @@ class ModifiersConversion(private val context: ConversionContext) : RecursiveApp
             }
         }
     }
+
+    private fun JKModifierListOwner.sortModifiers() {
+        modifierList.modifiers = modifierList.modifiers.sortedBy { it.priority }
+    }
+
+    private val JKModifier.priority: Int
+        get() =
+            when (this) {
+                is JKAccessModifier -> 0
+                is JKModalityModifier ->
+                    when (this.modality) {
+                        JKModalityModifier.Modality.FINAL, JKModalityModifier.Modality.OPEN, JKModalityModifier.Modality.ABSTRACT -> 1
+                        JKModalityModifier.Modality.OVERRIDE -> 2
+                    }
+                is JKJavaModifier -> 3
+                is JKMutabilityModifier -> 4
+                else -> TODO(this.toString())
+            }
+
 
     private fun JKModifierListOwner.filterModifiers(filter: (JKModifier) -> Boolean) {
         modifierList.modifiers = modifierList.modifiers.filter(filter)
