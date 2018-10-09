@@ -64,3 +64,7 @@ interface JKKtIsExpression : JKExpression {
     var expression: JKExpression
     var type: JKTypeElement
 }
+
+interface JKKtInitDeclaration : JKDeclaration {
+    var block: JKBlock
+}
