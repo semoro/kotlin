@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.JKModalityModifier.Modality.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 
+
+//TODO not needed???
 class InsertDefaultPrimaryConstructorConversion(private val context: ConversionContext) : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKClass) return recurse(element)

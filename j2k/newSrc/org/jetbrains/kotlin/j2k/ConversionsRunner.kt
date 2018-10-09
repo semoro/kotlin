@@ -32,7 +32,7 @@ object ConversionsRunner {
             +BlockToRunConversion(context)
             +ConstructorConversion(context)
             +PrimaryConstructorDetectConversion(context)
-            +InsertDefaultPrimaryConstructorConversion(context)
+//            +InsertDefaultPrimaryConstructorConversion(context)
             +FieldInitializersInPrimaryFromParamsConversion()
             +AssignmentAsExpressionToAlsoConversion(context)
             +AssignmentStatementValCreationConversion(context)
