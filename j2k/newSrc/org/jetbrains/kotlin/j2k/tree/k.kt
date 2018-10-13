@@ -68,3 +68,9 @@ interface JKKtIsExpression : JKExpression {
 interface JKKtInitDeclaration : JKDeclaration {
     var block: JKBlock
 }
+
+interface JKKtForInStatement : JKStatement {
+    var variableIdentifier: JKNameIdentifier
+    var iterationExpression: JKExpression
+    var body: JKStatement
+}

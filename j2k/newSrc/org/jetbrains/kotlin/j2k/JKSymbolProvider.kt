@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtProperty
 
 
 class JKSymbolProvider {
@@ -29,6 +30,7 @@ class JKSymbolProvider {
                 is PsiMethod -> JKMultiverseMethodSymbol(psi, this)
                 is PsiField -> JKMultiverseFieldSymbol(psi)
                 is KtNamedFunction -> JKMultiverseFunctionSymbol(psi)
+                is KtProperty -> JKMultiversePropertySymbol(psi)
                 else -> TODO(psi::class.toString())
             }
         }

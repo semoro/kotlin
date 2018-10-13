@@ -71,6 +71,9 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                 else -> {
                     throw RuntimeException("Not supported: ${this::class}")
                 }
+            }.also {
+                if (this != null)
+                    backAnnotation[it] = this
             }
         }
 
@@ -325,7 +328,10 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                         with(expressionTreeMapper) { it.typeElement.toJK() },
                         JKNameIdentifierImpl(it.name ?: TODO()),
                         with(expressionTreeMapper) { it.initializer.toJK() }
-                    ).also { i -> symbolProvider.provideUniverseSymbol(it, i) }
+                    ).also { i ->
+                        symbolProvider.provideUniverseSymbol(it, i)
+                        backAnnotation[i] = it
+                    }
                 } else TODO()
             }
         }
@@ -358,6 +364,9 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                     JKBreakStatementImpl()
                 }
                 else -> TODO("for ${this::class}")
+            }.also {
+                if (this != null)
+                    backAnnotation[it] = this
             }
         }
     }
