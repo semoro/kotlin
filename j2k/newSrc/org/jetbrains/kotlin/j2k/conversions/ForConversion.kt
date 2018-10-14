@@ -139,7 +139,9 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 bound
             } as? JKQualifiedExpression ?: return null
 
-        val indices = indeciesByCollectionSize(collectionSizeExpression) ?: return null
+        val indices = indicesByCollectionSize(collectionSizeExpression)
+            ?: indicesByArrayLength(collectionSizeExpression)
+            ?: return null
 
         val psiContext = collectionSizeExpression.psi<PsiExpression>() ?: return null
         return if (reversed) {
@@ -155,18 +157,31 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
     }
 
 
-    private fun indeciesByCollectionSize(javaSizeCall: JKQualifiedExpression): JKQualifiedExpression? {
+    private fun indicesByCollectionSize(javaSizeCall: JKQualifiedExpression): JKQualifiedExpression? {
         val methodCall = javaSizeCall.selector as? JKMethodCallExpression ?: return null
         //TODO check if receiver type is Collection
         if (methodCall.identifier.name == "size" && methodCall.arguments.expressions.isEmpty()) {
-            val psiContext = javaSizeCall.psi<PsiExpression>() ?: return null
-            val indiciesSymbol = context.symbolProvider.provideDirectSymbol(
-                multiResolveFqName(ClassId.fromString("kotlin/collections/indices"), psiContext).first()
-            ) as JKMultiversePropertySymbol
-            javaSizeCall.selector = JKKtFieldAccessExpressionImpl(indiciesSymbol)
-            return javaSizeCall
+            return toIndicesCall(javaSizeCall)
         }
         return null
+    }
+
+    private fun indicesByArrayLength(javaSizeCall: JKQualifiedExpression): JKQualifiedExpression? {
+        val methodCall = javaSizeCall.selector as? JKJavaFieldAccessExpression ?: return null
+        //TODO check if receiver type is array
+        if (methodCall.identifier.name == "length") {
+            return toIndicesCall(javaSizeCall)
+        }
+        return null
+    }
+
+    private fun toIndicesCall(javaSizeCall: JKQualifiedExpression): JKQualifiedExpression? {
+        val psiContext = javaSizeCall.psi<PsiExpression>() ?: return null
+        val indiciesSymbol = context.symbolProvider.provideDirectSymbol(
+            multiResolveFqName(ClassId.fromString("kotlin/collections/indices"), psiContext).first()
+        ) as JKMultiversePropertySymbol
+        javaSizeCall.selector = JKKtFieldAccessExpressionImpl(indiciesSymbol)
+        return javaSizeCall
     }
 
 
