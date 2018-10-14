@@ -169,4 +169,6 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitKtInitDeclaration(ktInitDeclaration: JKKtInitDeclaration, data: Nothing?) = visitKtInitDeclaration(ktInitDeclaration)
     fun visitKtForInStatement(ktForInStatement: JKKtForInStatement) = visitStatement(ktForInStatement, null)
     override fun visitKtForInStatement(ktForInStatement: JKKtForInStatement, data: Nothing?) = visitKtForInStatement(ktForInStatement)
+    fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression) = visitExpression(ktOperatorExpression, null)
+    override fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression, data: Nothing?) = visitKtOperatorExpression(ktOperatorExpression)
 }

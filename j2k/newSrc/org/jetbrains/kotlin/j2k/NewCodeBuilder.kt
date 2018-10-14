@@ -226,6 +226,13 @@ class NewCodeBuilder {
             }
         }
 
+        override fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression) {
+            ktOperatorExpression.receiver.accept(this)
+            printer.printWithNoIndent(" ")
+            printer.printWithNoIndent(ktOperatorExpression.identifier.name)
+            printer.printWithNoIndent(" ")
+            ktOperatorExpression.argument.accept(this)
+        }
 
         override fun visitIfElseExpression(ifElseExpression: JKIfElseExpression) {
             printer.printWithNoIndent("if (")

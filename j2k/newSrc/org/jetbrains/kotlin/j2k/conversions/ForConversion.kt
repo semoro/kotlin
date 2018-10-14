@@ -7,8 +7,9 @@ package org.jetbrains.kotlin.j2k.conversions
 
 import com.intellij.psi.*
 import org.jetbrains.kotlin.j2k.ConversionContext
+import org.jetbrains.kotlin.j2k.ReferenceSearcher
+import org.jetbrains.kotlin.j2k.hasWriteAccesses
 import org.jetbrains.kotlin.j2k.tree.*
-import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.ClassId
@@ -38,7 +39,8 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
             if (right.psi<PsiExpression>()?.type in listOf(PsiType.DOUBLE, PsiType.FLOAT, PsiType.CHAR)) return null
             if (left.identifier.target != loopVar) return null
             val start = loopVar.initializer
-            val operationType = (loopStatement.updater as? JKExpressionStatement)?.expression?.isVariableIncrementOrDecrement(loopVar)
+            val operationType =
+                (loopStatement.updater as? JKExpressionStatement)?.expression?.isVariableIncrementOrDecrement(loopVar)
             val reversed = when ((operationType  as? JKJavaOperatorImpl)?.token) {
                 JavaTokenType.PLUSPLUS -> false
                 JavaTokenType.MINUSMINUS -> true
@@ -52,28 +54,67 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 JavaTokenType.NE, KtTokens.EXCLEQ -> false
                 else -> return null
             }
-            val range = forIterationRange(start, right, reversed, inclusive)
+            val range = forIterationRange(start, right, reversed, inclusive, loopVarPsi)
             //TODO
 //            val explicitType = if (context.converter.settings.specifyLocalVariableTypeByDefault)
 //                JKJavaPrimitiveTypeImpl.INT
 //            else null
-            (loopVar as? JKBranchElement)?.invalidate()
-            (loopStatement as? JKBranchElement)?.invalidate()
-            range.detach(range.parent!!)
             return JKKtForInStatementImpl(
-                loopVar.name,
-                range,
-                loopStatement.body
+                loopVar.name.detached(),
+                range.detached(),
+                loopStatement.body.detached()
             )
 
         }
         return null
     }
 
-    private fun forIterationRange(start: JKExpression, bound: JKExpression, reversed: Boolean, inclusiveComparison: Boolean): JKExpression {
+    private fun forIterationRange(
+        start: JKExpression,
+        bound: JKExpression,
+        reversed: Boolean,
+        inclusiveComparison: Boolean,
+        psiContext: PsiElement
+    ): JKExpression {
         indicesIterationRange(start, bound, reversed, inclusiveComparison)?.also { return it }
+        if (start.parent != null) start.detach(start.parent!!)
+        if (bound.parent != null) bound.detach(bound.parent!!)
+        return when {
+            reversed -> downToExpression(
+                start,
+                convertBound(bound, if (inclusiveComparison) 0 else +1),
+                context,
+                psiContext
+            )
+            bound !is JKKtLiteralExpression && !inclusiveComparison ->
+                untilToExpression(
+                    start,
+                    convertBound(bound, 0),
+                    context,
+                    psiContext
+                )
+            else -> JKBinaryExpressionImpl(
+                start,
+                convertBound(bound, if (inclusiveComparison) 0 else -1),
+                JKKtOperatorImpl.tokenToOperator[KtTokens.RANGE]!!
+            )
+        }
+    }
 
-        TODO()
+    private fun convertBound(bound: JKExpression, correction: Int): JKExpression {
+        if (correction == 0) return bound
+
+        if (bound is JKLiteralExpression && bound.type == JKLiteralExpression.LiteralType.INT) {
+            val value = bound.literal.toInt()
+            return JKKtLiteralExpressionImpl((value + correction).toString(), bound.type)
+        }
+
+        val sign = if (correction > 0) KtTokens.PLUS else KtTokens.MINUS
+        return JKBinaryExpressionImpl(
+            bound,
+            JKKtLiteralExpressionImpl(Math.abs(correction).toString(), JKLiteralExpression.LiteralType.INT),
+            JKKtOperatorImpl.tokenToOperator[sign]!!
+        )
     }
 
     private fun indicesIterationRange(
@@ -89,7 +130,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 if ((bound as? JKLiteralExpression)?.literal?.toIntOrNull() != 0) return null
 
                 if (start !is JKBinaryExpression) return null
-                if ((start.operator as? JKJavaOperatorImpl)?.token != JavaTokenType.MINUS) return null
+                if ((start.operator as? JKKtOperatorImpl)?.token != KtTokens.MINUS) return null
                 if ((start.right as? JKLiteralExpression)?.literal?.toIntOrNull() != 1) return null
                 start.left
             } else {
@@ -106,7 +147,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 multiResolveFqName(ClassId.fromString("kotlin/collections/reversed"), psiContext).first()
             ) as JKMethodSymbol
             JKQualifiedExpressionImpl(
-                indices,
+                indices.detached(),
                 JKKtQualifierImpl.DOT,
                 JKJavaMethodCallExpressionImpl(reversedSymbol, JKExpressionListImpl())
             )
