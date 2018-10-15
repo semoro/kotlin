@@ -72,6 +72,7 @@ interface JKVisitor<out R, in D> {
     fun visitJavaInstanceOfExpression(javaInstanceOfExpression: JKJavaInstanceOfExpression, data: D): R = visitExpression(javaInstanceOfExpression, data)
     fun visitJavaPolyadicExpression(javaPolyadicExpression: JKJavaPolyadicExpression, data: D): R = visitExpression(javaPolyadicExpression, data)
     fun visitJavaAssignmentExpression(javaAssignmentExpression: JKJavaAssignmentExpression, data: D): R = visitExpression(javaAssignmentExpression, data)
+    fun visitJavaContinueStatement(javaContinueStatement: JKJavaContinueStatement, data: D): R = visitStatement(javaContinueStatement, data)
     fun visitKtProperty(ktProperty: JKKtProperty, data: D): R = visitField(ktProperty, data)
     fun visitKtFunction(ktFunction: JKKtFunction, data: D): R = visitMethod(ktFunction, data)
     fun visitKtConstructor(ktConstructor: JKKtConstructor, data: D): R = visitDeclaration(ktConstructor, data)

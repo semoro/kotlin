@@ -6,9 +6,12 @@
 package org.jetbrains.kotlin.j2k.conversions
 
 import com.intellij.psi.*
+import jdk.nashorn.internal.ir.BlockStatement
 import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.ReferenceSearcher
+import org.jetbrains.kotlin.j2k.ast.*
 import org.jetbrains.kotlin.j2k.hasWriteAccesses
+import org.jetbrains.kotlin.j2k.isInSingleLine
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -22,8 +25,63 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKJavaForLoopStatement) return recurse(element)
 
-        convertToForeach(element)?.also { return it }
+        convertToForeach(element)?.also { return recurse(it) }
+        convertToWhile(element)?.also { return recurse(it) }
+
         return recurse(element)
+    }
+
+    private fun convertToWhile(loopStatement: JKJavaForLoopStatement): JKStatement? {
+        val whileBody = createWhileBody(loopStatement)
+
+        val whileStatement =
+            JKWhileStatementImpl(
+                if (loopStatement.condition !is JKStubExpression) loopStatement.condition.detached()
+                else JKKtLiteralExpressionImpl("true", JKLiteralExpression.LiteralType.BOOLEAN),
+                whileBody
+            )
+        //TODO if (loopStatement.initializer is Empty) return whileStatement
+        //TODO check for error conflict
+        return JKBlockStatementImpl(JKBlockImpl(listOf(loopStatement.initializer.detached(), whileStatement)))
+    }
+
+    private fun createWhileBody(loopStatement: JKJavaForLoopStatement): JKStatement {
+        //TODO if updater is empty `return loopStatement.body`
+        val continueStatementConverter = object : RecursiveApplicableConversionBase() {
+            override fun applyToElement(element: JKTreeElement): JKTreeElement {
+                if (element !is JKJavaContinueStatement) return recurse(element)
+                //TODO ??? if (statement.findContinuedStatement()?.toContinuedLoop() != this@ForConverter.statement) return null
+                val statements = listOf(loopStatement.updater, element)
+                return recurse(JKBlockStatementImpl(JKBlockImpl(statements)))
+            }
+
+        }
+
+        val body = loopStatement.body
+
+        if (body is JKBlockStatement) {
+            val initializer = loopStatement.initializer
+            val hasNameConflict =
+                initializer is JKDeclarationStatement && initializer.declaredStatements.any { loopVar ->
+                    loopVar is JKLocalVariable && body.statements.any { statement ->
+                        statement is JKDeclarationStatement && statement.declaredStatements.any {
+                            it is JKLocalVariable && it.name == loopVar.name
+                        }
+                    }
+                }
+
+            val statements =
+                if (hasNameConflict) {
+                    listOf(continueStatementConverter.applyToElement(body) as JKStatement, loopStatement.updater)
+                } else {
+                    body.block.statements + loopStatement.updater
+                }
+            return JKBlockStatementImpl(JKBlockImpl(statements.map { it.detached() }))
+        } else {
+            val statements =
+                listOf(continueStatementConverter.applyToElement(body) as JKStatement, loopStatement.updater)
+            return JKBlockStatementImpl(JKBlockImpl(statements.map { it.detached() }))
+        }
     }
 
     private fun convertToForeach(loopStatement: JKJavaForLoopStatement): JKKtForInStatement? {
@@ -55,7 +113,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 else -> return null
             }
             val range = forIterationRange(start, right, reversed, inclusive, loopVarPsi)
-            //TODO
+            //TODO for loop explicitType
 //            val explicitType = if (context.converter.settings.specifyLocalVariableTypeByDefault)
 //                JKJavaPrimitiveTypeImpl.INT
 //            else null

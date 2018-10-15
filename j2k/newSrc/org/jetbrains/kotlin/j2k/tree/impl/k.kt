@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.visitors.JKVisitor
 import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.utils.addToStdlib.assertedCast
 import org.jetbrains.kotlin.utils.addToStdlib.cast
 
 class JKKtPropertyImpl(
@@ -241,4 +242,8 @@ class JKKtOperatorExpressionImpl(
     override var receiver: JKExpression by child(receiver)
     override var argument: JKExpression by child(argument)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtOperatorExpression(this, data)
+}
+
+class JKJavaContinueStatementImpl() : JKJavaContinueStatement, JKElementBase() {
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaContinueStatement(this, data)
 }

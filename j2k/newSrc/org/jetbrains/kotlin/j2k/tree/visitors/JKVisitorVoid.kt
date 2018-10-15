@@ -141,6 +141,8 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitJavaPolyadicExpression(javaPolyadicExpression: JKJavaPolyadicExpression, data: Nothing?) = visitJavaPolyadicExpression(javaPolyadicExpression)
     fun visitJavaAssignmentExpression(javaAssignmentExpression: JKJavaAssignmentExpression) = visitExpression(javaAssignmentExpression, null)
     override fun visitJavaAssignmentExpression(javaAssignmentExpression: JKJavaAssignmentExpression, data: Nothing?) = visitJavaAssignmentExpression(javaAssignmentExpression)
+    fun visitJavaContinueStatement(javaContinueStatement: JKJavaContinueStatement) = visitStatement(javaContinueStatement, null)
+    override fun visitJavaContinueStatement(javaContinueStatement: JKJavaContinueStatement, data: Nothing?) = visitJavaContinueStatement(javaContinueStatement)
     fun visitKtProperty(ktProperty: JKKtProperty) = visitField(ktProperty, null)
     override fun visitKtProperty(ktProperty: JKKtProperty, data: Nothing?) = visitKtProperty(ktProperty)
     fun visitKtFunction(ktFunction: JKKtFunction) = visitMethod(ktFunction, null)
