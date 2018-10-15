@@ -363,6 +363,12 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                     //labelIdentifier?.also { TODO("Label break") }
                     JKBreakStatementImpl()
                 }
+                is PsiContinueStatement -> {
+                    val label = labelIdentifier?.let {
+                        JKLabelTextImpl(JKNameIdentifierImpl(it.text))
+                    } ?: JKLabelEmptyImpl()
+                    JKContinueStatementImpl(label)
+                }
                 else -> TODO("for ${this::class}")
             }.also {
                 if (this != null)

@@ -87,5 +87,3 @@ interface JKJavaAssignmentExpression : JKExpression, JKBranchElement {
     var expression: JKExpression
     var operator: JKOperator
 }
-
-interface JKJavaContinueStatement: JKStatement

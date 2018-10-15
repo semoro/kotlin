@@ -243,7 +243,3 @@ class JKKtOperatorExpressionImpl(
     override var argument: JKExpression by child(argument)
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtOperatorExpression(this, data)
 }
-
-class JKJavaContinueStatementImpl() : JKJavaContinueStatement, JKElementBase() {
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaContinueStatement(this, data)
-}
