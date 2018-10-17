@@ -21,6 +21,7 @@ import com.intellij.psi.*
 import com.intellij.psi.JavaTokenType.SUPER_KEYWORD
 import com.intellij.psi.JavaTokenType.THIS_KEYWORD
 import com.intellij.psi.impl.source.tree.ChildRole
+import com.intellij.psi.impl.source.tree.java.PsiLabeledStatementImpl
 import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl
 import com.intellij.psi.impl.source.tree.java.PsiNewExpressionImpl
 import com.intellij.psi.impl.source.tree.java.PsiReferenceExpressionImpl
@@ -369,6 +370,10 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                     } ?: JKLabelEmptyImpl()
                     JKContinueStatementImpl(label)
                 }
+                is PsiLabeledStatement -> {
+                    val (labels, statement) = collectLabels()
+                    JKLabeledStatementImpl(statement.toJK(), labels.map { JKNameIdentifierImpl(it.text) })
+                }
                 else -> TODO("for ${this::class}")
             }.also {
                 if (this != null)
@@ -376,6 +381,14 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
             }
         }
     }
+
+    //TODO better way than generateSequence.last??
+    fun PsiLabeledStatement.collectLabels(): Pair<List<PsiIdentifier>, PsiStatement> =
+        generateSequence(emptyList<PsiIdentifier>() to this as PsiStatement) { (labels, statement) ->
+            if (statement !is PsiLabeledStatementImpl) return@generateSequence null
+            (labels + statement.labelIdentifier) to statement.statement!!
+        }.last()
+
 
     private inner class ModifierMapper {
         fun PsiModifierList?.toJK(finalAsMutability: Boolean = false): JKModifierList {
