@@ -23,6 +23,7 @@ object ConversionsRunner {
 
     private fun createRootConversion(context: ConversionContext) =
         batchPipe {
+            +BinaryExpressionConversion(context)
             +ModalityConversion(context)
             +ImplicitInitializerConversion()
             +DefaultArgumentsConversion(context)
@@ -44,7 +45,6 @@ object ConversionsRunner {
             +StaticsToCompanionExtractConversion()
             +ClassToObjectPromotionConversion()
             +PolyadicExpressionConversion()
-            +BinaryExpressionConversion()
             +InstanceofConversion()
             +ForConversion(context)
             +LabeledStatementConversion()
