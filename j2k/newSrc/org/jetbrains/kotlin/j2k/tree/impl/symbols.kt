@@ -36,13 +36,14 @@ interface JKClassSymbol : JKNamedSymbol {
 
 interface JKMethodSymbol : JKNamedSymbol {
     val fqName: String
-    val recivierType: JKType?
+    val receiverType: JKType?
     val parameterTypes: List<JKType>
     val returnType: JKType
 }
 
 interface JKFieldSymbol : JKNamedSymbol {
     val fqName: String
+    val filedType: JKType
 }
 
 class JKUniverseClassSymbol : JKClassSymbol, JKUniverseSymbol<JKClass> {
@@ -77,7 +78,7 @@ class JKMultiverseKtClassSymbol(override val target: KtClassOrObject) : JKClassS
 }
 
 class JKUniverseMethodSymbol(private val symbolProvider: JKSymbolProvider) : JKMethodSymbol, JKUniverseSymbol<JKMethod> {
-    override val recivierType: JKType?
+    override val receiverType: JKType?
         get() = (target.parent as? JKClass)?.let {
             JKClassTypeImpl(symbolProvider.provideUniverseSymbol(it), emptyList()/*TODO*/)
         }
@@ -95,7 +96,7 @@ class JKUniverseMethodSymbol(private val symbolProvider: JKSymbolProvider) : JKM
 }
 
 class JKMultiverseMethodSymbol(override val target: PsiMethod, private val symbolProvider: JKSymbolProvider) : JKMethodSymbol {
-    override val recivierType: JKType?
+    override val receiverType: JKType?
         get() = target.containingClass?.let {
             JKClassTypeImpl(symbolProvider.provideDirectSymbol(it) as JKClassSymbol, emptyList()/*TODO*/)
         }
@@ -112,7 +113,7 @@ class JKMultiverseMethodSymbol(override val target: PsiMethod, private val symbo
 }
 
 class JKMultiverseFunctionSymbol(override val target: KtNamedFunction, private val symbolProvider: JKSymbolProvider) : JKMethodSymbol {
-    override val recivierType: JKType?
+    override val receiverType: JKType?
         get() = target.receiverTypeReference?.typeElement?.toJK(symbolProvider)
     override val parameterTypes: List<JKType>
         get() = target.valueParameters.map { it.typeReference!!.typeElement!!.toJK(symbolProvider) }
@@ -127,6 +128,8 @@ class JKMultiverseFunctionSymbol(override val target: KtNamedFunction, private v
 }
 
 class JKUniverseFieldSymbol : JKFieldSymbol, JKUniverseSymbol<JKField> {
+    override val filedType: JKType
+        get() = target.type.type
     override val name: String
         get() = target.name.value
     override lateinit var target: JKField
@@ -136,7 +139,9 @@ class JKUniverseFieldSymbol : JKFieldSymbol, JKUniverseSymbol<JKField> {
         get() = target.name.value // TODO("Fix this")
 }
 
-class JKMultiverseFieldSymbol(override val target: PsiField) : JKFieldSymbol {
+class JKMultiverseFieldSymbol(override val target: PsiField, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
+    override val filedType: JKType
+        get() = target.type.toJK(symbolProvider)
     override val name: String
         get() = target.name
     override val declaredIn: JKSymbol
@@ -145,7 +150,9 @@ class JKMultiverseFieldSymbol(override val target: PsiField) : JKFieldSymbol {
         get() = target.name // TODO("Fix this")
 }
 
-class JKMultiversePropertySymbol(override val target: KtProperty) : JKFieldSymbol {
+class JKMultiversePropertySymbol(override val target: KtProperty, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
+    override val filedType: JKType
+        get() = target.typeReference!!.typeElement!!.toJK(symbolProvider)
     override val name: String
         get() = target.name!!
     override val declaredIn: JKSymbol
@@ -155,6 +162,8 @@ class JKMultiversePropertySymbol(override val target: KtProperty) : JKFieldSymbo
 }
 
 class JKUnresolvedField(override val target: PsiReference) : JKFieldSymbol {
+    override val filedType: JKType
+        get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
     override val name: String
         get() = TODO("not implemented")
     override val declaredIn: JKSymbol
@@ -163,7 +172,7 @@ class JKUnresolvedField(override val target: PsiReference) : JKFieldSymbol {
 }
 
 class JKUnresolvedMethod(override val target: PsiReference) : JKMethodSymbol {
-    override val recivierType: JKType?
+    override val receiverType: JKType?
         get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
     override val parameterTypes: List<JKType>
         get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.

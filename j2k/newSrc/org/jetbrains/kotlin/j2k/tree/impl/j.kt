@@ -120,6 +120,7 @@ fun JKJavaOperatorToken.toKtToken(): JKKtOperatorToken =
         JavaTokenType.PERC -> JKKtSingleValueOperatorToken(KtTokens.PERC)
 
         JavaTokenType.EQ -> JKKtSingleValueOperatorToken(KtTokens.EQ)
+        JavaTokenType.NE -> JKKtSingleValueOperatorToken(KtTokens.EXCLEQ)
         JavaTokenType.PLUSEQ -> JKKtSingleValueOperatorToken(KtTokens.PLUSEQ)
         JavaTokenType.MINUSEQ -> JKKtSingleValueOperatorToken(KtTokens.MINUSEQ)
 
@@ -132,7 +133,7 @@ fun JKJavaOperatorToken.toKtToken(): JKKtOperatorToken =
 
         JavaTokenType.OREQ -> JKKtWordOperatorToken("or")
         JavaTokenType.ANDEQ -> JKKtWordOperatorToken("and")
-        else -> TODO(this.token::class.java.toString())
+        else -> TODO(this.token.toString())
     }
 
 

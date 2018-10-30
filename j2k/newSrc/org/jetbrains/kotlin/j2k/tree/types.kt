@@ -20,6 +20,9 @@ fun JKExpression.type(context: ConversionContext): JKType =
     when (this) {
         is JKLiteralExpression -> type.toJkType(context.symbolProvider)
         is JKBinaryExpression -> (operator as JKKtOperatorImpl).methodSymbol.returnType
+        is JKMethodCallExpression -> identifier.returnType
+        is JKJavaFieldAccessExpressionImpl -> identifier.filedType
+        is JKQualifiedExpressionImpl -> this.receiver.type(context)
         else -> TODO(this::class.java.toString())
     }
 
