@@ -269,7 +269,7 @@ class NewCodeBuilder {
         override fun visitBinaryExpression(binaryExpression: JKBinaryExpression) {
             binaryExpression.left.accept(this)
             printer.printWithNoIndent(" ")
-            printer.printWithNoIndent(binaryExpression.operator.operatorText)
+            printer.printWithNoIndent(binaryExpression.operator.token.text)
             printer.printWithNoIndent(" ")
             binaryExpression.right.accept(this)
         }
@@ -279,7 +279,7 @@ class NewCodeBuilder {
         }
 
         override fun visitPrefixExpression(prefixExpression: JKPrefixExpression) {
-            printer.printWithNoIndent(prefixExpression.operator.operatorText)
+            printer.printWithNoIndent(prefixExpression.operator.token.text)
             prefixExpression.expression.accept(this)
         }
 
@@ -320,7 +320,7 @@ class NewCodeBuilder {
 
         override fun visitPostfixExpression(postfixExpression: JKPostfixExpression) {
             postfixExpression.expression.accept(this)
-            printer.printWithNoIndent(postfixExpression.operator.operatorText)
+            printer.printWithNoIndent(postfixExpression.operator.token.text)
         }
 
         override fun visitQualifiedExpression(qualifiedExpression: JKQualifiedExpression) {
@@ -538,7 +538,7 @@ class NewCodeBuilder {
         override fun visitKtAssignmentStatement(ktAssignmentStatement: JKKtAssignmentStatement) {
             ktAssignmentStatement.field.accept(this)
             printer.printWithNoIndent(" ")
-            printer.printWithNoIndent(ktAssignmentStatement.operator.operatorText)
+            printer.printWithNoIndent(ktAssignmentStatement.operator.token.text)
             printer.printWithNoIndent(" ")
             ktAssignmentStatement.expression.accept(this)
         }
