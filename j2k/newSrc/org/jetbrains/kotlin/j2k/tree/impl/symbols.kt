@@ -9,13 +9,18 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiField
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiReference
+import com.intellij.psi.impl.source.tree.java.PsiReferenceExpressionImpl
+import com.intellij.util.reverse
 import org.jetbrains.kotlin.j2k.JKSymbolProvider
 import org.jetbrains.kotlin.j2k.conversions.parentOfType
+import org.jetbrains.kotlin.j2k.conversions.resolveFqName
 import org.jetbrains.kotlin.j2k.tree.*
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.psiUtil.getValueParameterList
+import org.jetbrains.kotlin.types.KotlinType
 
 interface JKSymbol {
     val target: Any
@@ -162,9 +167,17 @@ class JKMultiversePropertySymbol(override val target: KtProperty, private val sy
         get() = target.name!! // TODO("Fix this")
 }
 
-class JKUnresolvedField(override val target: PsiReference) : JKFieldSymbol {
+class JKUnresolvedField(override val target: PsiReference, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
     override val filedType: JKType
-        get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
+        get() {
+            val resolvedType = (target as? PsiReferenceExpressionImpl)?.type
+            if (resolvedType != null) return resolvedType.toJK(symbolProvider)
+
+            val nothingSymbol = (symbolProvider.provideDirectSymbol(
+                resolveFqName(ClassId.fromString("kotlin.Nothing"), symbolProvider.symbolsByPsi.keys.first())!!
+            ) as JKClassSymbol)
+            return JKClassTypeImpl(nothingSymbol, emptyList())
+        }
     override val name: String
         get() = TODO("not implemented")
     override val declaredIn: JKSymbol

@@ -39,7 +39,7 @@ class JKSymbolProvider {
     inline fun <reified T : JKSymbol> provideSymbol(reference: PsiReference): T {
         val target = reference.resolve()
         if (target != null) return provideDirectSymbol(target) as T
-        return JKUnresolvedField(reference).let { if (it is T) it else JKUnresolvedMethod(reference) as T }
+        return JKUnresolvedField(reference, this).let { if (it is T) it else JKUnresolvedMethod(reference) as T }
     }
 
     fun provideUniverseSymbol(psi: PsiElement, jk: JKDeclaration): JKSymbol = provideUniverseSymbol(psi).also {
