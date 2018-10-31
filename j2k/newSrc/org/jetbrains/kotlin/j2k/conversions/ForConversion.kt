@@ -262,5 +262,5 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
     }
 
     private inline fun <reified ElementType : PsiElement> JKElement.psi() =
-        context.backAnnotator(this) as? ElementType
+        this.psi as? ElementType
 }

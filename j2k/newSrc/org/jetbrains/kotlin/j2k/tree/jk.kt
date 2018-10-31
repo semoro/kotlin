@@ -33,6 +33,10 @@ interface JKTreeElement : JKElement {
     fun acceptChildren(visitor: JKVisitor<Unit, Nothing?>) = acceptChildren(visitor, null)
 }
 
+interface PsiOwner {
+    var psi: PsiElement?
+}
+
 interface JKDeclaration : JKTreeElement
 
 interface JKFile : JKTreeElement, JKBranchElement {

@@ -27,7 +27,7 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.resolve.jvm.JvmPrimitiveType
 
 class JKJavaFieldImpl(modifierList: JKModifierList, type: JKTypeElement, name: JKNameIdentifier, initializer: JKExpression) : JKJavaField,
-    JKBranchElementBase() {
+    JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaField(this, data)
 
     override var initializer: JKExpression by child(initializer)
@@ -38,7 +38,7 @@ class JKJavaFieldImpl(modifierList: JKModifierList, type: JKTypeElement, name: J
 
 class JKJavaMethodImpl(
     modifierList: JKModifierList, returnType: JKTypeElement, name: JKNameIdentifier, parameters: List<JKParameter>, block: JKBlock
-) : JKJavaMethod, JKBranchElementBase() {
+) : JKJavaMethod, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaMethod(this, data)
 
     override var modifierList: JKModifierList by child(modifierList)
@@ -52,7 +52,7 @@ class JKJavaMethodImpl(
 class JKJavaLiteralExpressionImpl(
     override val literal: String,
     override val type: JKLiteralExpression.LiteralType
-) : JKJavaLiteralExpression, JKElementBase() {
+) : JKJavaLiteralExpression, JKElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaLiteralExpression(this, data)
 
     init {
@@ -60,7 +60,7 @@ class JKJavaLiteralExpressionImpl(
     }
 }
 
-class JKJavaModifierImpl(override val type: JKJavaModifier.JavaModifierType) : JKJavaModifier, JKElementBase() {
+class JKJavaModifierImpl(override val type: JKJavaModifier.JavaModifierType) : JKJavaModifier, JKElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaModifier(this, data)
 }
 
@@ -167,20 +167,20 @@ sealed class JKJavaQualifierImpl : JKQualifier {
 class JKJavaMethodCallExpressionImpl(
     override var identifier: JKMethodSymbol,
     arguments: JKExpressionList
-) : JKJavaMethodCallExpression, JKBranchElementBase() {
+) : JKJavaMethodCallExpression, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaMethodCallExpression(this, data)
 
     override val arguments: JKExpressionList by child(arguments)
 }
 
-class JKJavaFieldAccessExpressionImpl(override var identifier: JKFieldSymbol) : JKJavaFieldAccessExpression, JKElementBase() {
+class JKJavaFieldAccessExpressionImpl(override var identifier: JKFieldSymbol) : JKJavaFieldAccessExpression, JKElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaFieldAccessExpression(this, data)
 }
 
 class JKJavaNewExpressionImpl(
     override val constructorSymbol: JKMethodSymbol,
     arguments: JKExpressionList
-) : JKJavaNewExpression, JKBranchElementBase() {
+) : JKJavaNewExpression, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaNewExpression(this, data)
 
     override var arguments by child(arguments)
@@ -188,13 +188,13 @@ class JKJavaNewExpressionImpl(
 
 class JKJavaDefaultNewExpressionImpl(
     override val classSymbol: JKClassSymbol
-) : JKJavaDefaultNewExpression, JKElementBase()
+) : JKJavaDefaultNewExpression, JKElementBase(), PsiOwner by PsiOwnerImpl()
 
-class JKJavaNewEmptyArrayImpl(override var initializer: List<JKLiteralExpression?>) : JKJavaNewEmptyArray, JKElementBase() {
+class JKJavaNewEmptyArrayImpl(override var initializer: List<JKLiteralExpression?>) : JKJavaNewEmptyArray, JKElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaNewEmptyArray(this, data)
 }
 
-class JKJavaNewArrayImpl(override var initializer: List<JKExpression>) : JKJavaNewArray, JKElementBase() {
+class JKJavaNewArrayImpl(override var initializer: List<JKExpression>) : JKJavaNewArray, JKElementBase(), PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaNewArray(this, data)
 }
 
@@ -223,13 +223,13 @@ object JKJavaVoidType : JKType {
 class JKJavaArrayTypeImpl(override val type: JKType, override val nullability: Nullability = Nullability.Default) : JKJavaArrayType {
 }
 
-class JKReturnStatementImpl(expression: JKExpression) : JKBranchElementBase(), JKReturnStatement {
+class JKReturnStatementImpl(expression: JKExpression) : JKBranchElementBase(), JKReturnStatement, PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitReturnStatement(this, data)
 
     override val expression by child(expression)
 }
 
-class JKJavaAssertStatementImpl(condition: JKExpression, description: JKExpression) : JKJavaAssertStatement, JKBranchElementBase() {
+class JKJavaAssertStatementImpl(condition: JKExpression, description: JKExpression) : JKJavaAssertStatement, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override val description by child(description)
     override val condition by child(condition)
 
@@ -237,7 +237,7 @@ class JKJavaAssertStatementImpl(condition: JKExpression, description: JKExpressi
 }
 
 class JKJavaForLoopStatementImpl(initializer: JKStatement, condition: JKExpression, updater: JKStatement, body: JKStatement) :
-    JKJavaForLoopStatement, JKBranchElementBase() {
+    JKJavaForLoopStatement, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override var body by child(body)
     override var updater by child(updater)
     override var condition by child(condition)
@@ -246,7 +246,7 @@ class JKJavaForLoopStatementImpl(initializer: JKStatement, condition: JKExpressi
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaForLoopStatement(this, data)
 }
 
-class JKJavaInstanceOfExpressionImpl(expression: JKExpression, type: JKTypeElement) : JKJavaInstanceOfExpression, JKBranchElementBase() {
+class JKJavaInstanceOfExpressionImpl(expression: JKExpression, type: JKTypeElement) : JKJavaInstanceOfExpression, JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override var type by child(type)
     override var expression by child(expression)
 
@@ -254,7 +254,7 @@ class JKJavaInstanceOfExpressionImpl(expression: JKExpression, type: JKTypeEleme
 }
 
 class JKJavaPolyadicExpressionImpl(operands: List<JKExpression>, override var tokens: List<JKOperator>) : JKJavaPolyadicExpression,
-    JKBranchElementBase() {
+    JKBranchElementBase(), PsiOwner by PsiOwnerImpl() {
     override var operands by children(operands)
 
     override fun getTokenBeforeOperand(operand: JKExpression): JKOperator? {
@@ -269,7 +269,7 @@ class JKJavaAssignmentExpressionImpl(
     override var field: JKAssignableExpression,
     expression: JKExpression,
     override var operator: JKOperator
-) : JKBranchElementBase(), JKJavaAssignmentExpression {
+) : JKBranchElementBase(), JKJavaAssignmentExpression, PsiOwner by PsiOwnerImpl() {
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaAssignmentExpression(this, data)
 
     override var expression: JKExpression by child(expression)
