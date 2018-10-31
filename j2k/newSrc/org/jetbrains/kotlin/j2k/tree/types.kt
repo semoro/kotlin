@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.j2k.tree
 
 import com.intellij.psi.*
 import com.intellij.psi.impl.source.resolve.reference.impl.PsiMultiReference
+import com.intellij.util.reverse
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.j2k.ConversionContext
@@ -67,8 +68,8 @@ fun PsiType.toJK(symbolProvider: JKSymbolProvider, nullability: Nullability = Nu
     }
 }
 
-fun JKType.isSubtypeOf(other: JKType): Boolean =
-    toKtType().isSubtypeOf(other.toKtType())
+fun JKType.isSubtypeOf(other: JKType, symbolProvider: JKSymbolProvider): Boolean =
+    toKtType(symbolProvider).isSubtypeOf(other.toKtType(symbolProvider))
 
 fun KtTypeElement.toJK(symbolProvider: JKSymbolProvider): JKType =
     when (this) {
@@ -84,24 +85,24 @@ fun KtTypeElement.toJK(symbolProvider: JKSymbolProvider): JKType =
         else -> TODO(this::class.java.toString())
     }
 
-fun JKType.toKtType(): KotlinType =
+fun JKType.toKtType(symbolProvider: JKSymbolProvider): KotlinType =
     when (this) {
-//        is JKClassType -> classReference!!.toKtType()
+        is JKClassType -> classReference!!.toKtType(symbolProvider)
         else -> TODO(this::class.java.toString())
     }
 
 
-fun JKClassSymbol.toKtType(context: ConversionContext): KotlinType =
-    when (this) {
+fun JKClassSymbol.toKtType(symbolProvider: JKSymbolProvider): KotlinType {
+    val classDescriptor = when (this) {
         is JKMultiverseKtClassSymbol -> {
             val bindingContext = target.analyze()
-            (bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, target] as ClassDescriptor).defaultType
+            bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, target] as ClassDescriptor
         }
-//        is JKMultiverseClassSymbol -> {
-//            this.target.javaResolutionFacade()
-//            context.converter.converterServices.oldServices.resolverForConverter.KtTypeFac
-//        }
-        is JKUniverseClassSymbol -> TODO()
+        is JKMultiverseClassSymbol ->
+            target.getJavaClassDescriptor()!!
+        is JKUniverseClassSymbol ->
+            (symbolProvider.symbolsByPsi.reverse()[target] as PsiClass).getJavaClassDescriptor()!!
         else -> TODO(this::class.java.toString())
-
     }
+    return classDescriptor.defaultType
+}

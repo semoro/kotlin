@@ -131,7 +131,7 @@ class JKBinaryExpressionImpl(
                 .filterIsInstance<KtNamedFunction>()
                 .filter { it.name == token.operatorName }
                 .mapNotNull { symbolProvider.provideDirectSymbol(it) as? JKMethodSymbol }
-                .firstOrNull { it.parameterTypes.singleOrNull()?.takeIf { it.isSubtypeOf(rightType) } != null}
+                .firstOrNull { it.parameterTypes.singleOrNull()?.takeIf { it.isSubtypeOf(rightType, symbolProvider) } != null}
         }
 
         fun createKotlinBinaryExpression(
