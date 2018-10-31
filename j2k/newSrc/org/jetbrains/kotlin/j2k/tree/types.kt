@@ -6,15 +6,25 @@
 package org.jetbrains.kotlin.j2k.tree
 
 import com.intellij.psi.*
+import com.intellij.psi.impl.source.resolve.reference.impl.PsiMultiReference
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.j2k.ConversionContext
 import org.jetbrains.kotlin.j2k.JKSymbolProvider
 import org.jetbrains.kotlin.j2k.ast.Nullability
 import org.jetbrains.kotlin.j2k.conversions.resolveFqName
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtTypeElement
+import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtUserType
+import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.calls.callUtil.getType
+import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
 
+import org.jetbrains.kotlin.idea.caches.resolve.util
 
 fun JKExpression.type(context: ConversionContext): JKType =
     when (this) {
@@ -57,6 +67,9 @@ fun PsiType.toJK(symbolProvider: JKSymbolProvider, nullability: Nullability = Nu
     }
 }
 
+fun JKType.isSubtypeOf(other: JKType): Boolean =
+    toKtType().isSubtypeOf(other.toKtType())
+
 fun KtTypeElement.toJK(symbolProvider: JKSymbolProvider): JKType =
     when (this) {
         is KtUserType -> {
@@ -69,4 +82,26 @@ fun KtTypeElement.toJK(symbolProvider: JKSymbolProvider): JKType =
             JKClassTypeImpl(symbol, typeParameters)
         }
         else -> TODO(this::class.java.toString())
+    }
+
+fun JKType.toKtType(): KotlinType =
+    when (this) {
+        is JKClassType -> classReference!!.toKtType()
+        else -> TODO(this::class.java.toString())
+    }
+
+
+fun JKClassSymbol.toKtType(context: ConversionContext): KotlinType =
+    when (this) {
+        is JKMultiverseKtClassSymbol -> {
+            val bindingContext = target.analyze()
+            (bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, target] as ClassDescriptor).defaultType
+        }
+        is JKMultiverseClassSymbol -> {
+            this.target.javaResolutionFacade()
+            context.converter.converterServices.oldServices.resolverForConverter.KtTypeFac
+        }
+        is JKUniverseClassSymbol -> TODO()
+        else -> TODO(this::class.java.toString())
+
     }

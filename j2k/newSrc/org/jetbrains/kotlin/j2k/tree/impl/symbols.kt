@@ -34,6 +34,7 @@ interface JKClassSymbol : JKNamedSymbol {
     val fqName: String?
 }
 
+
 interface JKMethodSymbol : JKNamedSymbol {
     val fqName: String
     val receiverType: JKType?
