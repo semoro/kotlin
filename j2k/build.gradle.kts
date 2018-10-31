@@ -8,6 +8,7 @@ plugins {
 dependencies {
     testRuntime(intellijDep())
 
+    compile(project(":idea:idea-core"))
     compile(project(":kotlin-stdlib"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:frontend.java"))
@@ -85,7 +86,6 @@ test.apply {
     //dependsOn(testForWebDemo)
 }
 val cleanTest by tasks
-cleanTest.dependsOn(cleanTestForWebDemo)
 
 configureFreeCompilerArg(true, "-Xeffect-system")
 configureFreeCompilerArg(true, "-Xnew-inference")
