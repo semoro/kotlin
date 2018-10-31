@@ -8,6 +8,7 @@ plugins {
 dependencies {
     testRuntime(intellijDep())
 
+    compile(project(":idea:idea-core"))
     compile(projectDist(":kotlin-stdlib"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:frontend.java"))

@@ -24,7 +24,7 @@ import org.jetbrains.kotlin.resolve.calls.callUtil.getType
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
 
-import org.jetbrains.kotlin.idea.caches.resolve.util
+import org.jetbrains.kotlin.idea.caches.resolve.util.*
 
 fun JKExpression.type(context: ConversionContext): JKType =
     when (this) {
@@ -86,7 +86,7 @@ fun KtTypeElement.toJK(symbolProvider: JKSymbolProvider): JKType =
 
 fun JKType.toKtType(): KotlinType =
     when (this) {
-        is JKClassType -> classReference!!.toKtType()
+//        is JKClassType -> classReference!!.toKtType()
         else -> TODO(this::class.java.toString())
     }
 
@@ -97,10 +97,10 @@ fun JKClassSymbol.toKtType(context: ConversionContext): KotlinType =
             val bindingContext = target.analyze()
             (bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, target] as ClassDescriptor).defaultType
         }
-        is JKMultiverseClassSymbol -> {
-            this.target.javaResolutionFacade()
-            context.converter.converterServices.oldServices.resolverForConverter.KtTypeFac
-        }
+//        is JKMultiverseClassSymbol -> {
+//            this.target.javaResolutionFacade()
+//            context.converter.converterServices.oldServices.resolverForConverter.KtTypeFac
+//        }
         is JKUniverseClassSymbol -> TODO()
         else -> TODO(this::class.java.toString())
 
