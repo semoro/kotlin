@@ -395,6 +395,12 @@ class NewCodeBuilder {
             }
         }
 
+        override fun visitEmptyStatement(emptyStatement: JKEmptyStatement) {
+        }
+
+        override fun visitStubExpression(stubExpression: JKStubExpression) {
+        }
+
         override fun visitKtConvertedFromForLoopSyntheticWhileStatement(
             ktConvertedFromForLoopSyntheticWhileStatement: JKKtConvertedFromForLoopSyntheticWhileStatement
         ) {

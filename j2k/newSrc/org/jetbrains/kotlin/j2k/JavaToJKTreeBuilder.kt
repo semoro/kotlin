@@ -349,6 +349,7 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                     val (labels, statement) = collectLabels()
                     JKLabeledStatementImpl(statement.toJK(), labels.map { JKNameIdentifierImpl(it.text) })
                 }
+                is PsiEmptyStatement -> JKEmptyStatementImpl()
                 else -> TODO("for ${this::class}")
             }.also {
                 if (this != null) (it as PsiOwner).psi = this
