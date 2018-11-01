@@ -61,6 +61,8 @@ interface JKType {
     val nullability: Nullability
 }
 
+interface JKNoType : JKType
+
 interface JKParametrizedType : JKType {
     val parameters: List<JKType>
 }
@@ -109,3 +111,5 @@ fun <T : JKElement> KProperty0<T>.detached(): T =
 fun <T : JKElement> KProperty0<List<T>>.detached(): List<T> =
     get().also { list -> list.forEach { detach(it) } }
 
+fun <T : JKElement> T.detached(from: JKElement): T =
+    also { it.detach(from) }
