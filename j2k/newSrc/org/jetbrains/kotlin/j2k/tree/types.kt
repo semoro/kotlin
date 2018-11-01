@@ -29,7 +29,7 @@ fun JKExpression.type(context: ConversionContext): JKType =
         is JKBinaryExpression -> (operator as JKKtOperatorImpl).methodSymbol.returnType
         is JKMethodCallExpression -> identifier.returnType
         is JKJavaFieldAccessExpressionImpl -> identifier.fieldType
-        is JKQualifiedExpressionImpl -> this.receiver.type(context)
+        is JKQualifiedExpressionImpl -> this.selector.type(context)
         else -> TODO(this::class.java.toString())
     }
 
