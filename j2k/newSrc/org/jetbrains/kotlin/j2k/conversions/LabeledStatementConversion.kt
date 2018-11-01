@@ -14,10 +14,11 @@ class LabeledStatementConversion : RecursiveApplicableConversionBase() {
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKLabeledStatement) return recurse(element)
         val statement = element.statement as? JKBlockStatement ?: return recurse(element)
+        element::statement.detached()
         if (isConvertedForLoopToWhileOne(statement)) {
-            val initStatement = statement.block.statements[0].detached()
-            val whileStatement = statement.block.statements[1].detached()
-            val whileStatementLabeled = JKLabeledStatementImpl(whileStatement, element.labels.also { it.forEach { it.detached() } })
+            val initStatement = statement.block.statements[0]
+            val whileStatement = statement.block.statements[1]
+            val whileStatementLabeled = JKLabeledStatementImpl(whileStatement, element::labels.detached())
             return recurse(JKBlockStatementImpl(JKBlockImpl(listOf(initStatement, whileStatementLabeled))))
         }
         return recurse(element)
