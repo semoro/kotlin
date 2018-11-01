@@ -6,9 +6,7 @@
 package org.jetbrains.kotlin.j2k.conversions
 
 import com.intellij.psi.*
-import org.jetbrains.kotlin.j2k.ConversionContext
-import org.jetbrains.kotlin.j2k.ReferenceSearcher
-import org.jetbrains.kotlin.j2k.hasWriteAccesses
+import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -159,7 +157,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                     context,
                     psiContext
                 )
-            else -> JKBinaryExpressionImpl.createKotlinBinaryExpression(
+            else -> kotlinBinaryExpression(
                 start,
                 convertBound(bound, if (inclusiveComparison) 0 else -1),
                 JKKtSingleValueOperatorToken(KtTokens.RANGE),
@@ -177,7 +175,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
         }
 
         val sign = if (correction > 0) KtTokens.PLUS else KtTokens.MINUS
-        return JKBinaryExpressionImpl.createKotlinBinaryExpression(
+        return kotlinBinaryExpression(
             bound,
             JKKtLiteralExpressionImpl(Math.abs(correction).toString(), JKLiteralExpression.LiteralType.INT),
             JKKtSingleValueOperatorToken(sign),
