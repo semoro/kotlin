@@ -181,4 +181,6 @@ interface JKVisitorVoid : JKVisitor<Unit, Nothing?> {
     override fun visitKtForInStatement(ktForInStatement: JKKtForInStatement, data: Nothing?) = visitKtForInStatement(ktForInStatement)
     fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression) = visitExpression(ktOperatorExpression, null)
     override fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression, data: Nothing?) = visitKtOperatorExpression(ktOperatorExpression)
+    fun visitKtConvertedFromForLoopSyntheticWhileStatement(ktConvertedFromForLoopSyntheticWhileStatement: JKKtConvertedFromForLoopSyntheticWhileStatement) = visitStatement(ktConvertedFromForLoopSyntheticWhileStatement, null)
+    override fun visitKtConvertedFromForLoopSyntheticWhileStatement(ktConvertedFromForLoopSyntheticWhileStatement: JKKtConvertedFromForLoopSyntheticWhileStatement, data: Nothing?) = visitKtConvertedFromForLoopSyntheticWhileStatement(ktConvertedFromForLoopSyntheticWhileStatement)
 }

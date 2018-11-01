@@ -103,3 +103,6 @@ fun rangeExpression(
     ) as JKMethodSymbol
     return JKKtOperatorExpressionImpl(from, symbol, to)
 }
+
+fun blockStatement(vararg statements: JKStatement) =
+    JKBlockStatementImpl(JKBlockImpl(statements.toList()))

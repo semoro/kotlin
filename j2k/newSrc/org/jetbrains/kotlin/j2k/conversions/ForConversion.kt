@@ -7,7 +7,6 @@ package org.jetbrains.kotlin.j2k.conversions
 
 import com.intellij.psi.*
 import org.jetbrains.kotlin.j2k.*
-import org.jetbrains.kotlin.j2k.ast.Mutability
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -29,16 +28,17 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
 
     private fun convertToWhile(loopStatement: JKJavaForLoopStatement): JKStatement? {
         val whileBody = createWhileBody(loopStatement)
+        val condition =
+            if (loopStatement.condition !is JKStubExpression) loopStatement::condition.detached()
+            else JKKtLiteralExpressionImpl("true", JKLiteralExpression.LiteralType.BOOLEAN)
 
-        val whileStatement =
-            JKWhileStatementImpl(
-                if (loopStatement.condition !is JKStubExpression) loopStatement::condition.detached()
-                else JKKtLiteralExpressionImpl("true", JKLiteralExpression.LiteralType.BOOLEAN),
-                whileBody
-            )
         //TODO if (loopStatement.initializer is Empty) return whileStatement
         //TODO check for error conflict
-        return JKBlockStatementImpl(JKBlockImpl(listOf(loopStatement::initializer.detached(), whileStatement)))
+
+        return JKKtConvertedFromForLoopSyntheticWhileStatementImpl(
+            loopStatement::initializer.detached(),
+            JKWhileStatementImpl(condition, whileBody)
+        )
     }
 
     private fun createWhileBody(loopStatement: JKJavaForLoopStatement): JKStatement {

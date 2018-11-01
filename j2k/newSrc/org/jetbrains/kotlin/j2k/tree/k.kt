@@ -82,3 +82,8 @@ interface JKKtOperatorExpression : JKExpression {
     var identifier: JKMethodSymbol
     var argument: JKExpression
 }
+
+interface JKKtConvertedFromForLoopSyntheticWhileStatement : JKStatement {
+    var variableDeclaration: JKStatement
+    var whileStatement: JKWhileStatement
+}

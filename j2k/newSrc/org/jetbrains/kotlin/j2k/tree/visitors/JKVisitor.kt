@@ -92,4 +92,5 @@ interface JKVisitor<out R, in D> {
     fun visitKtInitDeclaration(ktInitDeclaration: JKKtInitDeclaration, data: D): R = visitDeclaration(ktInitDeclaration, data)
     fun visitKtForInStatement(ktForInStatement: JKKtForInStatement, data: D): R = visitStatement(ktForInStatement, data)
     fun visitKtOperatorExpression(ktOperatorExpression: JKKtOperatorExpression, data: D): R = visitExpression(ktOperatorExpression, data)
+    fun visitKtConvertedFromForLoopSyntheticWhileStatement(ktConvertedFromForLoopSyntheticWhileStatement: JKKtConvertedFromForLoopSyntheticWhileStatement, data: D): R = visitStatement(ktConvertedFromForLoopSyntheticWhileStatement, data)
 }

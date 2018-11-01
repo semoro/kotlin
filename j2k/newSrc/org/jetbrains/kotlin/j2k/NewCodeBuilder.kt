@@ -395,6 +395,13 @@ class NewCodeBuilder {
             }
         }
 
+        override fun visitKtConvertedFromForLoopSyntheticWhileStatement(
+            ktConvertedFromForLoopSyntheticWhileStatement: JKKtConvertedFromForLoopSyntheticWhileStatement
+        ) {
+            ktConvertedFromForLoopSyntheticWhileStatement.variableDeclaration.accept(this)
+            printer.printlnWithNoIndent()
+            ktConvertedFromForLoopSyntheticWhileStatement.whileStatement.accept(this)
+        }
 
         private fun renderType(type: JKType) {
             if (type is JKNoTypeImpl) return
