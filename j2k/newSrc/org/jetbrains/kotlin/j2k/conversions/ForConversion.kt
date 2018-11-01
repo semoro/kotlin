@@ -103,7 +103,10 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 JavaTokenType.MINUSMINUS -> true
                 else -> return null
             }
-            val inclusive = when ((condition.operator as? JKJavaOperatorImpl)?.token ?: (condition.operator as? JKKtOperatorImpl)?.token) {
+            val operatorToken =
+                (condition.operator as? JKJavaOperatorImpl)?.token?.psiToken
+                    ?: ((condition.operator as? JKKtOperatorImpl)?.token as? JKKtSingleValueOperatorToken)?.psiToken
+            val inclusive = when (operatorToken) {
                 JavaTokenType.LT, KtTokens.LT -> if (reversed) return null else false
                 JavaTokenType.LE, KtTokens.LTEQ -> if (reversed) return null else true
                 JavaTokenType.GT, KtTokens.GT -> if (reversed) false else return null
@@ -195,7 +198,7 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
                 if ((bound as? JKLiteralExpression)?.literal?.toIntOrNull() != 0) return null
 
                 if (start !is JKBinaryExpression) return null
-                if ((start.operator as? JKKtOperatorImpl)?.token != KtTokens.MINUS) return null
+                if (start.operator.token.text != "-") return null
                 if ((start.right as? JKLiteralExpression)?.literal?.toIntOrNull() != 1) return null
                 start.left
             } else {
@@ -241,12 +244,12 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
     }
 
     private fun toIndicesCall(javaSizeCall: JKQualifiedExpression): JKQualifiedExpression? {
-        val psiContext = javaSizeCall.psi<PsiExpression>() ?: return null
+        val psiContext = javaSizeCall.psi ?: return null
         val indiciesSymbol = context.symbolProvider.provideDirectSymbol(
             multiResolveFqName(ClassId.fromString("kotlin/collections/indices"), psiContext).first()
         ) as JKMultiversePropertySymbol
-        javaSizeCall.selector = JKKtFieldAccessExpressionImpl(indiciesSymbol)
-        return javaSizeCall
+        val selector = JKKtFieldAccessExpressionImpl(indiciesSymbol)
+        return JKQualifiedExpressionImpl(javaSizeCall::receiver.detached(), javaSizeCall.operator, selector)
     }
 
 
@@ -259,7 +262,4 @@ class ForConversion(private val context: ConversionContext) : RecursiveApplicabl
         if ((pair.second as? JKFieldAccessExpression)?.identifier?.target != variable) return null
         return pair.first
     }
-
-    private inline fun <reified ElementType : PsiElement> JKElement.psi() =
-        this.psi as? ElementType
 }
