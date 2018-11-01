@@ -45,7 +45,7 @@ object ConversionsRunner {
             +StaticsToCompanionExtractConversion()
             +ClassToObjectPromotionConversion()
             +PolyadicExpressionConversion()
-            +InstanceofConversion()
+            +InstanceOfConversion()
             +ForConversion(context)
             +LabeledStatementConversion()
         }

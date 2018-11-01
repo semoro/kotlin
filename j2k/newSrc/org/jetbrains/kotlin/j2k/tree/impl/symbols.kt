@@ -49,7 +49,7 @@ interface JKMethodSymbol : JKNamedSymbol {
 
 interface JKFieldSymbol : JKNamedSymbol {
     val fqName: String
-    val filedType: JKType
+    val fieldType: JKType
 }
 
 class JKUniverseClassSymbol : JKClassSymbol, JKUniverseSymbol<JKClass> {
@@ -134,7 +134,7 @@ class JKMultiverseFunctionSymbol(override val target: KtNamedFunction, private v
 }
 
 class JKUniverseFieldSymbol : JKFieldSymbol, JKUniverseSymbol<JKField> {
-    override val filedType: JKType
+    override val fieldType: JKType
         get() = target.type.type
     override val name: String
         get() = target.name.value
@@ -146,7 +146,7 @@ class JKUniverseFieldSymbol : JKFieldSymbol, JKUniverseSymbol<JKField> {
 }
 
 class JKMultiverseFieldSymbol(override val target: PsiField, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
-    override val filedType: JKType
+    override val fieldType: JKType
         get() = target.type.toJK(symbolProvider)
     override val name: String
         get() = target.name
@@ -157,7 +157,7 @@ class JKMultiverseFieldSymbol(override val target: PsiField, private val symbolP
 }
 
 class JKMultiversePropertySymbol(override val target: KtProperty, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
-    override val filedType: JKType
+    override val fieldType: JKType
         get() = target.typeReference!!.typeElement!!.toJK(symbolProvider)
     override val name: String
         get() = target.name!!
@@ -168,7 +168,7 @@ class JKMultiversePropertySymbol(override val target: KtProperty, private val sy
 }
 
 class JKUnresolvedField(override val target: PsiReference, private val symbolProvider: JKSymbolProvider) : JKFieldSymbol {
-    override val filedType: JKType
+    override val fieldType: JKType
         get() {
             val resolvedType = (target as? PsiReferenceExpressionImpl)?.type
             if (resolvedType != null) return resolvedType.toJK(symbolProvider)
