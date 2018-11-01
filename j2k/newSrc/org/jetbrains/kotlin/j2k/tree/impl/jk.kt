@@ -125,15 +125,28 @@ class JKBinaryExpressionImpl(
             leftType: JKType,
             rightType: JKType,
             symbolProvider: JKSymbolProvider
-        ): JKMethodSymbol? {
-            val classReference = (leftType as? JKClassType)?.classReference as? JKMultiverseKtClassSymbol ?: return null
-            return classReference.target.declarations// todo look for extensions
+        ): JKMethodSymbol {
+            val classSymbol =
+                when (leftType) {
+                    is JKClassType -> leftType.classReference as JKMultiverseKtClassSymbol
+                    is JKJavaPrimitiveType -> {
+                        val psiClass = resolveFqName(
+                            ClassId.fromString(leftType.jvmPrimitiveType.primitiveType.typeFqName.asString()),
+                            symbolProvider.symbolsByPsi.keys.first()
+                        )!!
+                        symbolProvider.provideDirectSymbol(psiClass) as JKMultiverseKtClassSymbol
+                    }
+                    else ->
+                        TODO(leftType::class.java.toString())
+                }
+            return classSymbol.target.declarations// todo look for extensions
                 .asSequence()
                 .filterIsInstance<KtNamedFunction>()
                 .filter { it.name == token.operatorName }
                 .mapNotNull { symbolProvider.provideDirectSymbol(it) as? JKMethodSymbol }
-                .firstOrNull { it.parameterTypes.singleOrNull()?.takeIf { it.isSubtypeOf(rightType, symbolProvider) } != null}
+                .firstOrNull { it.parameterTypes.singleOrNull()?.takeIf { it.isSubtypeOf(rightType, symbolProvider) } != null }!!
         }
+
 
         fun createKotlinBinaryExpression(
             left: JKExpression,
@@ -143,7 +156,7 @@ class JKBinaryExpressionImpl(
         ): JKBinaryExpression? {
             val leftType = left.type(context)
             val rightType = right.type(context)
-            val methodSymbol = methodSymbolForToken(token, leftType, rightType, context.symbolProvider) ?: return null
+            val methodSymbol = methodSymbolForToken(token, leftType, rightType, context.symbolProvider)
             return JKBinaryExpressionImpl(left, right, JKKtOperatorImpl(token, methodSymbol))
         }
     }

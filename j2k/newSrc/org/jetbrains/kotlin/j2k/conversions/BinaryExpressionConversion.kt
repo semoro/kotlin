@@ -18,9 +18,11 @@ class BinaryExpressionConversion(private val context: ConversionContext) : Recur
     override fun applyToElement(element: JKTreeElement): JKTreeElement {
         if (element !is JKBinaryExpression) return recurse(element)
         val ktOperatorToken = (element.operator as? JKJavaOperatorImpl)?.token?.toKtToken() ?: return recurse(element)
+        val left = recurse(element.left)
+        val right = recurse(element.right)
         (element as? JKBranchElement)?.invalidate()
-        val ktBinaryExpression = JKBinaryExpressionImpl.createKotlinBinaryExpression(element.left, element.right, ktOperatorToken, context)
-            ?: return JKBinaryExpressionImpl(recurse(element.left), recurse(element.right), element.operator)
+        val ktBinaryExpression = JKBinaryExpressionImpl.createKotlinBinaryExpression(left, right, ktOperatorToken, context)
+            ?: return JKBinaryExpressionImpl(left, right, element.operator)
         return recurse(ktBinaryExpression)
     }
 
