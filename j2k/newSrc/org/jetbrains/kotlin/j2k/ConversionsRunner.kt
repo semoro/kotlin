@@ -34,7 +34,7 @@ object ConversionsRunner {
             +ConstructorConversion(context)
             +PrimaryConstructorDetectConversion(context)
 //            +InsertDefaultPrimaryConstructorConversion(context)
-            +FieldInitializersInPrimaryFromParamsConversion()
+            +FieldInitializersInPrimaryFromParamsConversion(context)
             +AssignmentAsExpressionToAlsoConversion(context)
             +AssignmentStatementValCreationConversion(context)
             +AssignmentStatementOperatorConversion()
