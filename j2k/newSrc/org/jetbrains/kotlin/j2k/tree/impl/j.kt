@@ -212,9 +212,9 @@ class JKJavaSwitchStatementImpl(
     override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaSwitchStatement(this, data)
 }
 
-class JKJavaDefaultwitchCaseImpl(statements: List<JKStatement>) : JKJavaDefaultwitchCase, JKBranchElementBase() {
+class JKJavaDefaultSwitchCaseImpl(statements: List<JKStatement>) : JKJavaDefaultSwitchCase, JKBranchElementBase() {
     override var statements: List<JKStatement> by children(statements)
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaDefaultwitchCase(this, data)
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitJavaDefaultSwitchCase(this, data)
 }
 
 class JKJavaLabelSwitchCaseImpl(

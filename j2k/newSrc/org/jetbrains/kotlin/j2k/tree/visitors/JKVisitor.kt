@@ -72,7 +72,7 @@ interface JKVisitor<out R, in D> {
     fun visitJavaAssignmentExpression(javaAssignmentExpression: JKJavaAssignmentExpression, data: D): R = visitExpression(javaAssignmentExpression, data)
     fun visitJavaSwitchStatement(javaSwitchStatement: JKJavaSwitchStatement, data: D): R = visitStatement(javaSwitchStatement, data)
     fun visitJavaSwitchCase(javaSwitchCase: JKJavaSwitchCase, data: D): R = visitTreeElement(javaSwitchCase, data)
-    fun visitJavaDefaultwitchCase(javaDefaultwitchCase: JKJavaDefaultwitchCase, data: D): R = visitJavaSwitchCase(javaDefaultwitchCase, data)
+    fun visitJavaDefaultSwitchCase(javaDefaultSwitchCase: JKJavaDefaultSwitchCase, data: D): R = visitJavaSwitchCase(javaDefaultSwitchCase, data)
     fun visitJavaLabelSwitchCase(javaLabelSwitchCase: JKJavaLabelSwitchCase, data: D): R = visitJavaSwitchCase(javaLabelSwitchCase, data)
     fun visitKtProperty(ktProperty: JKKtProperty, data: D): R = visitField(ktProperty, data)
     fun visitKtFunction(ktFunction: JKKtFunction, data: D): R = visitMethod(ktFunction, data)
@@ -88,6 +88,6 @@ interface JKVisitor<out R, in D> {
     fun visitKtWhenStatement(ktWhenStatement: JKKtWhenStatement, data: D): R = visitStatement(ktWhenStatement, data)
     fun visitKtWhenCase(ktWhenCase: JKKtWhenCase, data: D): R = visitTreeElement(ktWhenCase, data)
     fun visitKtWhenLabel(ktWhenLabel: JKKtWhenLabel, data: D): R = visitTreeElement(ktWhenLabel, data)
-    fun visitKtDefaultWhenLabel(ktDefaultWhenLabel: JKKtDefaultWhenLabel, data: D): R = visitKtWhenLabel(ktDefaultWhenLabel, data)
+    fun visitKtElseWhenLabel(ktElseWhenLabel: JKKtElseWhenLabel, data: D): R = visitKtWhenLabel(ktElseWhenLabel, data)
     fun visitKtValueWhenLabel(ktValueWhenLabel: JKKtValueWhenLabel, data: D): R = visitKtWhenLabel(ktValueWhenLabel, data)
 }

@@ -98,7 +98,7 @@ interface JKJavaSwitchCase : JKTreeElement {
     var statements: List<JKStatement>
 }
 
-interface JKJavaDefaultwitchCase : JKJavaSwitchCase {
+interface JKJavaDefaultSwitchCase : JKJavaSwitchCase {
     override fun isDefault(): Boolean = true
 }
 

@@ -360,7 +360,7 @@ class JavaToJKTreeBuilder(var symbolProvider: JKSymbolProvider) {
                         when (statement) {
                             is PsiSwitchLabelStatement ->
                                 cases += if (statement.isDefaultCase)
-                                    JKJavaDefaultwitchCaseImpl(emptyList())
+                                    JKJavaDefaultSwitchCaseImpl(emptyList())
                                 else
                                     JKJavaLabelSwitchCaseImpl(
                                         with(expressionTreeMapper) { statement.caseValue.toJK() },

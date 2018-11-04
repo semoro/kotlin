@@ -220,8 +220,8 @@ class JKKtWhenCaseImpl(labels: List<JKKtWhenLabel>, statement: JKStatement) : JK
 
 }
 
-class JKKtDefaultWhenLabelImpl : JKKtDefaultWhenLabel, JKElementBase() {
-    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtDefaultWhenLabel(this, data)
+class JKKtElseWhenLabelImpl : JKKtElseWhenLabel, JKElementBase() {
+    override fun <R, D> accept(visitor: JKVisitor<R, D>, data: D): R = visitor.visitKtElseWhenLabel(this, data)
 }
 
 class JKKtValueWhenLabelImpl(expression: JKExpression) : JKKtValueWhenLabel, JKBranchElementBase() {

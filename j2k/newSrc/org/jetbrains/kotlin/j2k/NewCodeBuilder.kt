@@ -53,9 +53,9 @@ class NewCodeBuilder {
             printer.printWithNoIndent("break")
         }
 
-        override fun visitBreakWithLabelStatement(ktBreakWithLabelStatement: JKBreakWithLabelStatement) {
+        override fun visitBreakWithLabelStatement(breakWithLabelStatement: JKBreakWithLabelStatement) {
             printer.printWithNoIndent("break@")
-            printer.printWithNoIndent(ktBreakWithLabelStatement.label.value)
+            printer.printWithNoIndent(breakWithLabelStatement.label.value)
         }
 
         override fun visitModifierList(modifierList: JKModifierList) {
@@ -478,35 +478,19 @@ class NewCodeBuilder {
         }
 
         override fun visitKtWhenCase(ktWhenCase: JKKtWhenCase) {
-            printer.separated(", ", ktWhenCase.labels) {
+            renderList(ktWhenCase.labels, ", ") {
                 it.accept(this)
             }
             printer.printWithNoIndent(" -> ")
             ktWhenCase.statement.accept(this)
         }
 
-        override fun visitKtDefaultWhenLabel(ktDefaultWhenLabel: JKKtDefaultWhenLabel) {
+        override fun visitKtElseWhenLabel(ktElseWhenLabel: JKKtElseWhenLabel) {
             printer.printWithNoIndent("else")
         }
 
         override fun visitKtValueWhenLabel(ktValueWhenLabel: JKKtValueWhenLabel) {
             ktValueWhenLabel.expression.accept(this)
-        }
-
-        private fun <T> Printer.separated(separator: String, items: List<T>, apply: (T) -> Unit) {
-            for ((index, item) in items.withIndex()) {
-                if (index > 0) this.printWithNoIndent(separator)
-                apply(item)
-            }
-        }
-
-        private fun Printer.blockOrStatement(statements: List<JKStatement>): Printer {
-            if (statements.size == 1)
-                statements.first().accept(this@Visitor)
-            else this.block(multiline = true) {
-                statements.forEach { it.accept(this@Visitor) }
-            }
-            return this
         }
     }
 

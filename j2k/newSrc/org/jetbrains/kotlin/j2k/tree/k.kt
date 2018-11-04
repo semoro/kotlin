@@ -72,7 +72,7 @@ interface JKKtWhenCase : JKTreeElement {
 
 interface JKKtWhenLabel : JKTreeElement
 
-interface JKKtDefaultWhenLabel : JKKtWhenLabel
+interface JKKtElseWhenLabel : JKKtWhenLabel
 
 interface JKKtValueWhenLabel : JKKtWhenLabel {
     var expression: JKExpression

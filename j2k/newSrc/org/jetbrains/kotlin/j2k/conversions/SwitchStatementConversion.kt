@@ -10,7 +10,6 @@ import com.intellij.psi.controlFlow.ControlFlowFactory
 import com.intellij.psi.controlFlow.ControlFlowUtil
 import com.intellij.psi.controlFlow.LocalsOrMyInstanceFieldsControlFlowPolicy
 import org.jetbrains.kotlin.j2k.ConversionContext
-import org.jetbrains.kotlin.j2k.copyTree
 import org.jetbrains.kotlin.j2k.copyTreeAndDetach
 import org.jetbrains.kotlin.j2k.tree.*
 import org.jetbrains.kotlin.j2k.tree.impl.*
@@ -52,8 +51,8 @@ class SwitchStatementConversion(private val context: ConversionContext) : Recurs
     private fun createWhenLabel(switchCase: JKJavaSwitchCase): JKKtWhenLabel =
         when (switchCase) {
             is JKJavaLabelSwitchCase ->
-                JKKtValueWhenLabelImpl(switchCase.label.also { it.detach(it.parent!!) })
-            else -> JKKtDefaultWhenLabelImpl()
+                JKKtValueWhenLabelImpl(switchCase.label.also { it.detach(switchCase) })//TODO replace with detached
+            else -> JKKtElseWhenLabelImpl()
         }
 
     private fun convertCaseStatements(statements: List<JKStatement>, allowBlock: Boolean = true): List<JKStatement> {
@@ -73,13 +72,14 @@ class SwitchStatementConversion(private val context: ConversionContext) : Recurs
 
     private fun convertCaseStatements(cases: List<JKJavaSwitchCase>, caseIndex: Int, allowBlock: Boolean = true): List<JKStatement> {
         val case = cases[caseIndex]
-        val fallsThrough: Boolean = if (caseIndex == cases.lastIndex) {
-            false
-        } else {
-            val block = case.statements.singleOrNull() as? JKBlockStatement
-            val statements = block?.block?.statements ?: case.statements
-            statements.fallsThrough()
-        }
+        val fallsThrough =
+            if (caseIndex == cases.lastIndex) {
+                false
+            } else {
+                val block = case.statements.singleOrNull() as? JKBlockStatement
+                val statements = block?.block?.statements ?: case.statements
+                statements.fallsThrough()
+            }
         return if (fallsThrough) // we fall through into the next case
             convertCaseStatements(case.statements, allowBlock = false) + convertCaseStatements(cases, caseIndex + 1, allowBlock = false)
         else
@@ -98,12 +98,10 @@ class SwitchStatementConversion(private val context: ConversionContext) : Recurs
 
     private fun List<JKStatement>.fallsThrough(): Boolean {
         for (statement in this) {
-            when(statement) {
-                is JKBreakStatement -> return false
-                is JKReturnStatement-> return false
-                //TODO add support of this when will be added
-//                is JKThrowStatement-> return false
-//                is JKContinueStatement-> return false
+            //TODO add support of this when will be added
+            // is JKThrowStatement || is JKContinueStatement
+            if (statement is JKBreakStatement || statement is JKReturnStatement) {
+                return false
             }
             val psiStatement = context.backAnnotator(statement)
             when (psiStatement) {

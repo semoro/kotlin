@@ -122,21 +122,20 @@ abstract class JKBranchElementBase : JKElementBase(), JKBranchElement {
                 when (it) {
                     is JKElementBase -> it.deepClone()
                     is List<*> -> (it as List<JKElementBase>).map { it.deepClone() }
-                    else -> TODO("Sth wrong")
+                    else -> error("Tree is corrupted")
                 }
             }
 
         deepClonedChildren.forEach { child ->
             when (child) {
                 is JKElementBase -> {
-                    child.detach(child.parent!!)
+                    child.detach(this)
                     child.attach(cloned)
                 }
                 is List<*> -> (child as List<JKElementBase>).forEach {
-                    it.detach(it.parent!!)
+                    it.detach(this)
                     it.attach(cloned)
                 }
-
             }
         }
         cloned.children.clear()
