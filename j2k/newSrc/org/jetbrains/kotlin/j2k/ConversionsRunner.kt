@@ -24,6 +24,7 @@ object ConversionsRunner {
     private fun createRootConversion(context: ConversionContext) =
         batchPipe {
             +BinaryExpressionConversion(context)
+            +ThrowStatementConversion()
             +ModalityConversion(context)
             +ImplicitInitializerConversion()
             +DefaultArgumentsConversion(context)
