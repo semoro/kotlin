@@ -25,6 +25,7 @@ object ConversionsRunner {
         batchPipe {
             +BinaryExpressionConversion(context)
             +ThrowStatementConversion()
+            +TryStatementConversion(context)
             +ModalityConversion(context)
             +ImplicitInitializerConversion()
             +DefaultArgumentsConversion(context)
