@@ -285,6 +285,7 @@ interface JKTypeParameterList : JKTreeElement {
 
 interface JKTypeParameter : JKTreeElement {
     var name: JKNameIdentifier
+    var upperBounds: List<JKTypeElement>
 }
 
 interface JKTypeParameterListOwner : JKTreeElement {
