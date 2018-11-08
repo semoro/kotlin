@@ -470,3 +470,6 @@ class JKTypeParameterTypeImpl(
     override val name: String,
     override val nullability: Nullability = Nullability.Default
 ) : JKTypeParameterType
+
+fun JKTypeElement.present(): Boolean =
+    type != JKNoTypeImpl
