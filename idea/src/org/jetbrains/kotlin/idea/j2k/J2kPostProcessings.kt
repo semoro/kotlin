@@ -112,6 +112,7 @@ object J2KPostProcessingRegistrar {
         registerIntentionBasedProcessing(DestructureIntention())
         registerInspectionBasedProcessing(SimplifyAssertNotNullInspection())
         registerIntentionBasedProcessing(RemoveRedundantCallsOfConversionMethodsIntention())
+        registerGeneralInspectionBasedProcessing(LiftReturnOrAssignmentInspection())
 
         registerDiagnosticBasedProcessing<KtBinaryExpressionWithTypeRHS>(Errors.USELESS_CAST) { element, _ ->
             val expression = RemoveUselessCastFix.invoke(element)
