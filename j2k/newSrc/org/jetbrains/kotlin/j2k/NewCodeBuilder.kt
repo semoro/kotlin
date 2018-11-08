@@ -484,6 +484,13 @@ class NewCodeBuilder {
                     printer.printWithNoIndent(type.name)
                 is JKStarProjectionType ->
                     printer.printWithNoIndent("*")
+                is JKVarianceTypeParameterType -> {
+                    when (type.variance) {
+                        JKVarianceTypeParameterType.Variance.IN -> printer.printWithNoIndent("in ")
+                        JKVarianceTypeParameterType.Variance.OUT -> printer.printWithNoIndent("out ")
+                    }
+                    renderType(type.boundType)
+                }
                 else -> printer.printWithNoIndent("Unit /* TODO: ${type::class} */")
             }
             if (type is JKParametrizedType && type.parameters.isNotEmpty()) {
