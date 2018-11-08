@@ -45,7 +45,7 @@ object ConversionsRunner {
             +InnerClassConversion()
             +ModifiersConversion(context)
             +StaticsToCompanionExtractConversion()
-            +ClassToObjectPromotionConversion()
+            +ClassToObjectPromotionConversion(context)
             +PolyadicExpressionConversion()
             +InstanceOfConversion()
             +ForConversion(context)
