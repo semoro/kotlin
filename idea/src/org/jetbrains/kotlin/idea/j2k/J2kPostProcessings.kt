@@ -56,6 +56,7 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.callUtil.getType
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
+import org.jetbrains.kotlin.types.isNullable
 import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import org.jetbrains.kotlin.utils.mapToIndex
 import java.util.*
@@ -95,6 +96,8 @@ object J2KPostProcessingRegistrar {
         registerGeneralInspectionBasedProcessing(RedundantExplicitTypeInspection())
         registerGeneralInspectionBasedProcessing(RedundantUnitReturnTypeInspection())
         _processings.add(RemoveExplicitPropertyType())
+        _processings.add(RemoveRedundantNullability())
+
         registerGeneralInspectionBasedProcessing(CanBeValInspection(ignoreNotUsedVals = false))
 
         registerIntentionBasedProcessing(FoldInitializerAndIfToElvisIntention())
@@ -115,7 +118,6 @@ object J2KPostProcessingRegistrar {
         registerInspectionBasedProcessing(SimplifyAssertNotNullInspection())
         registerIntentionBasedProcessing(RemoveRedundantCallsOfConversionMethodsIntention())
         registerGeneralInspectionBasedProcessing(LiftReturnOrAssignmentInspection())
-        registerIntentionBasedProcessing(RemoveExplicitTypeIntention())
 
         _processings.add(object : J2kPostProcessing {
             override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? =
@@ -356,6 +358,41 @@ object J2KPostProcessingRegistrar {
                 return {
                     if (element.isValid && check(element)) {
                         element.typeReference = null
+                    }
+                }
+            }
+        }
+    }
+
+
+    private class RemoveRedundantNullability : J2kPostProcessing {
+        override val writeActionNeeded: Boolean = true
+
+        override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? {
+            if (element !is KtProperty) return null
+
+            fun check(element: KtProperty): Boolean {
+                if (!element.isLocal) return false
+                val typeReference = element.typeReference
+                if (typeReference == null || typeReference.typeElement !is KtNullableType) return false
+
+                return ReferencesSearch.search(element, element.useScope).findAll().mapNotNull { ref ->
+                    val parent = (ref.element.parent as? KtExpression)?.asAssignment()
+                    parent?.takeIf { it.left == ref.element }
+                }.all {
+                    val right = it.right
+                    val withoutExpectedType = right?.analyzeInContext(element.getResolutionScope())
+                    withoutExpectedType?.getType(right)?.isNullable() == false
+                }
+            }
+
+            if (!check(element)) {
+                return null
+            } else {
+                return {
+                    val typeElement = element.typeReference?.typeElement
+                    if (element.isValid && check(element) && typeElement != null && typeElement is KtNullableType) {
+                        typeElement.replace(typeElement.innerType!!)
                     }
                 }
             }
