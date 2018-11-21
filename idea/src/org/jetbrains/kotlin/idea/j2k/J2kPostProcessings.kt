@@ -95,6 +95,9 @@ object J2KPostProcessingRegistrar {
         registerGeneralInspectionBasedProcessing(RedundantVisibilityModifierInspection())
         registerGeneralInspectionBasedProcessing(RedundantExplicitTypeInspection())
         registerGeneralInspectionBasedProcessing(RedundantUnitReturnTypeInspection())
+        registerGeneralInspectionBasedProcessing(RedundantGetterInspection())
+        registerGeneralInspectionBasedProcessing(RedundantSetterInspection())
+
         _processings.add(RemoveExplicitPropertyType())
         _processings.add(RemoveRedundantNullability())
 
