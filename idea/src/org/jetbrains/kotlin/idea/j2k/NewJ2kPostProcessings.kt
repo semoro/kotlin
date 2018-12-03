@@ -62,18 +62,7 @@ import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import org.jetbrains.kotlin.utils.mapToIndex
 import java.util.*
 
-interface J2kPostProcessing {
-    fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)?
-
-    val writeActionNeeded: Boolean
-}
-
-interface J2KPostProcessingRegistrar {
-    val processings: Collection<J2kPostProcessing>
-    fun priority(processing: J2kPostProcessing): Int
-}
-
-object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
+object NewJ2KPostProcessingRegistrarImpl: J2KPostProcessingRegistrar {
     private val _processings = ArrayList<J2kPostProcessing>()
 
     override val processings: Collection<J2kPostProcessing>
@@ -97,8 +86,20 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
         registerInspectionBasedProcessing(ReplacePutWithAssignmentInspection())
         _processings.add(UseExpressionBodyProcessing())
         registerInspectionBasedProcessing(UnnecessaryVariableInspection())
+        registerGeneralInspectionBasedProcessing(RedundantModalityModifierInspection())
+        registerGeneralInspectionBasedProcessing(RedundantVisibilityModifierInspection())
+        registerGeneralInspectionBasedProcessing(RedundantExplicitTypeInspection())
+        registerGeneralInspectionBasedProcessing(RedundantUnitReturnTypeInspection())
+        registerGeneralInspectionBasedProcessing(RedundantGetterInspection())
+        registerGeneralInspectionBasedProcessing(RedundantSetterInspection())
+
+        _processings.add(RemoveExplicitPropertyType())
+        _processings.add(RemoveRedundantNullability())
+
+        registerGeneralInspectionBasedProcessing(CanBeValInspection(ignoreNotUsedVals = false))
 
         registerIntentionBasedProcessing(FoldInitializerAndIfToElvisIntention())
+        registerIntentionBasedProcessing(RemoveEmptyClassBodyIntention())
 
         registerIntentionBasedProcessing(FoldIfToReturnIntention()) { it.then.isTrivialStatementBody() && it.`else`.isTrivialStatementBody() }
         registerIntentionBasedProcessing(FoldIfToReturnAsymmetricallyIntention()) { it.then.isTrivialStatementBody() && (KtPsiUtil.skipTrailingWhitespacesAndComments(it) as KtReturnExpression).returnedExpression.isTrivialStatementBody() }
@@ -114,6 +115,17 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
         registerIntentionBasedProcessing(DestructureIntention())
         registerInspectionBasedProcessing(SimplifyAssertNotNullInspection())
         registerIntentionBasedProcessing(RemoveRedundantCallsOfConversionMethodsIntention())
+        registerGeneralInspectionBasedProcessing(LiftReturnOrAssignmentInspection())
+
+        _processings.add(object : J2kPostProcessing {
+            override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? =
+                {
+                    OptimizeImportsProcessor(element.project, element.containingKtFile).run()
+                    PsiDocumentManager.getInstance(element.project).commitAllDocuments()
+                }
+
+            override val writeActionNeeded: Boolean = true
+        })
 
         registerDiagnosticBasedProcessing<KtBinaryExpressionWithTypeRHS>(Errors.USELESS_CAST) { element, _ ->
             val expression = RemoveUselessCastFix.invoke(element)
@@ -133,10 +145,25 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
             fix.invoke()
         }
 
+        registerDiagnosticBasedProcessing<KtModifierListOwner>(Errors.NON_FINAL_MEMBER_IN_FINAL_CLASS) { _, diagnostic ->
+            val fix =
+                RemoveModifierFix
+                    .createRemoveModifierFromListOwnerFactory(KtTokens.OPEN_KEYWORD)
+                    .createActions(diagnostic).single() as RemoveModifierFix
+            fix.invoke()
+        }
+        registerDiagnosticBasedProcessing<KtModifierListOwner>(Errors.NON_FINAL_MEMBER_IN_OBJECT) { _, diagnostic ->
+            val fix =
+                RemoveModifierFix
+                    .createRemoveModifierFromListOwnerFactory(KtTokens.OPEN_KEYWORD)
+                    .createActions(diagnostic).single() as RemoveModifierFix
+            fix.invoke()
+        }
+
         registerDiagnosticBasedProcessingFactory(
-            Errors.VAL_REASSIGNMENT, Errors.CAPTURED_VAL_INITIALIZATION, Errors.CAPTURED_MEMBER_VAL_INITIALIZATION
+                Errors.VAL_REASSIGNMENT, Errors.CAPTURED_VAL_INITIALIZATION, Errors.CAPTURED_MEMBER_VAL_INITIALIZATION
         ) {
-                element: KtSimpleNameExpression, _: Diagnostic ->
+            element: KtSimpleNameExpression, _: Diagnostic ->
             val property = element.mainReference.resolve() as? KtProperty
             if (property == null) {
                 null
@@ -163,8 +190,8 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
     }
 
     private inline fun <reified TElement : KtElement, TIntention: SelfTargetingRangeIntention<TElement>> registerIntentionBasedProcessing(
-        intention: TIntention,
-        noinline additionalChecker: (TElement) -> Boolean = { true }
+            intention: TIntention,
+            noinline additionalChecker: (TElement) -> Boolean = { true }
     ) {
         _processings.add(object : J2kPostProcessing {
             // Intention can either need or not need write action
@@ -184,12 +211,82 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
         })
     }
 
-    private inline fun
-            <reified TElement : KtElement,
-                    TInspection: AbstractApplicabilityBasedInspection<TElement>> registerInspectionBasedProcessing(
-
+    private inline fun <TInspection : AbstractKotlinInspection> registerGeneralInspectionBasedProcessing(
         inspection: TInspection,
         acceptInformationLevel: Boolean = false
+    ) {
+        _processings.add(object : J2kPostProcessing {
+            override val writeActionNeeded = false
+
+            fun <D : CommonProblemDescriptor> QuickFix<D>.applyFixSmart(project: Project, descriptor: D) {
+                if (descriptor is ProblemDescriptor) {
+                    if (this is IntentionWrapper) {
+                        @Suppress("NOT_YET_SUPPORTED_IN_INLINE")
+                        fun applySelfTargetingIntention(action: SelfTargetingIntention<PsiElement>) {
+                            val target = action.getTarget(descriptor.psiElement.startOffset, descriptor.psiElement.containingFile) ?: return
+                            if (!action.isApplicableTo(target, descriptor.psiElement.startOffset)) return
+                            action.applyTo(target, null)
+                        }
+
+                        @Suppress("NOT_YET_SUPPORTED_IN_INLINE")
+                        fun applyQuickFixActionBase(action: QuickFixActionBase<PsiElement>) {
+                            if (!action.isAvailable(project, null, descriptor.psiElement.containingFile)) return
+                            action.invoke(project, null, descriptor.psiElement.containingFile)
+                        }
+
+
+                        @Suppress("NOT_YET_SUPPORTED_IN_INLINE")
+                        fun applyIntention() {
+                            val action = this.action
+                            when (action) {
+                                is SelfTargetingIntention<*> -> applySelfTargetingIntention(action as SelfTargetingIntention<PsiElement>)
+                                is QuickFixActionBase<*> -> applyQuickFixActionBase(action)
+                            }
+                        }
+
+
+                        if (this.startInWriteAction()) {
+                            ApplicationManager.getApplication().runWriteAction(::applyIntention)
+                        } else {
+                            applyIntention()
+                        }
+
+                    }
+                }
+
+                ApplicationManager.getApplication().runWriteAction {
+                    this.applyFix(project, descriptor)
+                }
+            }
+
+            override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? {
+                val holder = ProblemsHolder(InspectionManager.getInstance(element.project), element.containingFile, false)
+                val visitor = inspection.buildVisitor(
+                    holder,
+                    false,
+                    LocalInspectionToolSession(element.containingFile, 0, element.containingFile.endOffset)
+                )
+                element.accept(visitor)
+                if (!holder.hasResults()) return null
+                return {
+                    holder.results.clear()
+                    element.accept(visitor)
+                    if (holder.hasResults()) {
+                        holder.results
+                            .filter { acceptInformationLevel || it.highlightType != ProblemHighlightType.INFORMATION }
+                            .forEach { it.fixes?.firstOrNull()?.applyFixSmart(element.project, it) }
+                    }
+                }
+            }
+        })
+    }
+
+    private inline fun
+            <reified TElement : KtElement,
+            TInspection: AbstractApplicabilityBasedInspection<TElement>> registerInspectionBasedProcessing(
+
+            inspection: TInspection,
+            acceptInformationLevel: Boolean = false
     ) {
         _processings.add(object : J2kPostProcessing {
             // Inspection can either need or not need write action
@@ -214,15 +311,15 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
     }
 
     private inline fun <reified TElement : KtElement> registerDiagnosticBasedProcessing(
-        vararg diagnosticFactory: DiagnosticFactory<*>,
-        crossinline fix: (TElement, Diagnostic) -> Unit
+            vararg diagnosticFactory: DiagnosticFactory<*>,
+            crossinline fix: (TElement, Diagnostic) -> Unit
     ) {
         registerDiagnosticBasedProcessingFactory(*diagnosticFactory) { element: TElement, diagnostic: Diagnostic -> { fix(element, diagnostic) } }
     }
 
     private inline fun <reified TElement : KtElement> registerDiagnosticBasedProcessingFactory(
-        vararg diagnosticFactory: DiagnosticFactory<*>,
-        crossinline fixFactory: (TElement, Diagnostic) -> (() -> Unit)?
+            vararg diagnosticFactory: DiagnosticFactory<*>,
+            crossinline fixFactory: (TElement, Diagnostic) -> (() -> Unit)?
     ) {
         _processings.add(object : J2kPostProcessing {
             // ???
@@ -234,6 +331,70 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
                 return fixFactory(element as TElement, diagnostic)
             }
         })
+    }
+
+    private class RemoveExplicitPropertyType : J2kPostProcessing {
+        override val writeActionNeeded = true
+
+        override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? {
+            if (element !is KtProperty) return null
+
+            fun check(element: KtProperty): Boolean {
+                val initializer = element.initializer ?: return false
+                val withoutExpectedType = initializer.analyzeInContext(initializer.getResolutionScope())
+                val descriptor = element.resolveToDescriptorIfAny() as? CallableDescriptor ?: return false
+                return when (withoutExpectedType.getType(initializer)) {
+                    descriptor.returnType,
+                    descriptor.returnType?.makeNotNullable() -> true
+                    else -> false
+                }
+            }
+
+            if (!check(element)) {
+                return null
+            } else {
+                return {
+                    if (element.isValid && check(element)) {
+                        element.typeReference = null
+                    }
+                }
+            }
+        }
+    }
+
+
+    private class RemoveRedundantNullability : J2kPostProcessing {
+        override val writeActionNeeded: Boolean = true
+
+        override fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)? {
+            if (element !is KtProperty) return null
+
+            fun check(element: KtProperty): Boolean {
+                if (!element.isLocal) return false
+                val typeReference = element.typeReference
+                if (typeReference == null || typeReference.typeElement !is KtNullableType) return false
+
+                return ReferencesSearch.search(element, element.useScope).findAll().mapNotNull { ref ->
+                    val parent = (ref.element.parent as? KtExpression)?.asAssignment()
+                    parent?.takeIf { it.left == ref.element }
+                }.all {
+                    val right = it.right
+                    val withoutExpectedType = right?.analyzeInContext(element.getResolutionScope())
+                    withoutExpectedType?.getType(right)?.isNullable() == false
+                }
+            }
+
+            if (!check(element)) {
+                return null
+            } else {
+                return {
+                    val typeElement = element.typeReference?.typeElement
+                    if (element.isValid && check(element) && typeElement != null && typeElement is KtNullableType) {
+                        typeElement.replace(typeElement.innerType!!)
+                    }
+                }
+            }
+        }
     }
 
     private class RemoveExplicitTypeArgumentsProcessing : J2kPostProcessing {
@@ -298,7 +459,7 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
 
             return {
                 RedundantSamConstructorInspection.samConstructorCallsToBeConverted(element)
-                    .forEach { RedundantSamConstructorInspection.replaceSamConstructorCall(it) }
+                        .forEach { RedundantSamConstructorInspection.replaceSamConstructorCall(it) }
             }
         }
     }
@@ -349,7 +510,7 @@ object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
                 element.operationToken != KtTokens.PLUS ||
                 diagnostics.forElement(element.operationReference).none {
                     it.factory == Errors.UNRESOLVED_REFERENCE_WRONG_RECEIVER
-                            || it.factory  == Errors.NONE_APPLICABLE
+                    || it.factory  == Errors.NONE_APPLICABLE
                 })
                 return null
 
