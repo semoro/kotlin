@@ -62,6 +62,12 @@ import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import org.jetbrains.kotlin.utils.mapToIndex
 import java.util.*
 
+interface Processing
+data class SingleProcessing(val processing: J2kPostProcessing) : Processing
+data class ProcessingGroup(val processings: List<Processing>) : Processing {
+    constructor(vararg processings: Processing) : this(processings.toList())
+}
+
 interface J2kPostProcessing {
     fun createAction(element: KtElement, diagnostics: Diagnostics): (() -> Unit)?
 
@@ -70,10 +76,14 @@ interface J2kPostProcessing {
 
 interface J2KPostProcessingRegistrar {
     val processings: Collection<J2kPostProcessing>
+    val mainProcessings: ProcessingGroup
     fun priority(processing: J2kPostProcessing): Int
 }
 
 object J2KPostProcessingRegistrarImpl : J2KPostProcessingRegistrar {
+    override val mainProcessings: ProcessingGroup
+        get() = ProcessingGroup(_processings.map { SingleProcessing(it) })
+
     private val _processings = ArrayList<J2kPostProcessing>()
 
     override val processings: Collection<J2kPostProcessing>
