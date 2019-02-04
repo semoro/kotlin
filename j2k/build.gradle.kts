@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinCompile
 
 plugins {
     kotlin("jvm")
@@ -7,6 +8,7 @@ plugins {
 dependencies {
     testRuntime(intellijDep())
 
+    compile(project(":idea:idea-core"))
     compile(project(":kotlin-stdlib"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:frontend.java"))
@@ -78,7 +80,22 @@ val testForWebDemo by task<Test> {
 val test: Test by tasks
 test.apply {
     exclude("**/*JavaToKotlinConverterForWebDemoTestGenerated*")
-    dependsOn(testForWebDemo)
+    //dependsOn(testForWebDemo)
 }
+val cleanTest by tasks
 
+configureFreeCompilerArg(true, "-Xeffect-system")
+configureFreeCompilerArg(true, "-Xnew-inference")
+
+fun configureFreeCompilerArg(isEnabled: Boolean, compilerArgument: String) {
+    if (isEnabled) {
+        allprojects {
+            tasks.withType<KotlinCompile<*>> {
+                kotlinOptions {
+                    freeCompilerArgs += listOf(compilerArgument)
+                }
+            }
+        }
+    }
+}
 ideaPlugin()

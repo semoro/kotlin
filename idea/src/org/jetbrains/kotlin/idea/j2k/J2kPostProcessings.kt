@@ -118,9 +118,9 @@ object J2KPostProcessingRegistrar {
         }
 
         registerDiagnosticBasedProcessingFactory(
-                Errors.VAL_REASSIGNMENT, Errors.CAPTURED_VAL_INITIALIZATION, Errors.CAPTURED_MEMBER_VAL_INITIALIZATION
+            Errors.VAL_REASSIGNMENT, Errors.CAPTURED_VAL_INITIALIZATION, Errors.CAPTURED_MEMBER_VAL_INITIALIZATION
         ) {
-            element: KtSimpleNameExpression, _: Diagnostic ->
+                element: KtSimpleNameExpression, _: Diagnostic ->
             val property = element.mainReference.resolve() as? KtProperty
             if (property == null) {
                 null
@@ -147,8 +147,8 @@ object J2KPostProcessingRegistrar {
     }
 
     private inline fun <reified TElement : KtElement, TIntention: SelfTargetingRangeIntention<TElement>> registerIntentionBasedProcessing(
-            intention: TIntention,
-            noinline additionalChecker: (TElement) -> Boolean = { true }
+        intention: TIntention,
+        noinline additionalChecker: (TElement) -> Boolean = { true }
     ) {
         _processings.add(object : J2kPostProcessing {
             // Intention can either need or not need write action
@@ -170,10 +170,10 @@ object J2KPostProcessingRegistrar {
 
     private inline fun
             <reified TElement : KtElement,
-            TInspection: AbstractApplicabilityBasedInspection<TElement>> registerInspectionBasedProcessing(
+                    TInspection: AbstractApplicabilityBasedInspection<TElement>> registerInspectionBasedProcessing(
 
-            inspection: TInspection,
-            acceptInformationLevel: Boolean = false
+        inspection: TInspection,
+        acceptInformationLevel: Boolean = false
     ) {
         _processings.add(object : J2kPostProcessing {
             // Inspection can either need or not need write action
@@ -198,15 +198,15 @@ object J2KPostProcessingRegistrar {
     }
 
     private inline fun <reified TElement : KtElement> registerDiagnosticBasedProcessing(
-            vararg diagnosticFactory: DiagnosticFactory<*>,
-            crossinline fix: (TElement, Diagnostic) -> Unit
+        vararg diagnosticFactory: DiagnosticFactory<*>,
+        crossinline fix: (TElement, Diagnostic) -> Unit
     ) {
         registerDiagnosticBasedProcessingFactory(*diagnosticFactory) { element: TElement, diagnostic: Diagnostic -> { fix(element, diagnostic) } }
     }
 
     private inline fun <reified TElement : KtElement> registerDiagnosticBasedProcessingFactory(
-            vararg diagnosticFactory: DiagnosticFactory<*>,
-            crossinline fixFactory: (TElement, Diagnostic) -> (() -> Unit)?
+        vararg diagnosticFactory: DiagnosticFactory<*>,
+        crossinline fixFactory: (TElement, Diagnostic) -> (() -> Unit)?
     ) {
         _processings.add(object : J2kPostProcessing {
             // ???
@@ -282,7 +282,7 @@ object J2KPostProcessingRegistrar {
 
             return {
                 RedundantSamConstructorInspection.samConstructorCallsToBeConverted(element)
-                        .forEach { RedundantSamConstructorInspection.replaceSamConstructorCall(it) }
+                    .forEach { RedundantSamConstructorInspection.replaceSamConstructorCall(it) }
             }
         }
     }
@@ -333,7 +333,7 @@ object J2KPostProcessingRegistrar {
                 element.operationToken != KtTokens.PLUS ||
                 diagnostics.forElement(element.operationReference).none {
                     it.factory == Errors.UNRESOLVED_REFERENCE_WRONG_RECEIVER
-                    || it.factory  == Errors.NONE_APPLICABLE
+                            || it.factory  == Errors.NONE_APPLICABLE
                 })
                 return null
 

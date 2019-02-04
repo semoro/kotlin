@@ -142,9 +142,7 @@ import org.jetbrains.kotlin.idea.stubs.AbstractMultiFileHighlightingTest
 import org.jetbrains.kotlin.idea.stubs.AbstractResolveByStubTest
 import org.jetbrains.kotlin.idea.stubs.AbstractStubBuilderTest
 import org.jetbrains.kotlin.incremental.*
-import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterForWebDemoTest
-import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterMultiFileTest
-import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterSingleFileTest
+import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.jps.build.*
 import org.jetbrains.kotlin.jps.build.android.AbstractAndroidJpsTestCase
 import org.jetbrains.kotlin.jps.build.dependeciestxt.actualizeMppJpsIncTestCaseDirs
@@ -958,6 +956,20 @@ fun main(args: Array<String>) {
     testGroup("j2k/tests", "j2k/testData") {
         testClass<AbstractJavaToKotlinConverterForWebDemoTest> {
             model("fileOrElement", extension = "java")
+        }
+    }
+
+    testGroup("j2k/tests", "j2k/testData") {
+        testClass<AbstractNewJavaToKotlinConverterSingleFileTest> {
+            model("fileOrElement", extension = "java")
+        }
+
+        testClass<AbstractNewJavaToKotlinConverterStructureSingleFileTest> {
+            model("fileOrElement", extension = "java")
+        }
+
+        testClass<AbstractNewJavaToKotlinConverterNewSingleFileTest> {
+            model("newFileOrElement", extension = "java")
         }
     }
 

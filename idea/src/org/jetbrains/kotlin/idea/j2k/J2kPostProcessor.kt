@@ -57,53 +57,53 @@ class J2kPostProcessor(private val formatCode: Boolean) : PostProcessor {
     }
 
     override fun doAdditionalProcessing(file: KtFile, rangeMarker: RangeMarker?) =
-            runBlocking(EDT.ModalityStateElement(ModalityState.defaultModalityState())) {
-                do {
-                    var modificationStamp: Long? = file.modificationStamp
-                    val elementToActions = runReadAction {
-                        collectAvailableActions(file, rangeMarker)
-                    }
+        runBlocking(EDT.ModalityStateElement(ModalityState.defaultModalityState())) {
+            do {
+                var modificationStamp: Long? = file.modificationStamp
+                val elementToActions = runReadAction {
+                    collectAvailableActions(file, rangeMarker)
+                }
 
-                    withContext(EDT) {
-                        for ((element, action, _, writeActionNeeded) in elementToActions) {
-                            if (element.isValid) {
-                                if (writeActionNeeded) {
-                                    runWriteAction {
-                                        action()
-                                    }
-                                }
-                                else {
+                withContext(EDT) {
+                    for ((element, action, _, writeActionNeeded) in elementToActions) {
+                        if (element.isValid) {
+                            if (writeActionNeeded) {
+                                runWriteAction {
                                     action()
                                 }
                             }
                             else {
-                                modificationStamp = null
+                                action()
                             }
+                        }
+                        else {
+                            modificationStamp = null
                         }
                     }
-
-                    if (modificationStamp == file.modificationStamp) break
                 }
-                while (elementToActions.isNotEmpty())
+
+                if (modificationStamp == file.modificationStamp) break
+            }
+            while (elementToActions.isNotEmpty())
 
 
-                if (formatCode) {
-                    withContext(EDT) {
-                        runWriteAction {
-                            val codeStyleManager = CodeStyleManager.getInstance(file.project)
-                            if (rangeMarker != null) {
-                                if (rangeMarker.isValid) {
-                                    codeStyleManager.reformatRange(file, rangeMarker.startOffset, rangeMarker.endOffset)
-                                }
+            if (formatCode) {
+                withContext(EDT) {
+                    runWriteAction {
+                        val codeStyleManager = CodeStyleManager.getInstance(file.project)
+                        if (rangeMarker != null) {
+                            if (rangeMarker.isValid) {
+                                codeStyleManager.reformatRange(file, rangeMarker.startOffset, rangeMarker.endOffset)
                             }
-                            else {
-                                codeStyleManager.reformat(file)
-                            }
-                            Unit
                         }
+                        else {
+                            codeStyleManager.reformat(file)
+                        }
+                        Unit
                     }
                 }
             }
+        }
 
 
     private data class ActionData(val element: KtElement, val action: () -> Unit, val priority: Int, val writeActionNeeded: Boolean)
